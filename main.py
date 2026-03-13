@@ -29,6 +29,7 @@ from analyze_factor import (
     run_search, backtest,
 )
 from position_manager import PositionManager, load_position_from_config
+from feishu_notify import send_full_report_to_feishu
 from validate_strategy import generate_test_report
 from visualize import plot_strategy_result
 
@@ -532,6 +533,45 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
         print(f"  信号: {'持仓 🟢' if rec['signal'] == 1 else '空仓 🔴'}")
         print(f"  预测收益率: {rec['predicted_return']:+.2%}")
 
+        # 发送到飞书（完整报告）
+        feishu_webhook = current_config.get('feishu_webhook')
+        if feishu_webhook:
+            ticker = current_config.get('ticker', '0700.hk')
+            signal_text = "上涨" if rule_direction == 1 else "下跌"
+
+            # 构建完整报告数据
+            report_data = {
+                'ticker': ticker,
+                'current_price': last_close,
+                'last_date': str(last_date.date()) if hasattr(last_date, 'date') else str(last_date)[:10],
+                'strategy': strategy,
+                'params': params,
+                'is_ml': is_ml,
+                'signal': signal_text,
+                'cum_return': artifact.get('cum_return', 0),
+                'sharpe': sharpe,
+                'annualized_return': artifact.get('annualized_return', 0),
+                'max_drawdown': artifact.get('max_drawdown', 0),
+                'volatility': artifact.get('volatility', 0),
+                'total_trades': artifact.get('total_trades', 0),
+                'win_rate': artifact.get('win_rate', 0),
+                'calmar_ratio': artifact.get('calmar_ratio', 0),
+                'avg_volatility': daily_vol,
+                'predictions': predictions,
+                'position': {
+                    'shares': rec.get('shares', 0),
+                    'avg_cost': rec.get('avg_cost', 0),
+                    'current_price': rec.get('current_price', 0),
+                    'profit': rec.get('profit', 0),
+                    'profit_pct': rec.get('profit_pct', 0),
+                },
+                'recommendation': rec,
+                'validation': {},  # 验证数据稍后填充
+            }
+
+            send_full_report_to_feishu(feishu_webhook, report_data)
+            print(f"  📱 已发送到飞书群聊")
+
         md_content += f"""
 ## 持仓状态与建议
 
@@ -765,16 +805,46 @@ def main():
     print(f"  {'─'*50}")
 
     artifact = _resolve_artifact(factor_path)
+    validation_data = {}
     if artifact and artifact.get('strategy_mod'):
         strategy_mod = artifact['strategy_mod']
         params = artifact.get('meta', {}).get('params', {})
         config = artifact.get('config', {})
 
-        validation_md, report_path = generate_test_report(
+        validation_md, report_path, validation_data = generate_test_report(
             hist_data, strategy_mod, params, config
         )
         print(f"  📊 验证报告已保存: {report_path.name}")
         print(f"\n{validation_md}")
+
+        # 发送到飞书（带验证数据）
+        feishu_webhook = config.get('feishu_webhook')
+        if feishu_webhook:
+            # 构建报告数据
+            report_data = {
+                'ticker': config.get('ticker', '0700.hk'),
+                'current_price': float(hist_data['Close'].iloc[-1]),
+                'last_date': str(hist_data.index.max().date()),
+                'strategy': artifact.get('meta', {}).get('name', ''),
+                'params': params,
+                'is_ml': False,
+                'signal': "震荡",
+                'cum_return': artifact.get('cum_return', 0),
+                'sharpe': artifact.get('sharpe_ratio', 0),
+                'annualized_return': artifact.get('annualized_return', 0),
+                'max_drawdown': artifact.get('max_drawdown', 0),
+                'volatility': artifact.get('volatility', 0),
+                'total_trades': artifact.get('total_trades', 0),
+                'win_rate': artifact.get('win_rate', 0),
+                'calmar_ratio': artifact.get('calmar_ratio', 0),
+                'avg_volatility': 0,
+                'predictions': [],
+                'position': {},
+                'recommendation': {},
+                'validation': validation_data,
+            }
+            send_full_report_to_feishu(feishu_webhook, report_data)
+            print(f"  📱 验证报告已发送到飞书群聊")
     else:
         print("  ⚠️ 无法加载策略模块，跳过验证报告")
 

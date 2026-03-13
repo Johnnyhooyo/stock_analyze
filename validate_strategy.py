@@ -390,4 +390,10 @@ def generate_test_report(
     report_path = output_dir / f"validation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
     report_path.write_text(md, encoding='utf-8')
 
-    return md, report_path
+    # 返回数据和报告
+    validation_data = {
+        'out_of_sample': oos_result if oos_result.get('success') else {},
+        'walk_forward': wf_result.get('summary', {}) if wf_result.get('success') else {},
+    }
+
+    return md, report_path, validation_data
