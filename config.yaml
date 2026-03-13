@@ -1,0 +1,11 @@
+alpha_vantage_key: null
+data_sources:
+- yahooquery
+lookback_months: 3
+max_test_days: 20
+max_tries: 300
+min_return: 0.01
+period: 5y
+test_days: 5
+ticker: 0700.hk
+train_years: 5

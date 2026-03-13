@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source .venv/bin/activate && python3 smoke_test.py)",
+      "Bash(source .venv/bin/activate && python3 main.py --help)",
+      "Bash(source .venv/bin/activate && timeout 60 python3 main.py 2>&1 || echo \"Timeout or error\")",
+      "Bash(source .venv/bin/activate && python3 main.py 2>&1)",
+      "WebSearch",
+      "Bash(source .venv/bin/activate && python3 main.py --skip-train 2>&1)",
+      "Bash(ls -la /Users/Enzo/PycharmProjects/stock_analyze/strategies/*.py)",
+      "Bash(source .venv/bin/activate && python3 -c \"from analyze_factor import _discover_strategies; strategies = _discover_strategies\\(\\); print\\('发现的策略:', strategies\\)\")",
+      "Bash(source .venv/bin/activate && python3 -c \"\nimport joblib\nimport pprint\ndata = joblib.load\\('/Users/Enzo/PycharmProjects/stock_analyze/data/factors/factor_0008.pkl'\\)\npprint.pprint\\(data\\)\n\")"
+    ]
+  }
+}
