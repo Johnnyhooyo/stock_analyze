@@ -1,16 +1,76 @@
 """
 情感分析模块
 用于分析新闻、研报等文本数据的情感倾向
+
+数据持久化：每天只获取一次，保存到本地文件
 """
 
 import requests
 import pandas as pd
 from typing import Optional
 from datetime import datetime, timedelta
+from pathlib import Path
 
+# 情感数据目录
+DATA_DIR = Path(__file__).parent / 'data' / 'sentiment'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# 情感分析结果缓存
+# 数据文件路径
+SENTIMENT_FILE = DATA_DIR / "sentiment_cache.csv"
+
+# 内存缓存
 SENTIMENT_CACHE = {}
+
+
+def _save_sentiment_cache(ticker: str, data: dict):
+    """保存情感数据到本地文件"""
+    df = pd.DataFrame([{
+        'ticker': ticker,
+        'date': datetime.now().date(),
+        'sentiment': data.get('sentiment', 'neutral'),
+        'polarity': data.get('polarity', 0),
+        'news_count': data.get('news_count', 0),
+        'positive_count': data.get('positive_count', 0),
+        'negative_count': data.get('negative_count', 0),
+        'neutral_count': data.get('neutral_count', 0),
+    }])
+
+    if SENTIMENT_FILE.exists():
+        # 读取已有数据，去除当天的旧数据
+        try:
+            existing = pd.read_csv(SENTIMENT_FILE, parse_dates=['date'])
+            existing = existing[existing['date'] != str(datetime.now().date())]
+            df = pd.concat([existing, df], ignore_index=True)
+        except Exception:
+            pass
+
+    df.to_csv(SENTIMENT_FILE, index=False)
+
+
+def _load_sentiment_cache(ticker: str) -> Optional[dict]:
+    """从本地文件加载情感数据"""
+    if not SENTIMENT_FILE.exists():
+        return None
+
+    try:
+        df = pd.read_csv(SENTIMENT_FILE, parse_dates=['date'])
+        today = str(datetime.now().date())
+        row = df[(df['ticker'] == ticker) & (df['date'] == today)]
+
+        if not row.empty:
+            return {
+                'sentiment': row.iloc[0]['sentiment'],
+                'polarity': float(row.iloc[0]['polarity']),
+                'news_count': int(row.iloc[0]['news_count']),
+                'positive_count': int(row.iloc[0]['positive_count']),
+                'negative_count': int(row.iloc[0]['negative_count']),
+                'neutral_count': int(row.iloc[0]['neutral_count']),
+                'latest_news': []  # 新闻详情不缓存
+            }
+    except Exception:
+        pass
+
+    return None
 
 
 def analyze_sentiment(text: str) -> dict:
@@ -132,8 +192,31 @@ def analyze_stock_sentiment(ticker: str = "0700.HK", force_refresh: bool = False
     global SENTIMENT_CACHE
 
     cache_key = f"{ticker}_{datetime.now().date()}"
+
+    # 1. 先检查内存缓存
     if not force_refresh and cache_key in SENTIMENT_CACHE:
         return SENTIMENT_CACHE[cache_key]
+
+    # 2. 检查本地文件缓存
+    if not force_refresh:
+        cached = _load_sentiment_cache(ticker)
+        if cached:
+            # 补充新闻数据（需要实时获取）
+            news = fetch_stock_news(ticker)
+            if news:
+                # 分析新闻
+                analyzed_news = []
+                for item in news[:5]:
+                    text = item.get('title', '') + ' ' + item.get('summary', '')
+                    result = analyze_sentiment(text)
+                    analyzed_news.append({
+                        'title': item.get('title', '')[:50] + '...' if len(item.get('title', '')) > 50 else item.get('title', ''),
+                        'sentiment': result['label'],
+                        'polarity': result['polarity']
+                    })
+                cached['latest_news'] = analyzed_news
+            SENTIMENT_CACHE[cache_key] = cached
+            return cached
 
     # 获取新闻
     news = fetch_stock_news(ticker)
@@ -190,8 +273,9 @@ def analyze_stock_sentiment(ticker: str = "0700.HK", force_refresh: bool = False
         'latest_news': analyzed_news[:5]
     }
 
-    # 缓存结果
+    # 缓存结果到内存和文件
     SENTIMENT_CACHE[cache_key] = result
+    _save_sentiment_cache(ticker, result)
 
     return result
 

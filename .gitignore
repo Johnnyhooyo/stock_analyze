@@ -22,6 +22,7 @@ data/timekline/*.csv
 data/plots/*.png
 data/logs/*.log
 data/trends/*.csv
+data/sentiment/*.csv
 data/reports/*.*
 # Logs
 *.log
