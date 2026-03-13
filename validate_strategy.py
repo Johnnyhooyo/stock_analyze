@@ -162,25 +162,35 @@ def walk_forward_analysis(
         test_df = df[(df.index >= test_start) & (df.index <= test_end)]
 
         if len(train_df) < 60 or len(test_df) < 20:
+            print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: 数据不足")
             current_end = test_start - pd.DateOffset(months=step_months)
             continue
 
-        # 运行策略
+        # 运行策略：合并训练集和测试集，让指标能正确预热
         try:
-            # 用训练集确定参数（这里简化为使用默认参数）
-            sig, _, _ = strategy_mod.run(test_df, config)
-            test_result = bt(test_df, sig, config)
+            # 合并数据：训练集 + 测试集
+            combined_df = pd.concat([train_df, test_df])
+            sig, _, _ = strategy_mod.run(combined_df, config)
 
-            results.append({
-                'train_period': f"{train_start.date()} ~ {train_end.date()}",
-                'test_period': f"{test_start.date()} ~ {test_end.date()}",
-                'cum_return': test_result.get('cum_return', 0),
-                'sharpe_ratio': test_result.get('sharpe_ratio', 0),
-                'max_drawdown': test_result.get('max_drawdown', 0),
-                'total_trades': test_result.get('total_trades', 0),
-            })
-        except Exception:
-            pass
+            # 只取测试集部分的信号
+            test_sig = sig.loc[test_start:test_end]
+            test_result = bt(test_df, test_sig, config)
+
+            # 检查是否有效（必须有交易）
+            if test_result.get('total_trades', 0) > 0:
+                results.append({
+                    'train_period': f"{train_start.date()} ~ {train_end.date()}",
+                    'test_period': f"{test_start.date()} ~ {test_end.date()}",
+                    'cum_return': test_result.get('cum_return', 0),
+                    'sharpe_ratio': test_result.get('sharpe_ratio', 0),
+                    'max_drawdown': test_result.get('max_drawdown', 0),
+                    'total_trades': test_result.get('total_trades', 0),
+                    'win_rate': test_result.get('win_rate', 0),  # 交易胜率
+                })
+            else:
+                print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: 无交易信号")
+        except Exception as e:
+            print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: {e}")
 
         current_end = test_start - pd.DateOffset(months=step_months)
 
@@ -196,6 +206,17 @@ def walk_forward_analysis(
     # 汇总统计
     returns = [r['cum_return'] for r in results]
     sharpes = [r['sharpe_ratio'] for r in results]
+    trade_win_rates = [r.get('win_rate', 0) for r in results if r.get('win_rate', 0) > 0]
+    total_trades_all = sum(r.get('total_trades', 0) for r in results)
+
+    # 窗口胜率：盈利窗口数/总窗口数
+    window_win_rate = sum(1 for r in returns if r > 0) / len(returns) if returns else 0
+
+    # 交易胜率：汇总所有窗口的交易
+    all_trade_returns = []
+    for r in results:
+        # 简单处理：每个窗口的交易胜率作为参考
+        pass
 
     return {
         'success': True,
@@ -206,7 +227,9 @@ def walk_forward_analysis(
             'avg_return': np.mean(returns),
             'return_std': np.std(returns),
             'avg_sharpe': np.mean([s for s in sharpes if not np.isnan(s)]),
-            'win_rate': sum(1 for r in returns if r > 0) / len(returns) if returns else 0,
+            'window_win_rate': window_win_rate,  # 窗口胜率
+            'trade_win_rate': np.mean(trade_win_rates) if trade_win_rates else 0,  # 交易胜率（各窗口平均）
+            'total_trades': total_trades_all,
         }
     }
 
@@ -322,18 +345,20 @@ def generate_test_report(
 |------|-----|
 | 总窗口数 | {summary['total_windows']} |
 | 盈利窗口数 | {summary['profitable_windows']} |
-| 胜率 | {summary['win_rate']:.2%} |
+| 窗口胜率 | {summary['window_win_rate']:.2%} |
+| 交易胜率 | {summary['trade_win_rate']:.2%} |
 | 平均收益 | {summary['avg_return']:.2%} |
 | 收益标准差 | {summary['return_std']:.2%} |
 | 平均夏普率 | {summary['avg_sharpe']:.4f} |
 
 ### 各窗口详情
 
-| 训练期 | 测试期 | 收益 | 夏普率 | 回撤 | 交易次数 |
-|--------|--------|------|--------|------|----------|
+| 训练期 | 测试期 | 收益 | 夏普率 | 回撤 | 交易次数 | 交易胜率 |
+|--------|--------|------|--------|------|----------|----------|
 """
         for w in wf_result['windows']:
-            md += f"| {w['train_period']} | {w['test_period']} | {w['cum_return']:.2%} | {w['sharpe_ratio']:.4f} | {w['max_drawdown']:.2%} | {w['total_trades']} |\n"
+            trade_win = w.get('win_rate', 0)
+            md += f"| {w['train_period']} | {w['test_period']} | {w['cum_return']:.2%} | {w['sharpe_ratio']:.4f} | {w['max_drawdown']:.2%} | {w['total_trades']} | {trade_win:.2%} |\n"
     else:
         md += f"\nWalk-Forward 分析失败: {wf_result.get('message', '未知错误')}\n"
 
@@ -344,9 +369,11 @@ def generate_test_report(
 """
     if oos_result.get('success') and wf_result.get('success'):
         oos_excess = oos_result['excess_return']
-        wf_win_rate = wf_result['summary']['win_rate']
+        wf_summary = wf_result['summary']
+        window_win_rate = wf_summary.get('window_win_rate', 0)
+        trade_win_rate = wf_summary.get('trade_win_rate', 0)
 
-        if oos_excess > 0 and wf_win_rate > 0.5:
+        if oos_excess > 0 and window_win_rate > 0.5:
             conclusion = "策略表现良好，具有正向超额收益且 Walk-Forward 胜率较高。"
         elif oos_excess > 0:
             conclusion = "策略具有一定的超额收益，但 Walk-Forward 胜率偏低，需进一步优化。"
@@ -354,7 +381,8 @@ def generate_test_report(
             conclusion = "策略在样本外测试中未能跑赢基准，建议重新审视策略逻辑。"
 
         md += f"- **样本外超额收益**: {oos_excess:+.2%}\n"
-        md += f"- **Walk-Forward 胜率**: {wf_win_rate:.2%}\n\n"
+        md += f"- **窗口胜率**: {window_win_rate:.2%}\n"
+        md += f"- **交易胜率**: {trade_win_rate:.2%}\n\n"
         md += f"**结论**: {conclusion}\n"
 
     # 保存报告

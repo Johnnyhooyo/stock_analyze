@@ -17,9 +17,19 @@ from visualize import plot_strategy_result
 # ══════════════════════════════════════════════════════════════════
 
 def _load_config() -> dict:
+    # 加载主配置
     config_path = Path(__file__).parent / 'config.yaml'
     with open(config_path, encoding='utf-8') as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
+
+    # 加载密钥配置（如果存在）
+    keys_path = Path(__file__).parent / 'keys.yaml'
+    if keys_path.exists():
+        with open(keys_path, encoding='utf-8') as f:
+            keys = yaml.safe_load(f) or {}
+            config.update(keys)
+
+    return config
 
 
 def _save_config(cfg: dict) -> None:
@@ -474,7 +484,7 @@ def run_search(
                     except Exception as e:
                         print(f"  ⚠️  on_result 回调异常: {e}")
                 found_any = True
-                break
+                # 不退出，继续训练所有参数组合
             else:
                 print()
 

@@ -28,6 +28,7 @@ from analyze_factor import (
     _load_config, _discover_strategies,
     run_search, backtest,
 )
+from position_manager import PositionManager, load_position_from_config
 from validate_strategy import generate_test_report
 from visualize import plot_strategy_result
 
@@ -118,9 +119,19 @@ def _latest_factor_path(factors_dir: Path) -> str | None:
 
 
 def _load_config_full() -> dict:
+    # 加载主配置
     config_path = Path(__file__).parent / 'config.yaml'
     with open(config_path, encoding='utf-8') as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
+
+    # 加载密钥配置（如果存在）
+    keys_path = Path(__file__).parent / 'keys.yaml'
+    if keys_path.exists():
+        with open(keys_path, encoding='utf-8') as f:
+            keys = yaml.safe_load(f) or {}
+            config.update(keys)
+
+    return config
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -490,6 +501,58 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
     for p in predictions:
         direction_emoji = "🟢" if p['direction'] == "上涨" else "🔴"
         md_content += f"| {p['date']} | {p['price']:.2f} | [{p['low']:.2f}, {p['high']:.2f}] | {direction_emoji} {p['direction']} | {p['return']:+.2%} |\n"
+
+    # ── 持仓管理与建议 ────────────────────────────────────────────────
+    # 加载最新配置（确保获取最新的持仓设置）
+    current_config = _load_config_full()
+    pm = PositionManager()
+    position = load_position_from_config(current_config)
+    if position:
+        # 更新当前价格
+        position.current_price = last_close
+        pm.position = position
+
+        # 获取信号和预测收益率
+        signal = rule_direction if not is_ml else (1 if predictions[0]['return'] > 0 else 0)
+        predicted_return = predictions[0]['return'] if predictions else 0
+
+        # 生成建议
+        rec = pm.get_recommendation(signal, predicted_return)
+
+        # 控制台输出
+        print(f"\n  {'─'*50}")
+        print(f"  持仓状态与建议")
+        print(f"  {'─'*50}")
+        print(f"  持股数量: {rec['shares']} 股")
+        print(f"  平均成本: {rec['avg_cost']:.2f} 元")
+        print(f"  当前价格: {rec['current_price']:.2f} 元")
+        print(f"  盈亏金额: {rec['profit']:+.2f} 元 ({rec['profit_pct']:+.2f}%)")
+        print(f"\n  交易建议: {rec['action']}")
+        print(f"  原因: {rec['reason']}")
+        print(f"  信号: {'持仓 🟢' if rec['signal'] == 1 else '空仓 🔴'}")
+        print(f"  预测收益率: {rec['predicted_return']:+.2%}")
+
+        md_content += f"""
+## 持仓状态与建议
+
+| 项目 | 值 |
+|------|-----|
+| 持股数量 | {rec['shares']} 股 |
+| 平均成本 | {rec['avg_cost']:.2f} 元 |
+| 当前价格 | {rec['current_price']:.2f} 元 |
+| 持仓成本 | {rec['current_price'] * rec['shares']:.2f} 元 |
+| 市值 | {rec['current_price'] * rec['shares']:.2f} 元 |
+| 盈亏金额 | {rec['profit']:+.2f} 元 |
+| 盈亏比例 | {rec['profit_pct']:+.2f}% |
+
+### 交易建议
+
+- **操作**: {rec['action']}
+- **原因**: {rec['reason']}
+- **信号**: {"持仓 🟢" if rec['signal'] == 1 else "空仓 🔴"}
+- **预测收益率**: {rec['predicted_return']:+.2%}
+
+"""
 
     md_content += f"""
 ## 风险提示

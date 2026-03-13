@@ -21,9 +21,15 @@ data/historical/*.csv
 data/timekline/*.csv
 data/plots/*.png
 data/logs/*.log
-
+data/trends/*.csv
+data/reports/*.*
 # Logs
 *.log
+
+# Keys and secrets
+keys.yaml
+secrets.yaml
+*.key
 
 # OS
 .DS_Store

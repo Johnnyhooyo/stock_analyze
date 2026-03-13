@@ -4,8 +4,10 @@ data_sources:
 lookback_months: 3
 max_test_days: 20
 max_tries: 300
-min_return: 0.01
+min_return: 0.03
 period: 5y
+position_avg_cost: 600.0
+position_shares: 200
 test_days: 5
 ticker: 0700.hk
 train_years: 5
