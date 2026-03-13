@@ -30,6 +30,7 @@ from analyze_factor import (
 )
 from position_manager import PositionManager, load_position_from_config
 from feishu_notify import send_full_report_to_feishu
+from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
 from validate_strategy import generate_test_report
 from visualize import plot_strategy_result
 
@@ -319,6 +320,14 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
     print(f"  最后交易日: {last_date.date()}  收盘价: {last_close:.2f}")
     print(f"  近60日波动率: {daily_vol:.2%}  近20日平均振幅: {avg_abs_ret:.2%}")
 
+    # ── 情感分析 ─────────────────────────────────────────────────────
+    print(f"  正在分析市场情感...")
+    sentiment_result = analyze_stock_sentiment(config.get('ticker', '0700.HK'))
+    sentiment_signal = get_sentiment_signal(sentiment_result)
+    sentiment_emoji = "🟢" if sentiment_result['sentiment'] == "positive" else "🔴" if sentiment_result['sentiment'] == "negative" else "⚪"
+    print(f"  情感分析: {sentiment_emoji} {sentiment_result['sentiment']} (分数: {sentiment_result['polarity']:.3f})")
+    print(f"  新闻统计: 正面 {sentiment_result['positive_count']} | 负面 {sentiment_result['negative_count']} | 中性 {sentiment_result['neutral_count']}")
+
     # 未来交易日（跳过周末）
     future_dates = []
     d = last_date
@@ -558,6 +567,7 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
                 'calmar_ratio': artifact.get('calmar_ratio', 0),
                 'avg_volatility': daily_vol,
                 'predictions': predictions,
+                'sentiment': sentiment_result,  # 情感分析结果
                 'position': {
                     'shares': rec.get('shares', 0),
                     'avg_cost': rec.get('avg_cost', 0),

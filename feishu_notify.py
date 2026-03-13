@@ -112,6 +112,9 @@ def send_full_report_to_feishu(
     # 验证结果
     validation = report_data.get('validation', {})
 
+    # 情感分析
+    sentiment = report_data.get('sentiment', {})
+
     # 构建消息
     lines = []
 
@@ -127,6 +130,22 @@ def send_full_report_to_feishu(
     lines.append(f"- **策略类型**: {'ML模型' if is_ml else '规则策略'}")
     lines.append(f"- **信号**: {signal_emoji} {signal}")
     lines.append("")
+
+    # 情感分析
+    if sentiment:
+        sent_emoji = "🟢" if sentiment.get('sentiment') == 'positive' else "🔴" if sentiment.get('sentiment') == 'negative' else "⚪"
+        lines.append("### 📰 情感分析")
+        lines.append(f"- **情感倾向**: {sent_emoji} {sentiment.get('sentiment', 'neutral')}")
+        lines.append(f"- **情感分数**: {sentiment.get('polarity', 0):.3f}")
+        lines.append(f"- **正面新闻**: {sentiment.get('positive_count', 0)} 篇")
+        lines.append(f"- **负面新闻**: {sentiment.get('negative_count', 0)} 篇")
+        lines.append(f"- **中性新闻**: {sentiment.get('neutral_count', 0)} 篇")
+        if sentiment.get('latest_news'):
+            lines.append("**最新新闻:**")
+            for n in sentiment['latest_news'][:3]:
+                n_emoji = "🟢" if n.get('sentiment') == 'positive' else "🔴" if n.get('sentiment') == 'negative' else "⚪"
+                lines.append(f"- {n_emoji} {n.get('title', '')}")
+        lines.append("")
 
     # 收益指标
     lines.append("### 💰 收益指标")
