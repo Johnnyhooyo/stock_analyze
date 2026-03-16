@@ -362,22 +362,58 @@ def download_stock_data(retries=3, backoff=1.0, sources_override=None):
     if not ticker:
         raise ValueError('config.yaml 中缺少 ticker 配置')
 
-    # --- 新逻辑: 优先使用本地历史数据（如果存在则直接返回），否则再去网络下载 ---
+    # --- 新逻辑: 优先使用本地历史数据（如果存在且不过期则直接返回），否则再去网络下载 ---
     out_dir = Path(__file__).parent / 'data' / 'historical'
     out_dir.mkdir(parents=True, exist_ok=True)
     # 默认保存路径（如果从网络获取成功，会保存到这里）
     file_path = out_dir / f"{ticker}_{period}.csv"
 
-    # 先查找是否已有本地历史文件，若存在则使用最新的一个并返回
+    # 先查找是否已有本地历史文件
     candidates = list(out_dir.glob(f"{ticker}_*.csv"))
     if candidates:
         candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         file_path = candidates[0]
-        logger.info(f"本地历史数据存在，使用本地文件: {file_path}")
         data = pd.read_csv(file_path, index_col=0, parse_dates=True)
-        return data, str(file_path)
 
-    # 若本地没有，则继续走网络下载逻辑
+        if not data.empty:
+            last_date = data.index.max().date()
+            today = datetime.today().date()
+
+            # 计算最近的交易日（排除周末）
+            # 如果今天是周一到周五，找出上一个交易日
+            today_weekday = today.weekday()  # 0=周一, 4=周五
+
+            # 计算今天之前最近的一个交易日
+            days_ago = 1  # 默认昨天
+            if today_weekday == 0:  # 周一
+                days_ago = 3  # 上周五
+            elif today_weekday == 1:  # 周二
+                days_ago = 3  # 上周五
+            elif today_weekday == 2:  # 周三
+                days_ago = 1  # 昨天
+            elif today_weekday == 3:  # 周四
+                days_ago = 1  # 昨天
+            else:  # 周五
+                days_ago = 1  # 昨天
+
+            most_recent_trading_day = today - timedelta(days=days_ago)
+
+            # 判断逻辑：
+            # - 如果最后交易日 >= 最近交易日，说明有今天的或者最近交易日的缓存
+            # - 如果最后交易日 = 最近交易日 - 1（比如周二有周五的数据），也是有效的
+            # - 否则需要更新
+            if last_date >= most_recent_trading_day:
+                # 有当天或最近交易日的数据
+                logger.info(f"本地历史数据有效（最后交易日: {last_date}），使用本地文件: {file_path}")
+                return data, str(file_path)
+            elif last_date >= most_recent_trading_day - timedelta(days=1):
+                # 有前一天的数据（考虑时区/未更新情况），可以使用
+                logger.info(f"本地历史数据有效（最后交易日: {last_date}），使用本地文件: {file_path}")
+                return data, str(file_path)
+            else:
+                logger.info(f"本地历史数据过期（最后交易日: {last_date}，最近交易日: {most_recent_trading_day}），需要更新")
+
+    # 若本地没有或已过期，则继续走网络下载逻辑
     data = pd.DataFrame()
     last_exc = None
     for source in data_sources:
