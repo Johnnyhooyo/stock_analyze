@@ -14,17 +14,9 @@ def backtest_vectorbt(
     signal: pd.Series,
     config: dict
 ) -> dict:
-    """
-    使用 Vectorbt 进行回测
+    """使用 Vectorbt 进行回测"""
+    print("[Vectorbt] 使用 Vectorbt 框架进行回测...")
 
-    Args:
-        data: 价格数据（需要 Close 列）
-        signal: 信号序列 (1=持仓, 0=空仓)
-        config: 配置
-
-    Returns:
-        dict: 回测结果
-    """
     # 获取配置
     initial_capital = float(config.get('initial_capital', 100000.0))
     fees = float(config.get('fees', 0.001))  # 手续费
@@ -50,6 +42,7 @@ def backtest_vectorbt(
         init_cash=initial_capital,
         fees=fees,
         slippage=0.001,  # 滑点
+        freq='1D',  # 设置频率，避免夏普等指标警告
     )
 
     # 获取统计信息

@@ -49,11 +49,12 @@ def _save_config(cfg: dict) -> None:
 
 def _discover_strategies() -> list:
     """自动发现 strategies/ 包下的所有策略模块，返回模块列表。"""
-    # 只使用新添加的两个策略
-    new_strategies = ['bollinger_rsi_trend', 'macd_rsi_trend']
-    pkg_path = Path(__file__).parent / 'strategies'
+    # 从配置文件读取策略列表
+    config = _load_config()
+    strategy_list = config.get('strategies', ['bollinger_rsi_trend', 'macd_rsi_trend'])
+
     modules = []
-    for name in new_strategies:
+    for name in strategy_list:
         try:
             mod = importlib.import_module(f'strategies.{name}')
             if hasattr(mod, 'run') and hasattr(mod, 'NAME'):

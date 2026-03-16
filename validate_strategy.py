@@ -133,7 +133,11 @@ def walk_forward_analysis(
     Returns:
         分析结果
     """
-    from analyze_factor import backtest as bt
+    from analyze_factor import backtest as bt, VECTORBT_AVAILABLE
+    try:
+        from backtest_vectorbt import backtest_vectorbt as bt_vbt
+    except ImportError:
+        bt_vbt = None
 
     df = data.copy().sort_index()
 

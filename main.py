@@ -593,6 +593,7 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
                 'avg_volatility': daily_vol,
                 'predictions': predictions,
                 'sentiment': sentiment_result,  # 情感分析结果
+                'sentiment_signal': sentiment_signal,  # 情感信号：1=看涨, 0=看跌, -1=无信号
                 'position': {
                     'shares': rec.get('shares', 0),
                     'avg_cost': rec.get('avg_cost', 0),
