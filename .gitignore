@@ -17,13 +17,15 @@ env/
 
 # Data
 data/factors/*.pkl
-data/historical/*.csv
 data/timekline/*.csv
 data/plots/*.png
 data/logs/*.log
-data/trends/*.csv
-data/sentiment/*.csv
 data/reports/*.*
+
+# 持久化的数据（推送到远程）
+# data/historical/*.csv
+# data/trends/*.csv
+# data/sentiment/*.csv
 # Logs
 *.log
 

@@ -1,0 +1,3 @@
+ticker,date,sentiment,polarity,news_count,positive_count,negative_count,neutral_count
+0700.HK,2026-03-13 00:00:00,positive,0.1185714285714285,10,4,1,5
+0700.hk,2026-03-16,positive,0.10702245670995672,10,4,0,6
