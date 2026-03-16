@@ -10,6 +10,13 @@ import joblib
 from pathlib import Path
 from visualize import plot_strategy_result
 
+# Vectorbt 引擎（可选）
+try:
+    from backtest_vectorbt import backtest_vectorbt as backtest_vbt
+    VECTORBT_AVAILABLE = True
+except ImportError:
+    VECTORBT_AVAILABLE = False
+
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -278,7 +285,12 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
             pass
 
     # ── 回测（验证集） ──
-    bt = backtest(val_df, val_signal, config)
+    # 根据配置选择回测引擎
+    backtest_engine = config.get('backtest_engine', 'native')
+    if backtest_engine == 'vectorbt' and VECTORBT_AVAILABLE:
+        bt = backtest_vbt(val_df, val_signal, config)
+    else:
+        bt = backtest(val_df, val_signal, config)
 
     # 因子保存由外层 (main.py / run_search) 统一处理，此处不再写磁盘
     return {
@@ -299,13 +311,14 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
         'calmar_ratio':      bt.get('calmar_ratio', float('nan')),
         'sortino_ratio':     bt.get('sortino_ratio', float('nan')),
         'total_trades':      bt.get('total_trades', 0),
-        'buy_cnt':           bt['buy_cnt'],
-        'sell_cnt':          bt['sell_cnt'],
+        # 兼容两种回测引擎的结果格式
+        'buy_cnt':           bt.get('buy_cnt', bt.get('total_trades', 0) // 2),
+        'sell_cnt':          bt.get('sell_cnt', bt.get('total_trades', 0) // 2),
         'meets_threshold':   bt['cum_return'] > min_return,
         'factor_path':       None,
         'model':             model,
         'meta':              val_meta,   # ← 验证集 meta，indicators 与 detail 索引对齐
-        'detail':            bt['detail'],
+        'detail':            bt.get('detail', pd.DataFrame()),
         'config':            config,
     }
 

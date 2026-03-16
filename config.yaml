@@ -1,6 +1,8 @@
 alpha_vantage_key: null
+backtest_engine: native
 data_sources:
 - yahooquery
+feishu_webhook: https://open.feishu.cn/open-apis/bot/v2/hook/ea59078b-e0f3-443f-a72a-d49d7114a58c
 lookback_months: 3
 max_test_days: 20
 max_tries: 300

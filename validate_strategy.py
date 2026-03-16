@@ -37,7 +37,11 @@ def out_of_sample_test(
     Returns:
         测试结果字典
     """
-    from analyze_factor import backtest as bt
+    from analyze_factor import backtest as bt, VECTORBT_AVAILABLE
+    try:
+        from backtest_vectorbt import backtest_vectorbt as bt_vbt
+    except ImportError:
+        bt_vbt = None
 
     df = data.copy().sort_index()
 
@@ -79,8 +83,12 @@ def out_of_sample_test(
             'message': f'策略运行失败: {e}'
         }
 
-    # 回测测试期
-    test_result = bt(test_df, sig, config)
+    # 回测测试期（根据配置选择引擎）
+    backtest_engine = config.get('backtest_engine', 'native')
+    if backtest_engine == 'vectorbt' and bt_vbt is not None:
+        test_result = bt_vbt(test_df, sig, config)
+    else:
+        test_result = bt(test_df, sig, config)
 
     # 计算相对于买入持有策略的超额收益
     buy_hold_return = (test_df['Close'].iloc[-1] / test_df['Close'].iloc[0]) - 1
@@ -174,7 +182,13 @@ def walk_forward_analysis(
 
             # 只取测试集部分的信号
             test_sig = sig.loc[test_start:test_end]
-            test_result = bt(test_df, test_sig, config)
+
+            # 根据配置选择回测引擎
+            backtest_engine = config.get('backtest_engine', 'native')
+            if backtest_engine == 'vectorbt' and bt_vbt is not None:
+                test_result = bt_vbt(test_df, test_sig, config)
+            else:
+                test_result = bt(test_df, test_sig, config)
 
             # 检查是否有效（必须有交易）
             if test_result.get('total_trades', 0) > 0:
@@ -254,10 +268,18 @@ def backtest_with_costs(
     Returns:
         回测结果（包含成本调整后的收益）
     """
-    from analyze_factor import backtest
+    from analyze_factor import backtest, VECTORBT_AVAILABLE
+    try:
+        from backtest_vectorbt import backtest_vectorbt as bt_vbt
+    except ImportError:
+        bt_vbt = None
 
-    # 原始回测
-    result = backtest(data, signal, config)
+    # 原始回测（根据配置选择引擎）
+    backtest_engine = config.get('backtest_engine', 'native')
+    if backtest_engine == 'vectorbt' and bt_vbt is not None:
+        result = bt_vbt(data, signal, config)
+    else:
+        result = backtest(data, signal, config)
 
     # 估算交易成本
     total_trades = result.get('total_trades', 0)

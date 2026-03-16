@@ -26,8 +26,12 @@ from datetime import datetime, timedelta
 from fetch_data import download_stock_data
 from analyze_factor import (
     _load_config, _discover_strategies,
-    run_search, backtest,
+    run_search, backtest, VECTORBT_AVAILABLE,
 )
+try:
+    from backtest_vectorbt import backtest_vectorbt as backtest_vbt
+except ImportError:
+    backtest_vbt = None
 from position_manager import PositionManager, load_position_from_config
 from feishu_notify import send_full_report_to_feishu
 from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
@@ -421,22 +425,43 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
 
     # ── 提取 BS 点（买卖点）──────────────────────────────────────────
     bs_points = []
+    backtest_engine = config.get('backtest_engine', 'native')
     if strategy_mod is not None and not is_ml:
         # 重新运行回测获取交易记录
         try:
             sig, _, _ = strategy_mod.run(data.copy(), config)
-            bt_result = backtest(data, sig, config)
-            detail = bt_result.get('detail')
-            if detail is not None and 'trade' in detail.columns:
-                for idx, row in detail.iterrows():
-                    trade = row['trade']
-                    if trade != 0:
-                        bs_points.append({
-                            'date': idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)[:10],
-                            'price': row['Close'],
-                            'action': '买入' if trade == 1 else '卖出',
-                            'pv': row['pv']
-                        })
+            # 根据配置选择回测引擎
+            if backtest_engine == 'vectorbt' and backtest_vbt is not None:
+                bt_result = backtest_vbt(data, sig, config)
+                # Vectorbt 的交易记录需要从 portfolio 获取
+                if 'portfolio' in bt_result:
+                    portfolio = bt_result['portfolio']
+                    # 尝试从交易记录中提取
+                    try:
+                        trades = portfolio.get_trades()
+                        if trades is not None:
+                            for t in trades:
+                                bs_points.append({
+                                    'date': str(t.entry_date.date()) if hasattr(t, 'entry_date') else 'N/A',
+                                    'price': t.entry_price,
+                                    'action': '买入',
+                                    'pv': t.return_
+                                })
+                    except:
+                        pass
+            else:
+                bt_result = backtest(data, sig, config)
+                detail = bt_result.get('detail')
+                if detail is not None and 'trade' in detail.columns:
+                    for idx, row in detail.iterrows():
+                        trade = row['trade']
+                        if trade != 0:
+                            bs_points.append({
+                                'date': idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)[:10],
+                                'price': row['Close'],
+                                'action': '买入' if trade == 1 else '卖出',
+                                'pv': row['pv']
+                            })
         except Exception as e:
             pass
 
