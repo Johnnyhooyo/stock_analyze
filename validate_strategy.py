@@ -91,7 +91,12 @@ def out_of_sample_test(
         test_result = bt(test_df, sig, config)
 
     # 计算相对于买入持有策略的超额收益
-    buy_hold_return = (test_df['Close'].iloc[-1] / test_df['Close'].iloc[0]) - 1
+    # 过滤掉没有收盘价的数据（盘中数据）
+    valid_test = test_df.dropna(subset=['Close'])
+    if len(valid_test) >= 2:
+        buy_hold_return = (valid_test['Close'].iloc[-1] / valid_test['Close'].iloc[0]) - 1
+    else:
+        buy_hold_return = float('nan')
     strategy_return = test_result['cum_return']
     excess_return = strategy_return - buy_hold_return
 

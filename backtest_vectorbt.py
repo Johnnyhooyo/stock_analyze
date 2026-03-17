@@ -19,7 +19,12 @@ def backtest_vectorbt(
 
     # 获取配置
     initial_capital = float(config.get('initial_capital', 100000.0))
-    fees = float(config.get('fees', 0.001))  # 手续费
+
+    # 港股费率设置（默认值）
+    # 买入：佣金 ~0.08% + 征费0.005% + 交易费0.0027% ≈ 0.088%
+    # 卖出：买入费率 + 印花税0.1% ≈ 0.188%
+    fees_rate = config.get('fees_rate', 0.00088)  # 买入费率
+    stamp_duty = config.get('stamp_duty', 0.001)  # 印花税（仅卖出）
 
     # 准备数据
     close = data['Close'].copy()
@@ -34,13 +39,17 @@ def backtest_vectorbt(
     # 卖出点：当前持仓=0，前一天持仓=1
     exits = (signal == 0) & (signal.shift(1).fillna(0) == 1)
 
+    # 港股往返费率：买入~0.088% + 卖出~0.188%（含印花税）
+    # 使用平均费率简化计算
+    avg_fees = (fees_rate + fees_rate + stamp_duty) / 2  # ~0.0013 (0.13%)
+
     # 运行回测
     portfolio = vbt.Portfolio.from_signals(
         close,
         entries=entries,
         exits=exits,
         init_cash=initial_capital,
-        fees=fees,
+        fees=avg_fees,
         slippage=0.001,  # 滑点
         freq='1D',  # 设置频率，避免夏普等指标警告
     )
@@ -164,7 +173,7 @@ if __name__ == "__main__":
         else:
             signal.iloc[i] = 0
 
-    config = {'initial_capital': 100000, 'fees': 0.001}
+    config = {'initial_capital': 100000, 'fees_rate': 0.00088, 'stamp_duty': 0.001}
 
     result = backtest_vectorbt(data, signal, config)
 

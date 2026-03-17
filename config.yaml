@@ -2,6 +2,7 @@ alpha_vantage_key: null
 backtest_engine: vectorbt
 data_sources:
 - yahooquery
+fees_rate: 0.00088
 feishu_webhook: https://open.feishu.cn/open-apis/bot/v2/hook/ea59078b-e0f3-443f-a72a-d49d7114a58c
 lookback_months: 3
 max_test_days: 20
@@ -10,9 +11,15 @@ min_return: 0.03
 period: 5y
 position_avg_cost: 600.0
 position_shares: 200
+stamp_duty: 0.001
 strategies:
 - bollinger_rsi_trend
 - macd_rsi_trend
+- rsi_divergence
+- stochastic_oscillator
+- vwap_momentum
+- atr_breakout
+- volume_price_trend
 test_days: 5
 ticker: 0700.hk
 train_years: 5

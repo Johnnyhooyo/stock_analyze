@@ -79,6 +79,10 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
     invest_fraction = float(config.get('invest_fraction', 1.0))
     lookback_months = int(config.get('lookback_months', 3))
 
+    # 港股费率设置
+    fees_rate = float(config.get('fees_rate', 0.00088))  # 买入费率 ~0.088%
+    stamp_duty = float(config.get('stamp_duty', 0.001))   # 印花税 ~0.1%（仅卖出）
+
     bt = data.copy()
     bt['signal']    = signal.reindex(bt.index).fillna(0).astype(int)
     bt['position']  = 0
@@ -96,11 +100,25 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
         trade   = 0
 
         if desired == 1 and position == 0:
-            n = int(cash * invest_fraction // price)
+            # 计算可买入股数：预留手续费空间
+            available_cash = cash / (1 + fees_rate)
+            n = int(available_cash * invest_fraction // price)
             if n > 0:
-                cash -= n * price; shares += n; position = 1; trade = 1
+                # 买入：扣除手续费
+                cost = n * price
+                fees = cost * fees_rate
+                cash = cash - cost - fees
+                shares += n
+                position = 1
+                trade = 1
         elif desired == 0 and position == 1:
-            cash += shares * price; shares = 0; position = 0; trade = -1
+            # 卖出：扣除手续费和印花税
+            proceeds = shares * price
+            fees = proceeds * (fees_rate + stamp_duty)
+            cash = cash + proceeds - fees
+            shares = 0
+            position = 0
+            trade = -1
 
         pv        = cash + shares * price
         daily_ret = 0.0 if prev_pv is None else (pv / prev_pv) - 1.0
@@ -228,7 +246,7 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
         except Exception:
             return None
 
-    df['returns'] = df['Close'].pct_change()
+    df['returns'] = df['Close'].pct_change(fill_method=None)
     df = df.dropna(subset=['returns'])
     if df.empty:
         return None
@@ -270,7 +288,7 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
     if model is not None and feat_cols:
         try:
             vdf = val_df.copy()
-            vdf['returns'] = vdf['Close'].pct_change()
+            vdf['returns'] = vdf['Close'].pct_change(fill_method=None)
             for i in range(1, int(config.get('test_days', 5)) + 1):
                 vdf[f'ret_{i}'] = vdf['returns'].shift(i)
             vdf = vdf.dropna()

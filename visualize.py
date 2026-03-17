@@ -388,6 +388,108 @@ def plot_strategy_result(detail: pd.DataFrame, meta: dict, config: dict) -> str:
     return str(out_path)
 
 
+def plot_yearly_trades(data: pd.DataFrame, strategy_mod, config: dict) -> str:
+    """
+    绘制过去一年的买卖节点图
+    - 显示收盘价走势
+    - 标注买入点（绿色三角形）和卖出点（红色三角形）
+    - 显示持仓状态
+    - 显示策略收益曲线 vs 买入持有收益曲线
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    # 获取过去一年的数据
+    one_year_ago = data.index.max() - pd.DateOffset(years=1)
+    df = data[data.index >= one_year_ago].copy()
+
+    if len(df) < 30:
+        print(f"  ⚠️ 数据不足一年，跳过绘图")
+        return None
+
+    # 运行策略获取信号
+    try:
+        signal, _, meta = strategy_mod.run(df, config)
+    except Exception as e:
+        print(f"  ⚠️ 策略运行失败: {e}")
+        return None
+
+    # 计算持仓和收益
+    df['signal'] = signal.reindex(df.index).fillna(0).astype(int)
+    df['position'] = df['signal'].shift(1).fillna(0)
+
+    # 计算策略收益
+    df['daily_return'] = df['Close'].pct_change(fill_method=None)
+    df['strategy_return'] = df['position'] * df['daily_return']
+    df['equity'] = (1 + df['strategy_return'].fillna(0)).cumprod()
+    df['buyhold_equity'] = df['Close'] / df['Close'].iloc[0]
+
+    # 找出买卖点
+    df['trade_signal'] = df['signal'].diff()
+    buy_points = df[df['trade_signal'] > 0]
+    sell_points = df[df['trade_signal'] < 0]
+
+    # 创建图形
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    fig.suptitle(f"过去一年交易记录 ({one_year_ago.strftime('%Y-%m-%d')} ~ {df.index.max().strftime('%Y-%m-%d')})", fontsize=14)
+
+    # 子图1：价格走势 + 买卖点
+    ax1.plot(df.index, df['Close'], 'b-', linewidth=1.5, label='收盘价')
+    ax1.plot(df.index, df['buyhold_equity'] * df['Close'].iloc[0], 'gray', linewidth=1, alpha=0.7, label='买入持有')
+
+    # 标注买入点
+    if len(buy_points) > 0:
+        ax1.scatter(buy_points.index, buy_points['Close'],
+                   marker='^', color='green', s=100, label='买入', zorder=5)
+
+    # 标注卖出点
+    if len(sell_points) > 0:
+        ax1.scatter(sell_points.index, sell_points['Close'],
+                   marker='v', color='red', s=100, label='卖出', zorder=5)
+
+    # 持仓区间填充
+    ax1.fill_between(df.index, df['Close'].min() * 0.95, df['Close'].max() * 1.05,
+                    where=df['position'] > 0, alpha=0.2, color='green', label='持仓区间')
+
+    ax1.set_ylabel('价格 (HKD)')
+    ax1.legend(loc='upper left', fontsize=8)
+    ax1.grid(True, alpha=0.3)
+
+    # 子图2：策略收益 vs 买入持有收益
+    ax2.plot(df.index, df['equity'], 'b-', linewidth=1.5, label='策略收益')
+    ax2.plot(df.index, df['buyhold_equity'], 'gray', linewidth=1, alpha=0.7, label='买入持有')
+
+    # 添加收益标注
+    final_strategy = (df['equity'].iloc[-1] - 1) * 100
+    final_buyhold = (df['buyhold_equity'].iloc[-1] - 1) * 100
+
+    ax2.axhline(y=1, color='black', linestyle='--', alpha=0.3)
+    ax2.text(df.index[-1], df['equity'].iloc[-1],
+            f'策略: {final_strategy:.2f}%', fontsize=9, color='blue')
+    ax2.text(df.index[-1], df['buyhold_equity'].iloc[-1],
+            f'买入持有: {final_buyhold:.2f}%', fontsize=9, color='gray')
+
+    ax2.set_ylabel('累计收益')
+    ax2.set_xlabel('日期')
+    ax2.legend(loc='upper left', fontsize=8)
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    # 保存
+    ticker = config.get('ticker', 'stock').replace('.', '_')
+    strategy_name = meta.get('name', 'strategy')
+    out_dir = Path(__file__).parent / 'data' / 'plots'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{ticker}_{strategy_name}_yearly_trades.png"
+
+    fig.savefig(out_path, bbox_inches='tight', dpi=130)
+    plt.close(fig)
+
+    print(f"  📊 年度交易图已保存: {out_path}")
+    return str(out_path)
+
+
 if __name__ == "__main__":
     # 示例使用
     data_file = Path(__file__).parent / "data" / "historical" / "0700.HK_1mo.csv"

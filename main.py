@@ -35,8 +35,8 @@ except ImportError:
 from position_manager import PositionManager, load_position_from_config
 from feishu_notify import send_full_report_to_feishu
 from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
-from validate_strategy import generate_test_report
-from visualize import plot_strategy_result
+from validate_strategy import generate_test_report, out_of_sample_test, walk_forward_analysis
+from visualize import plot_strategy_result, plot_yearly_trades
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -59,12 +59,40 @@ def _last_trading_day(ref: datetime | None = None) -> datetime:
 def _hist_data_is_stale(hist_file_path: str) -> bool:
     """
     判断历史数据文件是否过期：
-    - 文件修改时间 < 上一个交易日 16:10  → 过期，需要重新下载
-    - 否则视为最新
+    - 18点前：当天数据不可用，最新应该是昨天
+    - 18点后：当天数据可能可用，最新应该是今天
+
+    注意：不能用文件修改时间判断，因为周末运行程序会更新mtime但数据没变化。
     """
-    mtime = datetime.fromtimestamp(Path(hist_file_path).stat().st_mtime)
-    cutoff = _last_trading_day()
-    return mtime < cutoff
+    import pandas as pd
+    from datetime import date, datetime, time
+
+    try:
+        df = pd.read_csv(hist_file_path, parse_dates=['date'])
+        latest_date = df['date'].max()
+
+        now = datetime.now()
+        # 港股收盘时间16:10，18点后当天数据应该可用
+        cutoff_time = time(18, 0)
+
+        if now.time() < cutoff_time:
+            # 18点前：当天数据不可用，需要上一个交易日（昨天或上周五）
+            target_date = date.today() - timedelta(days=1)
+            while target_date.weekday() >= 5:  # 周末
+                target_date -= timedelta(days=1)
+        else:
+            # 18点后：当天数据可用，需要今天的数据
+            target_date = date.today()
+            # 但如果是周末，需要找上一个交易日
+            if target_date.weekday() >= 5:
+                target_date -= timedelta(days=1)
+                while target_date.weekday() >= 5:
+                    target_date -= timedelta(days=1)
+
+        return latest_date.date() < target_date
+    except Exception:
+        # 出错时默认过期，需要更新
+        return True
 
 
 # ── factors 目录统一命名：factor_{run_id:04d}.pkl ──────────────────
@@ -167,12 +195,33 @@ def step1_ensure_data(sources_override=None):
     if hist_files and not _hist_data_is_stale(str(hist_files[0])):
         hist_path = str(hist_files[0])
         hist_data = pd.read_csv(hist_path, index_col=0, parse_dates=True)
-        print(f"  ✅ 历史日线数据已是最新: {hist_path}  ({len(hist_data)} 条)")
+        latest_date = hist_data.index.max()
+        print(f"  ✅ 历史日线数据已是最新: {hist_path}  ({len(hist_data)} 条, 最新 {latest_date:%Y-%m-%d})")
     else:
         if hist_files:
-            stale_mtime = datetime.fromtimestamp(hist_files[0].stat().st_mtime)
-            cutoff      = _last_trading_day()
-            print(f"  ⚠️  历史日线数据已过期（文件时间 {stale_mtime:%Y-%m-%d %H:%M}  < 上一交易日收市 {cutoff:%Y-%m-%d %H:%M}），正在更新…")
+            # 显示数据内容的最新日期，而不是文件修改时间
+            from datetime import date, datetime, time, timedelta
+            df = pd.read_csv(hist_files[0], parse_dates=['date'])
+            latest_date = df['date'].max()
+
+            # 根据时间判断应该需要的数据日期
+            now = datetime.now()
+            if now.time() < time(18, 0):
+                # 18点前：需要上一个交易日（昨天或上周五）
+                target = date.today() - timedelta(days=1)
+                while target.weekday() >= 5:
+                    target -= timedelta(days=1)
+                hint = f"昨天 {target}"
+            else:
+                # 18点后：需要今天的数据（如果今天不是周末）
+                target = date.today()
+                if target.weekday() >= 5:
+                    target -= timedelta(days=1)
+                    while target.weekday() >= 5:
+                        target -= timedelta(days=1)
+                hint = f"今天/昨天 {target}"
+
+            print(f"  ⚠️  历史日线数据已过期（最新 {latest_date:%Y-%m-%d}  < 需要 {hint}），正在更新…")
         else:
             print("  ⚠️  本地无历史日线数据，正在下载…")
         hist_data, hist_path = download_stock_data(sources_override=sources_override)
@@ -627,6 +676,69 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
 - **原因**: {rec['reason']}
 - **信号**: {"持仓 🟢" if rec['signal'] == 1 else "空仓 🔴"}
 - **预测收益率**: {rec['predicted_return']:+.2%}
+
+"""
+
+    # ── 添加验证报告内容 ────────────────────────────────────────────────
+    # 运行样本外测试和Walk-Forward分析
+    if artifact and artifact.get('strategy_mod'):
+        strategy_mod = artifact['strategy_mod']
+        params = artifact.get('meta', {}).get('params', {})
+        config = artifact.get('config', {})
+
+        # 样本外测试
+        oos_result = out_of_sample_test(
+            data, strategy_mod, params, config,
+            train_months=12, test_months=3
+        )
+
+        # Walk-Forward分析
+        wf_result = walk_forward_analysis(
+            data, strategy_mod, config,
+            train_months=12, test_months=3, step_months=3
+        )
+
+        # 添加验证内容到报告
+        if oos_result.get('success'):
+            oos = oos_result
+            md_content += f"""
+## 策略验证（样本外测试）
+
+| 指标 | 值 |
+|------|-----|
+| 训练期 | {oos['train_period']} |
+| 测试期 | {oos['test_period']} |
+| 策略收益 | {oos['cum_return']:.2%} |
+| 买入持有收益 | {oos['buy_hold_return']:.2%} |
+| 超额收益 | {oos['excess_return']:+.2%} |
+| 夏普比率 | {oos['sharpe_ratio']:.4f} |
+| 最大回撤 | {oos['max_drawdown']:.2%} |
+| 交易次数 | {oos['total_trades']} |
+"""
+
+        # 添加Walk-Forward分析
+        if wf_result.get('success'):
+            wf = wf_result
+            md_content += f"""
+## Walk-Forward 分析
+
+| 指标 | 值 |
+|------|-----|
+| 总窗口数 | {wf.get('total_windows', 0)} |
+| 盈利窗口数 | {wf.get('profitable_windows', 0)} |
+| 窗口胜率 | {wf.get('win_rate', 0):.2%} |
+| 平均收益 | {wf.get('avg_return', 0):.2%} |
+| 平均夏普率 | {wf.get('avg_sharpe', 0):.4f} |
+"""
+
+        # 生成年度交易图
+        yearly_plot_path = plot_yearly_trades(data, strategy_mod, config)
+        if yearly_plot_path:
+            # 添加图片到报告
+            md_content += f"""
+## 过去一年交易记录
+
+![年度交易图]({yearly_plot_path})
 
 """
 

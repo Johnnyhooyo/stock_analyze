@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 import yaml
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, time
 import re
 import logging
 import sys
@@ -377,41 +377,30 @@ def download_stock_data(retries=3, backoff=1.0, sources_override=None):
 
         if not data.empty:
             last_date = data.index.max().date()
-            today = datetime.today().date()
-
-            # 计算最近的交易日（排除周末）
-            # 如果今天是周一到周五，找出上一个交易日
-            today_weekday = today.weekday()  # 0=周一, 4=周五
-
-            # 计算今天之前最近的一个交易日
-            days_ago = 1  # 默认昨天
-            if today_weekday == 0:  # 周一
-                days_ago = 3  # 上周五
-            elif today_weekday == 1:  # 周二
-                days_ago = 3  # 上周五
-            elif today_weekday == 2:  # 周三
-                days_ago = 1  # 昨天
-            elif today_weekday == 3:  # 周四
-                days_ago = 1  # 昨天
-            else:  # 周五
-                days_ago = 1  # 昨天
-
-            most_recent_trading_day = today - timedelta(days=days_ago)
+            now = datetime.now()
 
             # 判断逻辑：
-            # - 如果最后交易日 >= 最近交易日，说明有今天的或者最近交易日的缓存
-            # - 如果最后交易日 = 最近交易日 - 1（比如周二有周五的数据），也是有效的
-            # - 否则需要更新
-            if last_date >= most_recent_trading_day:
-                # 有当天或最近交易日的数据
-                logger.info(f"本地历史数据有效（最后交易日: {last_date}），使用本地文件: {file_path}")
-                return data, str(file_path)
-            elif last_date >= most_recent_trading_day - timedelta(days=1):
-                # 有前一天的数据（考虑时区/未更新情况），可以使用
+            # - 18点前：当天数据不可用，需要上一个交易日（昨天或上周五）
+            # - 18点后：当天数据可能可用，需要今天的数据
+            if now.time() < time(18, 0):
+                # 18点前：需要上一个交易日
+                target = date.today() - timedelta(days=1)
+                while target.weekday() >= 5:
+                    target -= timedelta(days=1)
+            else:
+                # 18点后：需要今天的数据（如果是周末则用上一个交易日）
+                target = date.today()
+                if target.weekday() >= 5:
+                    target -= timedelta(days=1)
+                    while target.weekday() >= 5:
+                        target -= timedelta(days=1)
+
+            if last_date >= target:
+                # 有最新数据
                 logger.info(f"本地历史数据有效（最后交易日: {last_date}），使用本地文件: {file_path}")
                 return data, str(file_path)
             else:
-                logger.info(f"本地历史数据过期（最后交易日: {last_date}，最近交易日: {most_recent_trading_day}），需要更新")
+                logger.info(f"本地历史数据过期（最后交易日: {last_date} < 需要: {target}），需要更新")
 
     # 若本地没有或已过期，则继续走网络下载逻辑
     data = pd.DataFrame()
@@ -502,6 +491,21 @@ def download_stock_data(retries=3, backoff=1.0, sources_override=None):
                 data.index.name = 'date'
             except Exception:
                 pass
+
+        # 如果本地已有历史数据，合并新旧数据，保留最新值
+        if file_path.exists():
+            old_data = pd.read_csv(file_path, index_col=0, parse_dates=True)
+            # 统一时区处理：移除时区信息进行比较
+            if old_data.index.tz is not None:
+                old_data.index = old_data.index.tz_localize(None)
+            if data.index.tz is not None:
+                data.index = data.index.tz_localize(None)
+            # 合并：使用新数据更新旧数据，保留最新值
+            combined = pd.concat([old_data, data])
+            combined = combined[~combined.index.duplicated(keep='last')]
+            combined = combined.sort_index()
+            data = combined
+            logger.info(f"合并历史数据: 旧 {len(old_data)} 条 + 新 {len(data)} 条 = 合并后 {len(data)} 条")
 
         data.to_csv(file_path, index_label='date')
         logger.info(f"数据已保存至: {file_path}")
