@@ -1,87 +1,147 @@
-# Claude Code 记忆文件
+# CLAUDE.md
 
-## 项目概述
-腾讯控股 (0700.hk) 股票智能分析系统
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 项目结构
-```
-stock_analyze/
-├── main.py                 # 主入口
-├── config.yaml             # 主配置文件
-├── keys.yaml               # 密钥配置（不上传）
-├── analyze_factor.py       # 因子分析与回测
-├── validate_strategy.py    # 策略验证
-├── backtest_vectorbt.py    # Vectorbt回测引擎
-├── position_manager.py     # 持仓管理
-├── sentiment_analysis.py   # 情感分析
-├── google_trends.py        # Google Trends热度数据
-├── feishu_notify.py       # 飞书通知
-├── fetch_data.py           # 数据获取
-├── visualize.py           # 可视化
-├── strategies/             # 策略模块
-│   ├── macd_rsi_trend.py
-│   ├── bollinger_rsi_trend.py
-│   └── ...
-└── data/                  # 数据目录
+## Project Overview
+
+腾讯控股 (0700.hk) 股票智能分析系统 - Automated stock analysis with multi-strategy backtesting, hyperparameter optimization, signal prediction, and position management.
+
+## Running the Project
+
+```bash
+python3 main.py                    # Full analysis with random search
+python3 main.py --use-optuna       # Use Optuna Bayesian optimization
+python3 main.py --use-optuna --optuna-trials 100
+python3 main.py --skip-train       # Skip training, use existing factors
+python3 main.py --n-days 5         # Prediction horizon
 ```
 
-## 配置文件
+## Architecture
+
+### Core Flow (main.py)
+1. **Data Check** - Load local CSV or download from yfinance/yahooquery
+2. **Strategy Search** - Random/Optuna hyperparameter search across all strategies
+3. **Validation** - Out-of-sample testing with multi-dimensional thresholds
+4. **Prediction** - Generate signals for next N trading days
+5. **Reporting** - Save reports to `data/reports/`, optionally send to Feishu
+
+### Key Modules
+
+| Module | Purpose |
+|--------|---------|
+| `main.py` | Entry point, orchestrates full pipeline |
+| `analyze_factor.py` | Core backtesting engine, strategy discovery, hyperparam search |
+| `validate_strategy.py` | Out-of-sample and Walk-Forward validation |
+| `backtest_vectorbt.py` | Optional Vectorbt-based backtesting |
+| `fetch_data.py` | Data download with 2-day stale check |
+| `position_manager.py` | Position state and trade suggestions |
+| `sentiment_analysis.py` | News sentiment scoring with caching |
+| `google_trends.py` | Google Trends热度数据 with caching |
+| `feishu_notify.py` | Feishu webhook notifications |
+| `optimize_with_optuna.py` | Bayesian hyperparameter optimization |
+| `train_multi_stock.py` | Loads HSI stocks for multi-stock training |
+
+### Strategy Interface
+
+All strategies in `strategies/` must expose:
+```python
+def run(data: pd.DataFrame, config: dict) -> (signal: pd.Series, model, meta: dict)
+```
+- `signal`: int Series (1=long, 0=flat), aligned to data.index
+- `model`: serializable object or None
+- `meta`: `{"name": str, "params": dict, "feat_cols": list, "indicators": dict}`
+
+### Strategy Training Types (analyze_factor.py)
+
+| Type | Training Data | Validation Data |
+|------|--------------|-----------------|
+| `single` | Target stock only | Target stock (lookback_months) |
+| `multi` | Multiple HSI stocks | Target stock (lookback_months) |
+| `custom` | Strategy-defined | Strategy-defined |
+
+Configured in `config.yaml` under `strategy_training`.
+
+### Backtesting Engine
+
+Configured via `config.yaml` → `backtest_engine`:
+- `native` (default): Pure Python backtester in `analyze_factor.py:backtest()` - handles HK fees (0.088% + 0.1% stamp duty)
+- `vectorbt`: Vectorbt-based backtesting - results differ slightly
+
+**Recommendation**: Use `native` engine for accurate Hong Kong market fee simulation.
+
+### Multi-Dimensional Threshold Validation
+
+Strategies must pass all thresholds to be saved:
+- `cum_return > min_return`
+- `sharpe_ratio > min_sharpe_ratio`
+- `max_drawdown >= max_drawdown` (negative value)
+- `total_trades >= min_total_trades`
+
+## Configuration
 
 ### config.yaml
-```yaml
-ticker: 0700.hk           # 股票代码
-backtest_engine: vectorbt  # 回测引擎: native / vectorbt
-strategies:                # 运行的策略列表
-  - macd_rsi_trend
-  - bollinger_rsi_trend
-min_return: 0.03         # 验证集最低收益阈值
-max_tries: 300            # 参数搜索次数
-```
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ticker` | 0700.hk | Stock code |
+| `period` | 5y | Backtest period |
+| `lookback_months` | 3 | Validation window |
+| `train_years` | 5 | Training window |
+| `backtest_engine` | vectorbt | native or vectorbt |
+| `use_optuna` | true | Enable Bayesian optimization |
+| `optuna_trials` | 50 | Optuna search iterations |
+| `max_tries` | 300 | Random search iterations |
+| `min_return` | 0.10 | Validation threshold |
+| `min_sharpe_ratio` | 1.0 | Validation threshold |
 
-### keys.yaml
+### keys.yaml (not committed)
 ```yaml
 alpha_vantage_key: null
 feishu_webhook: https://open.feishu.cn/...
 ```
 
-## 关键逻辑
+## Data Storage
 
-### 1. 回测引擎选择
-- `config.yaml` 中 `backtest_engine: native` 或 `vectorbt`
-- Vectorbt 与 Native 逻辑略有差异，结果不完全相同
-- Native 更适合当前策略逻辑
+- Historical data: `data/historical/*.csv`
+- Factors: `data/factors/factor_*.pkl`
+- Reports: `data/reports/report_*.md`
+- Trending data: `data/trends/tencent_trends.csv`
+- Sentiment cache: `data/sentiment/sentiment_cache.csv`
+- HSI stocks: `data/historical/hsi/*.csv` (via `fetch_hsi_stocks.py`)
 
-### 2. 数据更新逻辑 (fetch_data.py)
-- 检查本地数据最后交易日
-- 超过2天自动更新（考虑周末）
-- 港股：周一周二按上周五计算
+## ML Strategies
 
-### 3. 策略列表
-- 在 `config.yaml` 的 `strategies` 中配置
-- 当前策略: macd_rsi_trend, bollinger_rsi_trend
+| Strategy | Model | Features | Training Type |
+|----------|-------|----------|---------------|
+| `xgboost_enhanced` | XGBoost | 95 (RSI, MACD, Bollinger, KDJ, ATR, OBV, returns) | multi |
+| `xgboost_enhanced_tsfresh` | XGBoost | 技术指标 + tsfresh 自动特征 (~7000+) | multi |
+| `lightgbm_enhanced` | LightGBM | 95 (same features) | multi |
+| `tsfresh_xgboost` | XGBoost | tsfresh auto-features only | multi |
 
-### 4. 数据持久化
-- 热度数据: data/trends/tencent_trends.csv
-- 情感数据: data/sentiment/sentiment_cache.csv
-- 都已添加到 .gitignore
+### tsfresh Integration
 
-### 5. 飞书通知
-- Webhook 在 keys.yaml 中配置
-- 自动发送分析报告和验证结果
+tsfresh (Time Series Feature extraction) automatically extracts thousands of features from time series data:
 
-## 运行命令
-```bash
-python3 main.py                    # 完整分析
-python3 main.py --skip-search     # 跳过搜索，使用已有因子
-python3 main.py --n-days 5        # 预测天数
+- **Automatic feature extraction**: Statistical, trend, seasonality, FFT, entropy features
+- **Rolling window**: Configurable windows (default 10, 20 days)
+- **Feature selection**: FDR correction (p < 0.05) to filter significant features
+- **Hybrid mode**: `xgboost_enhanced` can use `use_tsfresh_features: true` to combine technical indicators + tsfresh
+
+**Config example** (`config.yaml`):
+```yaml
+ml_strategies:
+  xgboost_enhanced:
+    use_tsfresh_features: false  # set true to add tsfresh features
+  xgboost_enhanced_tsfresh:
+    use_tsfresh_features: true
+    tsfresh_window_sizes: [10, 20]
 ```
 
-## 注意事项
-1. 所有 API 密钥放在 keys.yaml，不提交到 git
-2. Vectorbt 回测与 Native 有差异，当前项目用 Native 效果更好
-3. 情感分析和热度数据都有本地缓存，避免频繁调用 API
-4. 报告自动保存到 data/reports/
+## Dependencies
 
-## Git 状态
-- 已初始化 git 仓库
-- 已推送到 github.com/Johnnyhooyo/stock_analyze.git
+- pandas, numpy, scikit-learn - data processing
+- xgboost, lightgbm - ML strategies
+- vectorbt - optional backtesting engine
+- optuna - Bayesian optimization
+- pytrends - Google Trends
+- tsfresh, pyts - automatic time series feature extraction
+- yfinance, akshare - market data

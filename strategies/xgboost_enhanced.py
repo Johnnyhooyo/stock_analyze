@@ -1,0 +1,416 @@
+"""
+策略: 技术指标增强版 XGBoost
+------------------------------------------------------
+特征工程:
+  - 收益特征 (ret_1 ~ ret_20)
+  - 技术指标 (RSI, MACD, Bollinger Bands, KDJ, ATR, OBV)
+  - 波动率特征
+  - 成交量特征
+  - 趋势特征
+  - (可选) tsfresh 自动特征
+
+模型: XGBoost Classifier
+
+配置选项:
+  use_tsfresh_features: 是否添加 tsfresh 自动特征 (默认 False)
+  tsfresh_window_sizes: tsfresh 滚动窗口大小 (默认 [10, 20])
+"""
+
+import numpy as np
+import pandas as pd
+from typing import Tuple, Optional
+
+NAME = "xgboost_enhanced"
+
+# 尝试导入 tsfresh 特征提取器
+try:
+    from strategies.tsfresh_features import (
+        extract_tsfresh_features,
+        extract_simple_ts_features,
+        TSFRESH_AVAILABLE,
+    )
+except ImportError:
+    TSFRESH_AVAILABLE = False
+    extract_tsfresh_features = None
+    extract_simple_ts_features = None
+
+
+def _calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """RSI 计算"""
+    delta = series.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs = gain / loss.replace(0, np.nan)
+    return 100 - 100 / (1 + rs)
+
+
+def _calculate_macd(
+    series: pd.Series,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """MACD 计算"""
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+
+def _calculate_bollinger_bands(
+    series: pd.Series,
+    period: int = 20,
+    std_dev: float = 2.0
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """布林带计算"""
+    ma = series.rolling(period).mean()
+    std = series.rolling(period).std()
+    upper = ma + std_dev * std
+    lower = ma - std_dev * std
+    # 位置指标 (0~1)
+    position = (series - lower) / (upper - lower).replace(0, np.nan)
+    return upper, ma, lower, position
+
+
+def _calculate_kdj(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    period: int = 9
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """KDJ 指标计算"""
+    lowest_low = low.rolling(period).min()
+    highest_high = high.rolling(period).max()
+
+    rsv = (close - lowest_low) / (highest_high - lowest_low).replace(0, np.nan) * 100
+
+    k = rsv.ewm(com=2, adjust=False).mean()
+    d = k.ewm(com=2, adjust=False).mean()
+    j = 3 * k - 2 * d
+
+    return k, d, j
+
+
+def _calculate_atr(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    period: int = 14
+) -> pd.Series:
+    """ATR 计算"""
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return tr.rolling(period).mean()
+
+
+def _calculate_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """OBV 计算"""
+    obv = (np.sign(close.diff()) * volume).fillna(0).cumsum()
+    return obv
+
+
+def _calculate_pvt(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """PVT (Price Volume Trend) 计算"""
+    pvt = ((close.diff() / close.shift(1)) * volume).fillna(0).cumsum()
+    return pvt
+
+
+def add_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    添加技术指标特征
+    """
+    df = df.copy()
+
+    # ===== 基础收益特征 =====
+    df['returns'] = df['Close'].pct_change()
+    for i in range(1, 21):  # 20天收益
+        df[f'ret_{i}'] = df['Close'].pct_change(i)
+
+    # ===== RSI =====
+    for period in [6, 14, 21]:
+        df[f'rsi_{period}'] = _calculate_rsi(df['Close'], period)
+
+    # ===== MACD =====
+    macd, signal, hist = _calculate_macd(df['Close'])
+    df['macd'] = macd
+    df['macd_signal'] = signal
+    df['macd_hist'] = hist
+
+    # ===== Bollinger Bands =====
+    for period, std in [(10, 1.5), (20, 2.0), (30, 2.5)]:
+        upper, ma, lower, position = _calculate_bollinger_bands(df['Close'], period, std)
+        df[f'bb_upper_{period}'] = upper
+        df[f'bb_mid_{period}'] = ma
+        df[f'bb_lower_{period}'] = lower
+        df[f'bb_position_{period}'] = position
+        # 带宽
+        df[f'bb_width_{period}'] = (upper - lower) / ma
+
+    # ===== KDJ =====
+    k, d, j = _calculate_kdj(df['High'], df['Low'], df['Close'])
+    df['kdj_k'] = k
+    df['kdj_d'] = d
+    df['kdj_j'] = j
+    # KDJ 超买超卖
+    df['kdj_overbought'] = (j > 80).astype(int)
+    df['kdj_oversold'] = (j < 20).astype(int)
+
+    # ===== ATR =====
+    for period in [7, 14, 21]:
+        df[f'atr_{period}'] = _calculate_atr(df['High'], df['Low'], df['Close'], period)
+        # ATR 百分比
+        df[f'atr_pct_{period}'] = df[f'atr_{period}'] / df['Close']
+
+    # ===== 波动率 =====
+    for period in [5, 10, 20]:
+        df[f'volatility_{period}'] = df['returns'].rolling(period).std()
+        # 波动率变化
+        df[f'volatility_change_{period}'] = df[f'volatility_{period}'].pct_change()
+
+    # ===== 成交量特征 =====
+    df['volume'] = df['Volume']
+    for period in [5, 10, 20]:
+        df[f'volume_ma_{period}'] = df['Volume'].rolling(period).mean()
+        df[f'volume_ratio_{period}'] = df['Volume'] / df[f'volume_ma_{period}']
+
+    # ===== OBV & PVT =====
+    df['obv'] = _calculate_obv(df['Close'], df['Volume'])
+    df['pvt'] = _calculate_pvt(df['Close'], df['Volume'])
+    for period in [5, 10]:
+        df[f'obv_ma_{period}'] = df['obv'].rolling(period).mean()
+        df[f'pvt_ma_{period}'] = df['pvt'].rolling(period).mean()
+
+    # ===== 移动平均 =====
+    for period in [5, 10, 20, 50]:
+        df[f'ma_{period}'] = df['Close'].rolling(period).mean()
+        # 价格相对 MA 位置
+        df[f'price_vs_ma_{period}'] = df['Close'] / df[f'ma_{period}']
+
+    # ===== 趋势特征 =====
+    # 价格高低点
+    for period in [5, 10, 20]:
+        df[f'high_{period}'] = df['High'].rolling(period).max()
+        df[f'low_{period}'] = df['Low'].rolling(period).min()
+        df[f'high_ratio_{period}'] = df['Close'] / df[f'high_{period}']
+        df[f'low_ratio_{period}'] = df['Close'] / df[f'low_{period}']
+
+    # ===== 动量 =====
+    for period in [5, 10, 20]:
+        df[f'momentum_{period}'] = df['Close'] / df['Close'].shift(period) - 1
+
+    return df
+
+
+def prepare_data(df: pd.DataFrame, test_days: int, label_period: int = 1) -> Tuple:
+    """
+    准备训练数据
+
+    Args:
+        df: 特征数据
+        test_days: 用于预测的天数（特征窗口）
+        label_period: 预测未来第几天
+
+    Returns:
+        X, y, feature_columns
+    """
+    # 标签: 未来 label_period 天是否上涨
+    df['label'] = np.where(df['Close'].shift(-label_period) > df['Close'], 1, 0)
+
+    # 特征列（排除标签和原始数据，以及无用的列）
+    exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'label',
+                    'Dividends', 'dividends', 'Stock Splits', 'Adj Close', 'adjclose']
+    feat_cols = [c for c in df.columns if c not in exclude_cols and not c.lower().startswith('adj')]
+
+    # 只保留有数据的特征列
+    feat_cols = [c for c in feat_cols if df[c].notna().sum() > 0]
+
+    if not feat_cols:
+        return pd.DataFrame(), pd.Series(dtype=int), []
+
+    # 只选择特征列和标签，去除 NaN
+    df_clean = df[feat_cols + ['label']].dropna()
+
+    if len(df_clean) < 10:
+        return pd.DataFrame(), pd.Series(dtype=int), []
+
+    X = df_clean[feat_cols]
+    y = df_clean['label']
+
+    return X, y, feat_cols
+
+
+def run(data: pd.DataFrame, config: dict):
+    """
+    运行 XGBoost 增强版策略
+
+    训练: 使用前 80% 的数据训练模型
+    预测: 在后 20% 的数据上生成交易信号
+
+    可选配置:
+      use_tsfresh_features: 是否添加 tsfresh 自动特征 (默认 False)
+      tsfresh_window_sizes: tsfresh 滚动窗口大小 (默认 [10, 20])
+    """
+    # 参数
+    test_days = int(config.get('test_days', 5))
+    n_estimators = int(config.get('xgb_n_estimators', 100))
+    max_depth = int(config.get('xgb_max_depth', 5))
+    learning_rate = float(config.get('xgb_learning_rate', 0.1))
+    label_period = int(config.get('label_period', 1))  # 预测未来第几天
+    use_tsfresh = config.get('use_tsfresh_features', False)  # 是否使用 tsfresh 特征
+
+    # 添加技术指标特征
+    df = add_features(data)
+
+    # ===== 可选: 添加 tsfresh 特征 =====
+    tsfresh_feat_count = 0
+    if use_tsfresh:
+        if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
+            # 创建标签 (用于特征选择)
+            label = np.where(
+                data['Close'].shift(-label_period) > data['Close'],
+                1, 0
+            )
+            y_for_selection = pd.Series(label, index=data.index)
+
+            # 提取 tsfresh 特征
+            window_sizes = config.get('tsfresh_window_sizes', [10, 20])
+            tsfresh_features, tsfresh_cols = extract_tsfresh_features(
+                data,
+                window_sizes=window_sizes,
+                extraction_level='efficient',
+                with_selection=True,
+                y=y_for_selection,
+            )
+
+            if not tsfresh_features.empty:
+                # 对齐索引
+                tsfresh_features = tsfresh_features.reindex(df.index)
+                tsfresh_feat_count = len(tsfresh_cols)
+                print(f"  [xgboost_enhanced] tsfresh 特征数: {tsfresh_feat_count}")
+
+                # 合并到 df（使用 pd.concat 避免 DataFrame 碎片化）
+                df = pd.concat([df, tsfresh_features], axis=1)
+        elif extract_simple_ts_features is not None:
+            # fallback 到简化版特征
+            print(f"  [xgboost_enhanced] 使用简化版时间序列特征")
+            simple_features = extract_simple_ts_features(data, windows=[5, 10, 20])
+            if not simple_features.empty:
+                simple_features = simple_features.reindex(df.index)
+                df = pd.concat([df, simple_features], axis=1)
+                tsfresh_feat_count = len(simple_features.columns)
+                print(f"  [xgboost_enhanced] 简化版特征数: {tsfresh_feat_count}")
+
+    # 准备数据
+    X, y, feat_cols = prepare_data(df, test_days, label_period)
+
+    if tsfresh_feat_count > 0:
+        print(f"  [xgboost_enhanced] 总特征数: {len(feat_cols)} (技术指标 + tsfresh)")
+
+    # 分割训练/测试（80% 训练，20% 测试）
+    # 如果 config 中设置了 no_internal_split，则使用全部数据训练
+    no_split = config.get('no_internal_split', False)
+    if no_split:
+        # 使用全部数据训练
+        if len(X) < 10:
+            raise ValueError(f"数据不足: 需要 > 10 个样本")
+        X_train = X
+        y_train = y
+        X_test = X
+        y_test = y
+    else:
+        if len(X) < 10:
+            raise ValueError(f"数据不足: 需要 > 10 个样本")
+        split_idx = int(len(X) * 0.8)
+        X_train = X.iloc[:split_idx]
+        y_train = y.iloc[:split_idx]
+        X_test = X.iloc[split_idx:]
+        y_test = y.iloc[split_idx:]
+
+    # 训练模型
+    try:
+        from xgboost import XGBClassifier
+        # 尝试使用 GPU
+        try:
+            model = XGBClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                learning_rate=learning_rate,
+                random_state=42,
+                use_label_encoder=False,
+                eval_metric='logloss',
+                verbosity=0,
+                tree_method='hist',
+                device='cuda',
+            )
+        except Exception:
+            # GPU 不可用，回退到 CPU
+            model = XGBClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                learning_rate=learning_rate,
+                random_state=42,
+                use_label_encoder=False,
+                eval_metric='logloss',
+                verbosity=0,
+                tree_method='hist',
+            )
+    except ImportError:
+        # 降级使用 sklearn
+        from sklearn.ensemble import GradientBoostingClassifier
+        model = GradientBoostingClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            random_state=42,
+        )
+
+    model.fit(X_train, y_train)
+
+    # 预测
+    train_pred = model.predict(X_train)
+    test_pred = model.predict(X_test)
+    test_proba = model.predict_proba(X_test)[:, 1]
+
+    # 生成完整信号（在原始数据上生成信号，与 X 的索引对齐）
+    # 创建与 X 等长的信号序列
+    signal = pd.Series(0, index=X.index)
+
+    # 将预测结果填充到对应位置
+    if no_split:
+        # 无内部分割时，使用全部预测
+        signal.iloc[:] = test_pred
+    else:
+        if len(X_test) > 0:
+            signal.iloc[split_idx:] = test_pred
+
+    # 元数据
+    meta = {
+        'name': NAME,
+        'params': {
+            'test_days': test_days,
+            'n_estimators': n_estimators,
+            'max_depth': max_depth,
+            'learning_rate': learning_rate,
+            'label_period': label_period,
+            'use_tsfresh_features': use_tsfresh,
+        },
+        'feat_cols': feat_cols,
+        'feat_count': len(feat_cols),
+        'tsfresh_feat_count': tsfresh_feat_count,
+        'model': 'XGBoost' if hasattr(model, 'get_booster') else 'GradientBoosting',
+        'feature_importances': dict(zip(feat_cols, model.feature_importances_.round(4))) if hasattr(model, 'feature_importances_') else {},
+        'indicators': {
+            'pred_proba': pd.Series(test_proba, index=X_test.index),
+        },
+        'train_acc': (train_pred == y_train).mean(),
+        'test_acc': (test_pred == y_test).mean() if len(y_test) > 0 else None,
+        'train_size': len(X_train),
+        'test_size': len(X_test),
+        'tsfresh_available': TSFRESH_AVAILABLE,
+    }
+
+    return signal, model, meta
