@@ -26,7 +26,7 @@ def load_all_hsi_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
     Returns:
         合并后的 DataFrame
     """
-    data_dir = Path(__file__).parent / 'data' / 'historical' / 'hsi'
+    data_dir = Path(__file__).parent / 'data' / 'historical'
 
     all_data = []
     stock_info = []

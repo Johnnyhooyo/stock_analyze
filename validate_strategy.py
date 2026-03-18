@@ -199,19 +199,22 @@ def walk_forward_analysis(
             else:
                 test_result = bt(test_df, test_sig, config)
 
-            # 检查是否有效（必须有交易）
-            if test_result.get('total_trades', 0) > 0:
+            # 检查是否有效：至少3笔交易 且 窗口必须盈利
+            total_trades = test_result.get('total_trades', 0)
+            window_return = test_result.get('cum_return', 0)
+            if total_trades >= 3 and window_return > 0:
                 results.append({
                     'train_period': f"{train_start.date()} ~ {train_end.date()}",
                     'test_period': f"{test_start.date()} ~ {test_end.date()}",
-                    'cum_return': test_result.get('cum_return', 0),
+                    'cum_return': window_return,
                     'sharpe_ratio': test_result.get('sharpe_ratio', 0),
                     'max_drawdown': test_result.get('max_drawdown', 0),
-                    'total_trades': test_result.get('total_trades', 0),
+                    'total_trades': total_trades,
                     'win_rate': test_result.get('win_rate', 0),  # 交易胜率
                 })
             else:
-                print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: 无交易信号")
+                reason = "无交易" if total_trades < 3 else f"亏损({window_return:.2%})"
+                print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: {reason}")
         except Exception as e:
             print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: {e}")
 

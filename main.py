@@ -37,6 +37,13 @@ from feishu_notify import send_full_report_to_feishu
 from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
 from validate_strategy import generate_test_report, out_of_sample_test, walk_forward_analysis
 from visualize import plot_strategy_result, plot_yearly_trades
+try:
+    from optimize_with_optuna import optimize_strategy, optimize_all_strategies
+    OPTUNA_AVAILABLE = True
+except ImportError:
+    OPTUNA_AVAILABLE = False
+    optimize_strategy = None
+    optimize_all_strategies = None
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -121,13 +128,20 @@ def _save_factor(result: dict, factors_dir: Path) -> str:
     factors_dir.mkdir(parents=True, exist_ok=True)
     run_id    = _next_factor_run_id(factors_dir)
     save_path = factors_dir / f"factor_{run_id:04d}.pkl"
+
+    # 处理 model 可能为 None 的情况
+    model = result.get('model')
+    if model is None:
+        # 对于没有模型的策略，保存一个空字典
+        model = {}
+
     joblib.dump(
         {
-            'model':              result['model'],
-            'meta':               result['meta'],
+            'model':              model,
+            'meta':               result.get('meta', {}),
             'config':             result.get('config', {}),
             'run_id':             run_id,
-            'cum_return':         result['cum_return'],
+            'cum_return':         result.get('cum_return', 0),
             'annualized_return':  result.get('annualized_return', float('nan')),
             'sharpe_ratio':       result.get('sharpe_ratio', float('nan')),
             'max_drawdown':       result.get('max_drawdown', float('nan')),
@@ -244,14 +258,31 @@ def step1_ensure_data(sources_override=None):
 #  步骤 2 : 多策略 × 100 次超参搜索
 # ══════════════════════════════════════════════════════════════════
 
-def step2_train(hist_data: pd.DataFrame):
+def step2_train(hist_data: pd.DataFrame, use_optuna: bool = False, optuna_trials: int = 50, strategy_type: str = None):
     """
-    对每个策略执行随机超参搜索。
+    对每个策略执行超参搜索。
     搜索结束后将最佳结果统一保存为一个 factor_{run_id:04d}.pkl。
     返回 (factor_path, best_result, sorted_results)。
+
+    Args:
+        hist_data: 历史数据
+        use_optuna: 是否使用 Optuna 贝叶斯优化
+        optuna_trials: Optuna 搜索次数
+        strategy_type: 可选，按类型过滤策略 (single/multi/custom)
+    """
+    if use_optuna and OPTUNA_AVAILABLE:
+        return step2_train_optuna(hist_data, n_trials=optuna_trials, strategy_type=strategy_type)
+    else:
+        return step2_train_native(hist_data)
+
+
+def step2_train_native(hist_data: pd.DataFrame):
+    """
+    对每个策略执行随机超参搜索（原生方法）。
     """
     print("\n" + "="*60)
     print("  步骤 2 / 3 : 多策略超参搜索（每策略最多 max_tries 次）")
+    print("  搜索方式: 随机搜索 (Random Search)")
     print("="*60)
 
     cfg = _load_config()
@@ -291,6 +322,157 @@ def step2_train(hist_data: pd.DataFrame):
             print(f"  ⚠️  因子保存失败: {e}")
 
     return factor_path, best_result, sorted_results
+
+
+def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_type: str = None):
+    """
+    使用 Optuna 贝叶斯优化进行超参搜索。
+    """
+    print("\n" + "="*60)
+    print("  步骤 2 / 3 : 多策略超参搜索")
+    print("  搜索方式: Optuna 贝叶斯优化")
+    print(f"  搜索次数: 每策略 {n_trials} 次")
+    if strategy_type:
+        print(f"  策略类型: {strategy_type}")
+    print("="*60)
+
+    if not OPTUNA_AVAILABLE:
+        print("  ⚠️  Optuna 未安装，回退到随机搜索")
+        return step2_train_native(hist_data)
+
+    cfg = _load_config_full()
+    strategy_mods = _discover_strategies(strategy_type=strategy_type)
+
+    if not strategy_mods:
+        print("  ❌ 未发现任何策略模块")
+        return None, None, []
+
+    print(f"  发现 {len(strategy_mods)} 个策略: {[m.NAME for m in strategy_mods]}")
+
+    # 准备回测配置
+    backtest_config = {
+        'initial_capital': cfg.get('initial_capital', 100000),
+        'fees_rate': cfg.get('fees_rate', 0.00088),
+        'stamp_duty': cfg.get('stamp_duty', 0.001),
+        'test_days': cfg.get('test_days', 5),
+        'drawdown_pct': cfg.get('drawdown_pct', 0.02),
+        # 阈值参数（必须传递，否则 optimize_with_optuna 使用默认值 0.10）
+        'min_return': cfg.get('min_return', 0.10),
+        'min_sharpe_ratio': cfg.get('min_sharpe_ratio', 1.0),
+        'max_drawdown': cfg.get('max_drawdown', -0.15),
+        'min_total_trades': cfg.get('min_total_trades', 5),
+    }
+
+    # 使用 Vectorbt
+    use_vectorbt = cfg.get('backtest_engine', 'native') == 'vectorbt'
+
+    # 优化每个策略
+    all_results = []
+    best_of_all = None
+    best_value = float('-inf')
+
+    for mod in strategy_mods:
+        print(f"\n  {'━'*56}")
+        print(f"  优化策略: {mod.NAME}")
+        print(f"  {'━'*56}")
+
+        result = optimize_strategy(
+            data=hist_data,
+            strategy_mod=mod,
+            config=backtest_config,
+            n_trials=n_trials,
+            metric='sharpe_ratio',
+            direction='maximize',
+            use_vectorbt=use_vectorbt,
+            verbose=True,
+        )
+
+        # 记录结果
+        if result['best_value'] is not None and result['best_value'] > best_value:
+            best_value = result['best_value']
+            best_of_all = result
+
+        # 收集所有试验结果
+        for r in result.get('all_results', []):
+            r['strategy_name'] = mod.NAME
+            all_results.append(r)
+
+    # 排序结果
+    sorted_results = sorted(all_results, key=lambda x: x.get('value', float('-inf')), reverse=True)
+
+    # ── 绘制最优解结果图 ─────────────────────────────────────────
+    if best_of_all and best_of_all.get('best_params'):
+        print(f"\n  📊 绘制最优解结果图 ({best_of_all['strategy_name']}  夏普={best_of_all['best_value']:.4f})…")
+        try:
+            # 使用最优参数重新运行策略
+            trial_cfg = backtest_config.copy()
+            trial_cfg.update(best_of_all['best_params'])
+
+            signal, _, meta = mod.run(hist_data.copy(), trial_cfg)
+
+            # 回测
+            if use_vectorbt:
+                from backtest_vectorbt import backtest_vectorbt as bt_vbt
+                detail = bt_vbt(hist_data, signal, trial_cfg)
+            else:
+                detail = backtest(hist_data, signal, trial_cfg)
+
+            plot_strategy_result(detail, meta, trial_cfg)
+        except Exception as e:
+            print(f"  ⚠️  绘图失败: {e}")
+
+    # ── 统一保存一个因子文件 ────────────────────────────────────
+    factor_path = None
+    factors_dir = Path(__file__).parent / 'data' / 'factors'
+
+    if best_of_all and best_of_all.get('best_params'):
+        # 构建最佳结果
+        best_result = {
+            'strategy_name': best_of_all['strategy_name'],
+            'config': backtest_config.copy(),
+            'meta': {
+                'name': best_of_all['strategy_name'],
+                'params': best_of_all['best_params'],
+            },
+            'cum_return': best_of_all.get('all_results', [{}])[0].get('cum_return', 0) if best_of_all.get('all_results') else 0,
+            'sharpe_ratio': best_of_all['best_value'],
+            'max_drawdown': best_of_all.get('all_results', [{}])[0].get('max_drawdown', 0) if best_of_all.get('all_results') else 0,
+            'win_rate': best_of_all.get('all_results', [{}])[0].get('win_rate', 0) if best_of_all.get('all_results') else 0,
+            'total_trades': best_of_all.get('all_results', [{}])[0].get('total_trades', 0) if best_of_all.get('all_results') else 0,
+        }
+
+        # 添加 detail 用于绘图
+        try:
+            trial_cfg = backtest_config.copy()
+            trial_cfg.update(best_of_all['best_params'])
+            signal, _, meta = mod.run(hist_data.copy(), trial_cfg)
+            if use_vectorbt:
+                from backtest_vectorbt import backtest_vectorbt as bt_vbt
+                best_result['detail'] = bt_vbt(hist_data, signal, trial_cfg)
+            else:
+                best_result['detail'] = backtest(hist_data, signal, trial_cfg)
+        except:
+            pass
+
+        try:
+            factor_path = _save_factor(best_result, factors_dir)
+            best_result['factor_path'] = factor_path
+            print(f"\n  💾 因子已保存: {Path(factor_path).name}"
+                  f"  (策略={best_result['strategy_name']}"
+                  f"  夏普={best_result['sharpe_ratio']:.4f})")
+        except Exception as e:
+            print(f"  ⚠️  因子保存失败: {e}")
+
+    # 打印排行榜
+    if sorted_results:
+        print(f"\n  {'═'*56}")
+        print("  优化结果排行榜 Top 10")
+        print(f"  {'═'*56}")
+        for i, r in enumerate(sorted_results[:10], 1):
+            sharpe = r.get('value', 0)
+            print(f"  {i:>2}. {r.get('strategy_name', 'unknown'):<22} 夏普={sharpe:.4f}  参数={r.get('params', {})}")
+
+    return factor_path, best_of_all, sorted_results
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -902,7 +1084,23 @@ def main():
         '--n-days', type=int, default=3,
         help='日线预测天数（默认 3）'
     )
+    parser.add_argument(
+        '--use-optuna', action='store_true',
+        help='使用 Optuna 贝叶斯优化替代随机搜索'
+    )
+    parser.add_argument(
+        '--optuna-trials', type=int, default=50,
+        help='Optuna 搜索次数（默认 50）'
+    )
+    parser.add_argument(
+        '--strategy-type', type=str, default=None,
+        choices=['single', 'multi', 'custom'],
+        help='只运行指定类型的策略 (single/multi/custom)'
+    )
     args = parser.parse_args()
+
+    # 加载配置
+    config = _load_config_full()
 
     sources_override = None
     if args.sources:
@@ -928,7 +1126,9 @@ def main():
             args.skip_train = False
 
     if not args.skip_train:
-        factor_path, _, _ = step2_train(hist_data)
+        # 默认使用配置中的 use_optuna，可以通过命令行参数覆盖
+        use_optuna = args.use_optuna if args.use_optuna else config.get('use_optuna', False)
+        factor_path, _, _ = step2_train(hist_data, use_optuna=use_optuna, optuna_trials=args.optuna_trials, strategy_type=args.strategy_type)
         if factor_path is None:
             # 保存失败时兜底取最新已有文件
             factor_path = _latest_factor_path(factors_dir)

@@ -9,3 +9,5 @@ pytrends
 textblob
 requests
 vectorbt
+tsfresh
+pyts

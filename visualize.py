@@ -158,11 +158,53 @@ def plot_strategy_result(detail: pd.DataFrame, meta: dict, config: dict) -> str:
     ticker          = config.get('ticker', 'UNKNOWN')
     lookback_months = int(config.get('lookback_months', 3))
 
-    df = detail.copy()
-    if not pd.api.types.is_datetime64_any_dtype(df.index):
-        df.index = pd.to_datetime(df.index)
+    # 确保 detail 是 DataFrame
+    if not isinstance(detail, pd.DataFrame):
+        print(f"  ⚠️  绘图失败: detail 不是 DataFrame，而是 {type(detail)}")
+        return ""
 
-    equity   = (1 + df['strategy'].fillna(0)).cumprod()
+    df = detail.copy()
+
+    # 如果为空 DataFrame，直接返回
+    if df.empty:
+        print(f"  ⚠️  绘图失败: detail 数据为空")
+        return ""
+
+    if not pd.api.types.is_datetime64_any_dtype(df.index):
+        try:
+            df.index = pd.to_datetime(df.index)
+        except Exception:
+            print(f"  ⚠️  绘图失败: 无法将索引转换为日期")
+            return ""
+
+    # 兼容大小写列名
+    if 'Close' not in df.columns and 'close' in df.columns:
+        df = df.rename(columns={'close': 'Close'})
+    if 'Volume' not in df.columns and 'volume' in df.columns:
+        df = df.rename(columns={'volume': 'Volume'})
+
+    # 如果仍然没有 Close 列，尝试从其他列推断
+    if 'Close' not in df.columns:
+        price_cols = [c for c in df.columns if c.lower() in ['close', 'price', 'adjclose']]
+        if price_cols:
+            df['Close'] = df[price_cols[0]]
+        else:
+            print(f"  ⚠️  绘图失败: 数据中缺少价格列，可用列: {df.columns.tolist()[:10]}")
+            return ""
+
+    # 兼容 ML 策略：signal 列可能命名为 'signal' 或 'strategy'
+    strategy_col = None
+    for col in ['strategy', 'signal']:
+        if col in df.columns:
+            strategy_col = col
+            break
+
+    if strategy_col is None:
+        # 如果没有策略列，创建空列
+        df['strategy'] = 0.0
+        strategy_col = 'strategy'
+
+    equity   = (1 + df[strategy_col].fillna(0)).cumprod()
     buy_pts  = df[df['trade'] ==  1] if 'trade' in df.columns else pd.DataFrame()
     sell_pts = df[df['trade'] == -1] if 'trade' in df.columns else pd.DataFrame()
     param_str = '  '.join(f"{k}={v}" for k, v in params.items())

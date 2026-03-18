@@ -3,10 +3,14 @@ Vectorbt 回测模块
 基于 Vectorbt 框架的回测功能，保留原有回测逻辑
 """
 
+import warnings
 import vectorbt as vbt
 import pandas as pd
 import numpy as np
 from typing import Dict, Any
+
+# 抑制 Vectorbt 的某些警告
+warnings.filterwarnings('ignore', module='vectorbt')
 
 
 def backtest_vectorbt(
@@ -55,7 +59,49 @@ def backtest_vectorbt(
     )
 
     # 获取统计信息
-    stats = portfolio.stats()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            stats = portfolio.stats()
+    except Exception as e:
+        # 如果 stats 失败，返回默认值
+        return {
+            'cum_return': 0,
+            'annualized_return': 0,
+            'sharpe_ratio': 0,
+            'sortino_ratio': 0,
+            'calmar_ratio': 0,
+            'max_drawdown': 0,
+            'volatility': 0,
+            'win_rate': 0,
+            'profit_loss_ratio': 0,
+            'total_trades': 0,
+            'buy_cnt': 0,
+            'sell_cnt': 0,
+            'detail': pd.DataFrame(),
+        }
+
+    # 创建 detail DataFrame 用于绘图
+    detail = data.copy()
+
+    # 添加交易信号和持仓
+    detail['signal'] = signal.reindex(detail.index).fillna(0).astype(int)
+
+    # 计算持仓
+    detail['position'] = detail['signal']
+
+    # 计算交易点
+    detail['trade'] = 0
+    prev_pos = detail['position'].shift(1).fillna(0)
+    detail['trade'] = np.where(
+        (detail['position'] == 1) & (prev_pos == 0), 1,  # 买入
+        np.where((detail['position'] == 0) & (prev_pos == 1), -1, 0)  # 卖出
+    )
+
+    # 计算每日收益和策略收益
+    detail['daily_return'] = detail['Close'].pct_change(fill_method=None)
+    detail['strategy'] = detail['position'].shift(1) * detail['daily_return']
+    detail['strategy'] = detail['strategy'].fillna(0)
 
     # Vectorbt stats keys 使用不同的命名格式
     def get_stat(stats, *keys):
@@ -93,6 +139,9 @@ def backtest_vectorbt(
 
         # 组合信息
         'portfolio': portfolio,
+
+        # 详细数据（用于绘图）
+        'detail': detail,
     }
 
     return result

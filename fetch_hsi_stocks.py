@@ -247,7 +247,7 @@ def download_all_hsi(
         下载结果统计
     """
     if out_dir is None:
-        out_dir = Path(__file__).parent / 'data' / 'historical' / 'hsi'
+        out_dir = Path(__file__).parent / 'data' / 'historical'
     out_dir.mkdir(parents=True, exist_ok=True)
 
     stocks = get_hsi_stocks()

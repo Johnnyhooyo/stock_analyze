@@ -106,7 +106,7 @@ feishu_webhook: https://open.feishu.cn/...
 - Reports: `data/reports/report_*.md`
 - Trending data: `data/trends/tencent_trends.csv`
 - Sentiment cache: `data/sentiment/sentiment_cache.csv`
-- HSI stocks: `data/historical/hsi/*.csv` (via `fetch_hsi_stocks.py`)
+- HSI stocks: `data/historical/*_HK_*.csv` (via `fetch_hsi_stocks.py`)
 
 ## ML Strategies
 

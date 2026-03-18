@@ -7,19 +7,75 @@ feishu_webhook: https://open.feishu.cn/open-apis/bot/v2/hook/ea59078b-e0f3-443f-
 lookback_months: 3
 max_test_days: 20
 max_tries: 300
-min_return: 0.03
+min_return: 0.10
+min_sharpe_ratio: 1.0
+max_drawdown: -0.15
+min_total_trades: 5
+optuna_trials: 100
 period: 5y
 position_avg_cost: 600.0
 position_shares: 200
 stamp_duty: 0.001
-strategies:
-- bollinger_rsi_trend
-- macd_rsi_trend
-- rsi_divergence
-- stochastic_oscillator
-- vwap_momentum
-- atr_breakout
-- volume_price_trend
 test_days: 5
 ticker: 0700.hk
 train_years: 5
+use_optuna: true
+
+# 策略训练配置 (统一配置，替代旧的 strategies 列表)
+# 分类: single (单股票), multi (多股票), custom (自定义)
+# - single: 使用当前股票数据训练和验证
+# - multi: 使用多股票数据训练，但验证和回测使用目标股票数据
+# - custom: 使用策略自定义的训练逻辑
+strategy_training:
+  # 规则策略 - 单股票训练
+  single:
+    - bollinger_rsi_trend
+    - macd_rsi_trend
+    - rsi_divergence
+    - stochastic_oscillator
+    - vwap_momentum
+    - atr_breakout
+    - volume_price_trend
+    - ma_crossover
+    - rsi_reversion
+    - kdj_obv
+    - kdj_pvt
+    - rsi_obv
+    - rsi_pvt
+    - bollinger_breakout
+    - macd_rsi_combo
+
+  # ML 策略 - 多股票训练
+  multi:
+    - xgboost_enhanced
+    - xgboost_enhanced_tsfresh  # xgboost + tsfresh 特征
+    - lightgbm_enhanced
+    - tsfresh_xgboost
+
+  # 自定义训练策略
+  custom: []
+
+# ML 策略配置
+ml_strategies:
+  # xgboost_enhanced 配置
+  xgboost_enhanced:
+    use_tsfresh_features: false  # 是否添加 tsfresh 特征
+    tsfresh_window_sizes: [10, 20]  # tsfresh 滚动窗口
+    xgb_n_estimators: 100
+    xgb_max_depth: 5
+    xgb_learning_rate: 0.1
+
+  # xgboost_enhanced_tsfresh 配置 (继承 xgboost_enhanced，启用 tsfresh)
+  xgboost_enhanced_tsfresh:
+    use_tsfresh_features: true
+    tsfresh_window_sizes: [10, 20]
+    xgb_n_estimators: 100
+    xgb_max_depth: 5
+    xgb_learning_rate: 0.1
+
+  # lightgbm_enhanced 配置
+  lightgbm_enhanced:
+    lgbm_n_estimators: 100
+    lgbm_max_depth: 5
+    lgbm_learning_rate: 0.1
+    lgbm_num_leaves: 31

@@ -17,6 +17,32 @@ try:
 except ImportError:
     VECTORBT_AVAILABLE = False
 
+# 多股票数据缓存
+_MULTI_STOCK_CACHE = {}
+
+
+def _load_multi_stock_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
+    """加载多股票数据（带缓存）"""
+    cache_key = f'{period}_{min_days}'
+    if cache_key in _MULTI_STOCK_CACHE:
+        return _MULTI_STOCK_CACHE[cache_key]
+
+    try:
+        from train_multi_stock import load_all_hsi_data
+        data = load_all_hsi_data(period=period, min_days=min_days)
+        if not data.empty and 'ticker' in data.columns:
+            data = data.drop(columns=['ticker'])
+        _MULTI_STOCK_CACHE[cache_key] = data
+        return data
+    except ImportError:
+        return pd.DataFrame()
+
+
+def clear_multi_stock_cache():
+    """清除多股票数据缓存"""
+    global _MULTI_STOCK_CACHE
+    _MULTI_STOCK_CACHE = {}
+
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -47,11 +73,34 @@ def _save_config(cfg: dict) -> None:
     shutil.move(str(tmp), str(config_path))
 
 
-def _discover_strategies() -> list:
-    """自动发现 strategies/ 包下的所有策略模块，返回模块列表。"""
-    # 从配置文件读取策略列表
+def _discover_strategies(strategy_type: str = None) -> list:
+    """自动发现 strategies/ 包下的所有策略模块，返回模块列表。
+
+    Args:
+        strategy_type: 可选，按类型过滤策略
+            - 'single': 只返回单股票训练策略
+            - 'multi': 只返回多股票训练策略
+            - 'custom': 只返回自定义训练策略
+            - None: 返回所有策略
+    """
+    # 从配置文件的 strategy_training 读取策略列表
     config = _load_config()
-    strategy_list = config.get('strategies', ['bollinger_rsi_trend', 'macd_rsi_trend'])
+    train_config = config.get('strategy_training', {})
+
+    # 合并 single, multi, custom 中的所有策略
+    strategy_list = set()
+    if strategy_type is None:
+        # 返回所有策略
+        for key in ['single', 'multi', 'custom']:
+            strategy_list.update(train_config.get(key, []))
+    else:
+        # 只返回指定类型的策略
+        strategy_list.update(train_config.get(strategy_type, []))
+
+    # 如果配置为空，使用默认策略
+    if not strategy_list:
+        strategy_list = {'bollinger_rsi_trend', 'macd_rsi_trend', 'rsi_divergence',
+                        'xgboost_enhanced', 'lightgbm_enhanced'}
 
     modules = []
     for name in strategy_list:
@@ -62,6 +111,45 @@ def _discover_strategies() -> list:
         except ImportError:
             pass
     return modules
+
+
+def _check_meets_threshold(bt: dict, min_return: float, min_sharpe: float,
+                           max_dd: float, min_trades: int) -> bool:
+    """
+    多维度验证策略是否满足阈值要求（防止过拟合）
+
+    Args:
+        bt: 回测结果字典
+        min_return: 最低累计收益要求
+        min_sharpe: 最低夏普比率要求
+        max_dd: 最大回撤限制（负值，如 -0.15 表示最多回撤15%）
+        min_trades: 最少交易次数要求
+
+    Returns:
+        bool: 是否满足所有阈值
+    """
+    cum_return = bt.get('cum_return', 0)
+    sharpe = bt.get('sharpe_ratio', float('nan'))
+    max_drawdown = bt.get('max_drawdown', 0)
+    total_trades = bt.get('total_trades', 0)
+
+    # 检查各项指标
+    checks = {
+        '收益': cum_return > min_return,
+        '夏普率': not np.isnan(sharpe) and sharpe > min_sharpe,
+        '回撤': max_drawdown >= max_dd,  # max_drawdown是负值
+        '交易次数': total_trades >= min_trades,
+    }
+
+    # 所有条件必须同时满足
+    passed = all(checks.values())
+
+    # 调试信息
+    if not passed:
+        failed = [k for k, v in checks.items() if not v]
+        print(f"    [验证失败] {' '.join(failed)}")
+
+    return passed
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -225,43 +313,132 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
 #  单次试验（训练 + 验证 + 回测）
 # ══════════════════════════════════════════════════════════════════
 
+def _get_strategy_training_type(strategy_name: str, config: dict) -> str:
+    """获取策略的训练类型: single, multi, 或 custom"""
+    train_config = config.get('strategy_training', {})
+
+    # 优先使用配置中的分类
+    if strategy_name in train_config.get('single', []):
+        return 'single'
+    if strategy_name in train_config.get('multi', []):
+        return 'multi'
+    if strategy_name in train_config.get('custom', []):
+        return 'custom'
+
+    # 默认：xgboost/lightgbm 相关的是 multi，其他是 single
+    if 'xgboost' in strategy_name or 'lightgbm' in strategy_name or \
+       'ridge' in strategy_name or 'linear' in strategy_name or 'forest' in strategy_name:
+        return 'multi'
+    return 'single'
+
+
 def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
     """
     对一个策略模块执行完整的 train / val / backtest 流程。
+
+    训练/验证策略:
+    - single: 使用当前股票数据训练和验证
+    - multi: 使用多股票数据训练，但验证和回测使用目标股票数据
+    - custom: 使用策略自定义的训练逻辑
+
+    验证时间统一: 所有策略使用相同的验证时长 (lookback_months)
+    时间对齐: multi策略的训练数据截止时间与目标股票验证开始时间对齐
+
     返回 result dict，包含所有指标；若失败返回 None。
     """
     lookback_months = int(config.get('lookback_months', 3))
     train_years     = int(config.get('train_years', 2))
-    min_return      = float(config.get('min_return', 0.03))
+    min_return      = float(config.get('min_return', 0.10))
+    min_sharpe      = float(config.get('min_sharpe_ratio', 1.0))
+    max_dd          = float(config.get('max_drawdown', -0.15))
+    min_trades      = int(config.get('min_total_trades', 5))
     ticker          = config.get('ticker', 'UNKNOWN')
 
-    # 基础校验
-    if data is None or data.empty or 'Close' not in data.columns:
-        return None
+    # 获取策略训练类型
+    strategy_name = getattr(strategy_mod, 'NAME', '')
+    train_type = _get_strategy_training_type(strategy_name, config)
 
-    df = data.copy().sort_index()
-    if not pd.api.types.is_datetime64_any_dtype(df.index):
+    # ── 合并 ML 策略专用配置 ──
+    # 例如: xgboost_enhanced 会读取 ml_strategies.xgboost_enhanced 中的参数
+    # 策略专用配置优先级: 命令行 > 全局配置 > 策略专用配置
+    ml_strategies_config = config.get('ml_strategies', {})
+    if strategy_name in ml_strategies_config:
+        # 先复制全局配置
+        merged_cfg = config.copy()
+        # 再合并策略专用配置 (策略配置作为基础)
+        strategy_base = ml_strategies_config[strategy_name].copy()
+        # 全局配置覆盖策略配置中的同名参数 (runtime overrides)
+        for key in list(strategy_base.keys()):
+            if key in config:
+                strategy_base[key] = config[key]
+        merged_cfg.update(strategy_base)
+        config = merged_cfg
+
+    # ── 先确定验证集时间范围 (统一使用 lookback_months) ──
+    # 验证集始终使用目标股票数据
+    df_target = data.copy().sort_index()
+    if not pd.api.types.is_datetime64_any_dtype(df_target.index):
         try:
-            df.index = pd.to_datetime(df.index)
+            df_target.index = pd.to_datetime(df_target.index)
         except Exception:
             return None
 
-    df['returns'] = df['Close'].pct_change(fill_method=None)
-    df = df.dropna(subset=['returns'])
-    if df.empty:
+    df_target['returns'] = df_target['Close'].pct_change(fill_method=None)
+    df_target = df_target.dropna(subset=['returns'])
+    if df_target.empty:
         return None
 
-    # ── 时间切分 ──
-    end_date    = df.index.max()
-    val_start   = end_date - pd.DateOffset(months=lookback_months)
-    train_start = val_start - pd.DateOffset(years=train_years)
+    # 验证时间范围
+    target_end_date = df_target.index.max()
+    val_start = target_end_date - pd.DateOffset(months=lookback_months)
+    val_df = df_target.loc[df_target.index >= val_start]
 
-    train_df = df.loc[(df.index >= train_start) & (df.index < val_start)]
-    val_df   = df.loc[df.index >= val_start]
+    if val_df.empty:
+        return None
 
-    if train_df.empty:
-        train_df = df.loc[df.index < val_start]
-    if train_df.empty or val_df.empty:
+    # ── 准备训练数据 ──
+    train_df = None
+
+    if train_type == 'multi':
+        # 多股票训练 + 单股票验证
+        # 关键: 训练数据截止时间与目标股票验证开始时间对齐
+        multi_data = _load_multi_stock_data(period='3y', min_days=300)
+        if not multi_data.empty and 'Close' in multi_data.columns:
+            df_train = multi_data.copy()
+
+            # 多股票数据的时间切分
+            df_train = df_train.sort_index()
+            df_train['returns'] = df_train['Close'].pct_change(fill_method=None)
+            df_train = df_train.dropna(subset=['returns'])
+
+            # 训练数据结束时间与目标股票验证开始时间对齐
+            aligned_end_date = val_start  # 使用目标股票验证开始时间
+            train_end = aligned_end_date
+            train_start = train_end - pd.DateOffset(years=train_years)
+
+            train_df = df_train.loc[(df_train.index >= train_start) & (df_train.index < train_end)]
+            if train_df.empty:
+                train_df = df_train.loc[df_train.index < train_end]
+
+            print(f"    [多股票训练] 使用多股票数据 ({len(train_df)} 条记录, "
+                  f"到 {train_end.date()})")
+        else:
+            print(f"    [多股票] 多股票数据加载失败，回退到单股票")
+            train_type = 'single'
+
+    if train_type != 'multi':
+        # 单股票训练 + 单股票验证
+        end_date = df_target.index.max()
+        val_start = end_date - pd.DateOffset(months=lookback_months)
+        train_start = val_start - pd.DateOffset(years=train_years)
+
+        train_df = df_target.loc[(df_target.index >= train_start) & (df_target.index < val_start)]
+
+        if train_df.empty:
+            train_df = df_target.loc[df_target.index < val_start]
+
+    # 确保训练数据有效
+    if train_df is None or train_df.empty:
         return None
 
     # ── 训练集：运行策略，拟合模型 ──
@@ -272,11 +449,19 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
         return None
 
     # ── 验证集：用同一模型在 val_df 上生成信号 ──
+    # 对于 multi 策略，设置 no_internal_split=True 使用全部数据进行预测
     try:
-        val_signal, _, val_meta = strategy_mod.run(val_df, config)
+        if train_type == 'multi':
+            val_config = config.copy()
+            val_config['no_internal_split'] = True
+        else:
+            val_config = config
+
+        val_signal, _, val_meta = strategy_mod.run(val_df, val_config)
     except Exception as e:
         print(f"    [{meta['name']}] 验证集推理异常: {e}")
         return None
+
     # val_meta 的 indicators 与 val_df 索引对齐，用于绘图；
     # 训练集 meta 的 params/name 信息合并进来保持完整
     val_meta['params']    = meta.get('params', val_meta.get('params', {}))
@@ -305,7 +490,7 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
 
     # ── 回测（验证集） ──
     # 根据配置选择回测引擎
-    backtest_engine = config.get('backtest_engine', 'native')
+    backtest_engine = config.get('backtest_engine', 'vectorbt')
     if backtest_engine == 'vectorbt' and VECTORBT_AVAILABLE:
         bt = backtest_vbt(val_df, val_signal, config)
     else:
@@ -333,7 +518,10 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
         # 兼容两种回测引擎的结果格式
         'buy_cnt':           bt.get('buy_cnt', bt.get('total_trades', 0) // 2),
         'sell_cnt':          bt.get('sell_cnt', bt.get('total_trades', 0) // 2),
-        'meets_threshold':   bt['cum_return'] > min_return,
+        # 多维度验证：避免过拟合
+        'meets_threshold': _check_meets_threshold(
+            bt, min_return, min_sharpe, max_dd, min_trades
+        ),
         'factor_path':       None,
         'model':             model,
         'meta':              val_meta,   # ← 验证集 meta，indicators 与 detail 索引对齐
