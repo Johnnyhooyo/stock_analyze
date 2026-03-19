@@ -38,15 +38,22 @@ def run(data: pd.DataFrame, config: dict):
     df["rsi_overbought"] = df["rsi"] > rsi_overbought
     df["rsi_decline"] = df["rsi"] < df["rsi"].shift(1)
 
-    # 信号：超卖+反弹买入，超买+回落卖出
-    df["signal"] = 0
-    df.loc[df["rsi_oversold"] & df["rsi_rebound"], "signal"] = 1
-    df.loc[df["rsi_overbought"] & df["rsi_decline"], "signal"] = 0
+    # ⚠️ 前视偏差修复：去掉 ffill() 平滑，改为状态机。
+    # 旧做法：replace(0,nan).ffill() 会把买入触发信号无限延续，掩盖"无信号=离场"语义，虚增持仓时间。
+    # 新做法：进场后持仓，直到收到明确离场信号（超买+回落）才离场。
+    buy_signal  = (df["rsi_oversold"] & df["rsi_rebound"]).values
+    sell_signal = (df["rsi_overbought"] & df["rsi_decline"]).values
 
-    # 平滑信号：连续持有信号
-    df["signal"] = df["signal"].replace(0, np.nan).ffill().fillna(0).astype(int)
+    position = 0
+    positions = []
+    for i in range(len(df)):
+        if position == 0 and buy_signal[i]:
+            position = 1
+        elif position == 1 and sell_signal[i]:
+            position = 0
+        positions.append(position)
 
-    signal = df["signal"]
+    signal = pd.Series(positions, index=df.index, dtype=int)
 
     meta = {
         "name": NAME,
@@ -61,3 +68,9 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal

@@ -30,17 +30,23 @@ def run(data: pd.DataFrame, config: dict):
     df["k_cross_up"] = (df["k"] > df["d"]) & (df["k"].shift(1) <= df["d"].shift(1))
     df["k_cross_down"] = (df["k"] < df["d"]) & (df["k"].shift(1) >= df["d"].shift(1))
 
-    # 信号生成
-    df["signal"] = 0
-    # 买入：%K 从下穿越 %D 且在超卖区域
-    df.loc[df["k_cross_up"] & (df["k"] < k_low), "signal"] = 1
-    # 卖出：%K 从上穿越 %D 且在超买区域
-    df.loc[df["k_cross_down"] & (df["k"] > k_high), "signal"] = 0
+    # ⚠️ 前视偏差修复：去掉 ffill() 平滑，改为状态机。
+    # 进场：%K 上穿 %D 且处于超卖区；离场：%K 下穿 %D 且处于超买区。
+    df = df.dropna(subset=["k", "d"])
 
-    # 平滑信号
-    df["signal"] = df["signal"].replace(0, np.nan).ffill().fillna(0).astype(int)
+    buy_signal  = (df["k_cross_up"]   & (df["k"] < k_low)).values
+    sell_signal = (df["k_cross_down"] & (df["k"] > k_high)).values
 
-    signal = df["signal"]
+    position = 0
+    positions = []
+    for i in range(len(df)):
+        if position == 0 and buy_signal[i]:
+            position = 1
+        elif position == 1 and sell_signal[i]:
+            position = 0
+        positions.append(position)
+
+    signal = pd.Series(positions, index=df.index, dtype=int)
 
     meta = {
         "name": NAME,
@@ -57,3 +63,9 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal

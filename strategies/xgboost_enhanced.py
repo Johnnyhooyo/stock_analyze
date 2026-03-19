@@ -44,6 +44,14 @@ def _calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - 100 / (1 + rs)
 
 
+# 尝试导入 ta-lib 指标计算
+try:
+    from strategies.indicators import add_ta_features as _add_ta_features, TA_AVAILABLE as TA_LIB_AVAILABLE
+except ImportError:
+    TA_LIB_AVAILABLE = False
+    _add_ta_features = None
+
+
 def _calculate_macd(
     series: pd.Series,
     fast: int = 12,
@@ -119,11 +127,23 @@ def _calculate_pvt(close: pd.Series, volume: pd.Series) -> pd.Series:
     return pvt
 
 
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_features(df: pd.DataFrame, use_ta_lib: bool = False) -> pd.DataFrame:
     """
     添加技术指标特征
+
+    Args:
+        df: 原始 OHLCV 数据
+        use_ta_lib: 是否使用 ta-lib 计算指标（默认 False）
     """
+    # 如果启用 ta-lib 且可用，使用 ta-lib 实现
+    if use_ta_lib and TA_LIB_AVAILABLE and _add_ta_features is not None:
+        return _add_ta_features(df)
+
     df = df.copy()
+
+    has_high   = 'High'   in df.columns
+    has_low    = 'Low'    in df.columns
+    has_volume = 'Volume' in df.columns
 
     # ===== 基础收益特征 =====
     df['returns'] = df['Close'].pct_change()
@@ -150,20 +170,20 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
         # 带宽
         df[f'bb_width_{period}'] = (upper - lower) / ma
 
-    # ===== KDJ =====
-    k, d, j = _calculate_kdj(df['High'], df['Low'], df['Close'])
-    df['kdj_k'] = k
-    df['kdj_d'] = d
-    df['kdj_j'] = j
-    # KDJ 超买超卖
-    df['kdj_overbought'] = (j > 80).astype(int)
-    df['kdj_oversold'] = (j < 20).astype(int)
+    # ===== KDJ (需要 High/Low) =====
+    if has_high and has_low:
+        k, d, j = _calculate_kdj(df['High'], df['Low'], df['Close'])
+        df['kdj_k'] = k
+        df['kdj_d'] = d
+        df['kdj_j'] = j
+        df['kdj_overbought'] = (j > 80).astype(int)
+        df['kdj_oversold'] = (j < 20).astype(int)
 
-    # ===== ATR =====
-    for period in [7, 14, 21]:
-        df[f'atr_{period}'] = _calculate_atr(df['High'], df['Low'], df['Close'], period)
-        # ATR 百分比
-        df[f'atr_pct_{period}'] = df[f'atr_{period}'] / df['Close']
+    # ===== ATR (需要 High/Low) =====
+    if has_high and has_low:
+        for period in [7, 14, 21]:
+            df[f'atr_{period}'] = _calculate_atr(df['High'], df['Low'], df['Close'], period)
+            df[f'atr_pct_{period}'] = df[f'atr_{period}'] / df['Close']
 
     # ===== 波动率 =====
     for period in [5, 10, 20]:
@@ -171,18 +191,19 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
         # 波动率变化
         df[f'volatility_change_{period}'] = df[f'volatility_{period}'].pct_change()
 
-    # ===== 成交量特征 =====
-    df['volume'] = df['Volume']
-    for period in [5, 10, 20]:
-        df[f'volume_ma_{period}'] = df['Volume'].rolling(period).mean()
-        df[f'volume_ratio_{period}'] = df['Volume'] / df[f'volume_ma_{period}']
+    # ===== 成交量特征 (需要 Volume) =====
+    if has_volume:
+        df['volume'] = df['Volume']
+        for period in [5, 10, 20]:
+            df[f'volume_ma_{period}'] = df['Volume'].rolling(period).mean()
+            df[f'volume_ratio_{period}'] = df['Volume'] / df[f'volume_ma_{period}']
 
-    # ===== OBV & PVT =====
-    df['obv'] = _calculate_obv(df['Close'], df['Volume'])
-    df['pvt'] = _calculate_pvt(df['Close'], df['Volume'])
-    for period in [5, 10]:
-        df[f'obv_ma_{period}'] = df['obv'].rolling(period).mean()
-        df[f'pvt_ma_{period}'] = df['pvt'].rolling(period).mean()
+        # ===== OBV & PVT (需要 Volume) =====
+        df['obv'] = _calculate_obv(df['Close'], df['Volume'])
+        df['pvt'] = _calculate_pvt(df['Close'], df['Volume'])
+        for period in [5, 10]:
+            df[f'obv_ma_{period}'] = df['obv'].rolling(period).mean()
+            df[f'pvt_ma_{period}'] = df['pvt'].rolling(period).mean()
 
     # ===== 移动平均 =====
     for period in [5, 10, 20, 50]:
@@ -190,13 +211,13 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
         # 价格相对 MA 位置
         df[f'price_vs_ma_{period}'] = df['Close'] / df[f'ma_{period}']
 
-    # ===== 趋势特征 =====
-    # 价格高低点
-    for period in [5, 10, 20]:
-        df[f'high_{period}'] = df['High'].rolling(period).max()
-        df[f'low_{period}'] = df['Low'].rolling(period).min()
-        df[f'high_ratio_{period}'] = df['Close'] / df[f'high_{period}']
-        df[f'low_ratio_{period}'] = df['Close'] / df[f'low_{period}']
+    # ===== 趋势特征 (需要 High/Low) =====
+    if has_high and has_low:
+        for period in [5, 10, 20]:
+            df[f'high_{period}'] = df['High'].rolling(period).max()
+            df[f'low_{period}'] = df['Low'].rolling(period).min()
+            df[f'high_ratio_{period}'] = df['Close'] / df[f'high_{period}']
+            df[f'low_ratio_{period}'] = df['Close'] / df[f'low_{period}']
 
     # ===== 动量 =====
     for period in [5, 10, 20]:
@@ -222,7 +243,8 @@ def prepare_data(df: pd.DataFrame, test_days: int, label_period: int = 1) -> Tup
 
     # 特征列（排除标签和原始数据，以及无用的列）
     exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'label',
-                    'Dividends', 'dividends', 'Stock Splits', 'Adj Close', 'adjclose']
+                    'Dividends', 'dividends', 'Stock Splits', 'Adj Close', 'adjclose',
+                    'ticker']  # 多股票数据中的 ticker 列
     feat_cols = [c for c in df.columns if c not in exclude_cols and not c.lower().startswith('adj')]
 
     # 只保留有数据的特征列
@@ -253,6 +275,7 @@ def run(data: pd.DataFrame, config: dict):
     可选配置:
       use_tsfresh_features: 是否添加 tsfresh 自动特征 (默认 False)
       tsfresh_window_sizes: tsfresh 滚动窗口大小 (默认 [10, 20])
+      use_ta_lib: 是否使用 ta-lib 计算技术指标 (默认 False)
     """
     # 参数
     test_days = int(config.get('test_days', 5))
@@ -261,41 +284,72 @@ def run(data: pd.DataFrame, config: dict):
     learning_rate = float(config.get('xgb_learning_rate', 0.1))
     label_period = int(config.get('label_period', 1))  # 预测未来第几天
     use_tsfresh = config.get('use_tsfresh_features', False)  # 是否使用 tsfresh 特征
+    use_ta_lib = config.get('use_ta_lib', False)  # 是否使用 ta-lib 计算指标
 
     # 添加技术指标特征
-    df = add_features(data)
+    df = add_features(data, use_ta_lib=use_ta_lib)
 
     # ===== 可选: 添加 tsfresh 特征 =====
+    # ⚠️ 关键：先确定训练/测试分割点，tsfresh 特征选择只能使用训练集数据
+    # 这里先用原始 df 的行数估算 split_idx，后续 prepare_data 后会重新精确分割
+    no_split = config.get('no_internal_split', False)
+    _prelim_split_idx = int(len(df) * 0.8) if not no_split else len(df)
+
     tsfresh_feat_count = 0
+    selected_tsfresh_cols = []  # 记录训练集选出的特征列，供测试集对齐使用
     if use_tsfresh:
         if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
-            # 创建标签 (用于特征选择)
-            label = np.where(
-                data['Close'].shift(-label_period) > data['Close'],
+            window_sizes = config.get('tsfresh_window_sizes', [10, 20])
+
+            # ---- 训练集部分：提取特征 + 特征选择 ----
+            train_data_for_ts = data.iloc[:_prelim_split_idx]
+            # 标签只使用训练集范围（防止泄露测试期未来信息）
+            train_label = np.where(
+                train_data_for_ts['Close'].shift(-label_period) > train_data_for_ts['Close'],
                 1, 0
             )
-            y_for_selection = pd.Series(label, index=data.index)
+            y_train_for_selection = pd.Series(train_label, index=train_data_for_ts.index)
 
-            # 提取 tsfresh 特征
-            window_sizes = config.get('tsfresh_window_sizes', [10, 20])
-            tsfresh_features, tsfresh_cols = extract_tsfresh_features(
-                data,
+            train_tsfresh, train_tsfresh_cols = extract_tsfresh_features(
+                train_data_for_ts,
                 window_sizes=window_sizes,
                 extraction_level='efficient',
                 with_selection=True,
-                y=y_for_selection,
+                y=y_train_for_selection,
             )
+            selected_tsfresh_cols = list(train_tsfresh_cols)  # 保存训练集选出的列
+
+            # ---- 测试集部分：只提取特征，不做特征选择，对齐到训练集的列 ----
+            if not no_split and len(data) > _prelim_split_idx:
+                test_data_for_ts = data.iloc[_prelim_split_idx:]
+                test_tsfresh, _ = extract_tsfresh_features(
+                    test_data_for_ts,
+                    window_sizes=window_sizes,
+                    extraction_level='efficient',
+                    with_selection=False,  # 测试集不做特征选择
+                    y=None,
+                )
+                # 对齐到训练集选出的列（填 0 补充训练集有但测试集缺失的列）
+                if not test_tsfresh.empty and selected_tsfresh_cols:
+                    test_tsfresh = test_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+
+                # 合并训练集和测试集 tsfresh 特征
+                if not train_tsfresh.empty and not test_tsfresh.empty:
+                    tsfresh_features = pd.concat([train_tsfresh, test_tsfresh])
+                elif not train_tsfresh.empty:
+                    tsfresh_features = train_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+                else:
+                    tsfresh_features = pd.DataFrame()
+            else:
+                tsfresh_features = train_tsfresh
 
             if not tsfresh_features.empty:
-                # 对齐索引
                 tsfresh_features = tsfresh_features.reindex(df.index)
-                tsfresh_feat_count = len(tsfresh_cols)
-                print(f"  [xgboost_enhanced] tsfresh 特征数: {tsfresh_feat_count}")
-
-                # 合并到 df（使用 pd.concat 避免 DataFrame 碎片化）
+                tsfresh_feat_count = len(selected_tsfresh_cols)
+                print(f"  [xgboost_enhanced] tsfresh 特征数: {tsfresh_feat_count} (已修复前视偏差)")
                 df = pd.concat([df, tsfresh_features], axis=1)
         elif extract_simple_ts_features is not None:
-            # fallback 到简化版特征
+            # fallback 到简化版特征（无特征选择，无前视偏差）
             print(f"  [xgboost_enhanced] 使用简化版时间序列特征")
             simple_features = extract_simple_ts_features(data, windows=[5, 10, 20])
             if not simple_features.empty:
@@ -312,7 +366,7 @@ def run(data: pd.DataFrame, config: dict):
 
     # 分割训练/测试（80% 训练，20% 测试）
     # 如果 config 中设置了 no_internal_split，则使用全部数据训练
-    no_split = config.get('no_internal_split', False)
+    split_idx = len(X)  # 默认值，no_split 时使用全部数据
     if no_split:
         # 使用全部数据训练
         if len(X) < 10:
@@ -397,10 +451,12 @@ def run(data: pd.DataFrame, config: dict):
             'learning_rate': learning_rate,
             'label_period': label_period,
             'use_tsfresh_features': use_tsfresh,
+            'use_ta_lib': use_ta_lib,
         },
         'feat_cols': feat_cols,
         'feat_count': len(feat_cols),
         'tsfresh_feat_count': tsfresh_feat_count,
+        'selected_tsfresh_cols': selected_tsfresh_cols,  # 训练集选出的 tsfresh 特征列（用于推断对齐）
         'model': 'XGBoost' if hasattr(model, 'get_booster') else 'GradientBoosting',
         'feature_importances': dict(zip(feat_cols, model.feature_importances_.round(4))) if hasattr(model, 'feature_importances_') else {},
         'indicators': {
@@ -411,6 +467,68 @@ def run(data: pd.DataFrame, config: dict):
         'train_size': len(X_train),
         'test_size': len(X_test),
         'tsfresh_available': TSFRESH_AVAILABLE,
+        'ta_lib_available': TA_LIB_AVAILABLE,
     }
 
     return signal, model, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """
+    独立推断函数：只做特征工程 + model.predict()，不做 model.fit()。
+
+    供 validate_strategy.py 的 Walk-Forward 和 out_of_sample_test() 调用，
+    确保模型在训练集上 fit 后，可以在测试集上独立推断，不泄露未来信息。
+
+    Args:
+        model: 已训练的模型对象（来自 run() 返回的第二个值）
+        data: 待推断的 OHLCV 数据（测试集）
+        config: 配置字典
+        meta: run() 返回的 meta 字典（包含 feat_cols、selected_tsfresh_cols 等）
+
+    Returns:
+        信号序列 (0/1)，索引与 data 对齐
+    """
+    use_ta_lib = config.get('use_ta_lib', False)
+    use_tsfresh = config.get('use_tsfresh_features', False)
+    label_period = int(config.get('label_period', 1))
+    test_days = int(config.get('test_days', 5))
+
+    feat_cols = meta.get('feat_cols', [])
+    selected_tsfresh_cols = meta.get('selected_tsfresh_cols', [])
+
+    # 添加技术指标特征（与训练时相同流程）
+    df = add_features(data, use_ta_lib=use_ta_lib)
+
+    # 添加 tsfresh 特征（仅变换，不做特征选择，对齐到训练集选出的列）
+    if use_tsfresh and selected_tsfresh_cols and TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
+        window_sizes = config.get('tsfresh_window_sizes', [10, 20])
+        ts_features, _ = extract_tsfresh_features(
+            data,
+            window_sizes=window_sizes,
+            extraction_level='efficient',
+            with_selection=False,  # 推断时不做特征选择
+            y=None,
+        )
+        if not ts_features.empty:
+            # 严格对齐到训练集选出的列
+            ts_features = ts_features.reindex(columns=selected_tsfresh_cols, fill_value=0)
+            ts_features = ts_features.reindex(df.index)
+            df = pd.concat([df, ts_features], axis=1)
+
+    # 准备特征矩阵（只保留训练时确定的特征列）
+    available_feat_cols = [c for c in feat_cols if c in df.columns]
+    missing_cols = [c for c in feat_cols if c not in df.columns]
+    if missing_cols:
+        # 补充训练时有但推断时缺失的列（填 0）
+        for c in missing_cols:
+            df[c] = 0.0
+
+    X = df[feat_cols].fillna(0)
+
+    # 推断
+    predictions = model.predict(X)
+    signal = pd.Series(predictions, index=X.index, dtype=int)
+    return signal
+
+

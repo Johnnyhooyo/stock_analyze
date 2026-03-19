@@ -26,3 +26,12 @@
 #
 #   kdj_pvt   : KDJ 超卖/超买 + PVT 趋势确认
 #               config keys: kdj_period, kdj_oversold, kdj_overbought, pvt_ma_period
+#
+# ── 技术指标模块 ───────────────────────────────────────────────
+#
+#   indicators.py : ta-lib 封装，提供标准化技术指标计算
+#               - add_ta_features() : 使用 ta-lib 计算所有指标
+#               - add_ta_features_fallback() : 纯 pandas fallback
+#
+#   xgboost_enhanced 支持 use_ta_lib 配置项启用 ta-lib
+

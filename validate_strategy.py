@@ -71,12 +71,31 @@ def out_of_sample_test(
             'message': f'测试期数据不足: {len(test_df)} 天'
         }
 
-    # 用最优参数在测试期运行策略
+    # 用最优参数构造配置
     trial_cfg = config.copy()
     trial_cfg.update(params)
 
+    # 先在训练集上运行策略（fit 模型）
     try:
-        sig, _, meta = strategy_mod.run(test_df, trial_cfg)
+        _, train_model, train_meta = strategy_mod.run(train_df, trial_cfg)
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'训练集策略运行失败: {e}'
+        }
+
+    # 在测试集上独立推断（不重新训练）
+    # 若策略模块有 predict() 接口（ML 策略），直接调用；否则用预热窗口方式
+    try:
+        if hasattr(strategy_mod, 'predict') and train_model is not None:
+            # ML 策略：使用训练好的模型在测试集上推断
+            sig = strategy_mod.predict(train_model, test_df, trial_cfg, train_meta)
+        else:
+            # 规则策略：提供预热窗口（取训练集末尾数据预热指标，不参与 fit）
+            warmup = max(int(trial_cfg.get('lookback', 60)), 60)
+            warmup_df = pd.concat([train_df.iloc[-warmup:], test_df])
+            sig, _, _ = strategy_mod.run(warmup_df, trial_cfg)
+            sig = sig.reindex(test_df.index).fillna(0)
     except Exception as e:
         return {
             'success': False,
@@ -183,14 +202,22 @@ def walk_forward_analysis(
             current_end = test_start - pd.DateOffset(months=step_months)
             continue
 
-        # 运行策略：合并训练集和测试集，让指标能正确预热
+        # 运行策略：先在训练集 fit，再对测试集独立推断（防止测试期数据泄露）
         try:
-            # 合并数据：训练集 + 测试集
-            combined_df = pd.concat([train_df, test_df])
-            sig, _, _ = strategy_mod.run(combined_df, config)
+            # Step 1：在训练集上训练模型
+            _, window_model, window_meta = strategy_mod.run(train_df, config)
 
-            # 只取测试集部分的信号
-            test_sig = sig.loc[test_start:test_end]
+            # Step 2：在测试集上独立推断
+            if hasattr(strategy_mod, 'predict') and window_model is not None:
+                # ML 策略：直接用训练好的模型推断
+                test_sig = strategy_mod.predict(window_model, test_df, config, window_meta)
+                test_sig = test_sig.reindex(test_df.index).fillna(0)
+            else:
+                # 规则策略：提供预热窗口（取训练末尾若干行做指标预热，不参与 fit）
+                warmup = max(int(config.get('lookback', 60)), 60)
+                warmup_df = pd.concat([train_df.iloc[-warmup:], test_df])
+                warmup_sig, _, _ = strategy_mod.run(warmup_df, config)
+                test_sig = warmup_sig.reindex(test_df.index).fillna(0)
 
             # 根据配置选择回测引擎
             backtest_engine = config.get('backtest_engine', 'native')
@@ -202,7 +229,9 @@ def walk_forward_analysis(
             # 检查是否有效：至少3笔交易 且 窗口必须盈利
             total_trades = test_result.get('total_trades', 0)
             window_return = test_result.get('cum_return', 0)
-            if total_trades >= 3 and window_return > 0:
+            # ⚠️ 修复：保留所有有交易的窗口（含亏损），不过滤掉亏损窗口，
+            # 确保 window_win_rate（窗口胜率）统计真实可信。
+            if total_trades >= 3:
                 results.append({
                     'train_period': f"{train_start.date()} ~ {train_end.date()}",
                     'test_period': f"{test_start.date()} ~ {test_end.date()}",
@@ -210,11 +239,11 @@ def walk_forward_analysis(
                     'sharpe_ratio': test_result.get('sharpe_ratio', 0),
                     'max_drawdown': test_result.get('max_drawdown', 0),
                     'total_trades': total_trades,
-                    'win_rate': test_result.get('win_rate', 0),  # 交易胜率
+                    'win_rate': test_result.get('win_rate', 0),
+                    'profitable': window_return > 0,
                 })
             else:
-                reason = "无交易" if total_trades < 3 else f"亏损({window_return:.2%})"
-                print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: {reason}")
+                print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: 交易次数不足({total_trades})")
         except Exception as e:
             print(f"  ⚠️ 跳过窗口 {test_start.date()} ~ {test_end.date()}: {e}")
 
@@ -319,12 +348,12 @@ def generate_test_report(
     params: dict,
     config: dict,
     output_dir: Path = None
-) -> str:
+) -> tuple:
     """
     生成完整的策略验证报告
 
     Returns:
-        markdown 格式报告
+        (md_content: str, report_path: Path, validation_data: dict)
     """
     if output_dir is None:
         output_dir = Path(__file__).parent / 'data' / 'reports'

@@ -74,27 +74,29 @@ def run(data: pd.DataFrame, config: dict):
 
     position = 0
     positions = []
-    for idx, row in df.iterrows():
-        close = row["Close"]
-        upper = row["bb_upper"]
-        lower = row["bb_lower"]
-        rsi_val = row["rsi"]
-        at_lower = row.get("at_lower", 0)
-        at_upper = row.get("at_upper", 0)
+    close_arr   = df["Close"].values
+    upper_arr   = df["bb_upper"].values
+    lower_arr   = df["bb_lower"].values
+    middle_arr  = df["bb_middle"].values
+    rsi_arr     = df["rsi"].values
+    at_lower_arr = df["at_lower"].values
+    at_upper_arr = df["at_upper"].values
+
+    for i in range(len(df)):
+        at_lower_v = at_lower_arr[i]
+        at_upper_v = at_upper_arr[i]
+        rsi_val    = rsi_arr[i]
+        close_v    = close_arr[i]
 
         if position == 0:
-            # 价格触及下轨且 RSI 超卖 → 进场（均值回归）
-            if at_lower == 1 and rsi_val < rsi_oversold:
+            if at_lower_v == 1 and rsi_val < rsi_oversold:
                 position = 1
-            # 或者：价格突破上轨且 RSI 处于中性区域 → 顺势进场（趋势跟踪）
-            elif at_upper == 1 and rsi_val < rsi_overbought:
+            elif at_upper_v == 1 and rsi_val < rsi_overbought:
                 position = 1
         else:
-            # 价格触及上轨且 RSI 超买 → 离场
-            if at_upper == 1 and rsi_val > rsi_overbought:
+            if at_upper_v == 1 and rsi_val > rsi_overbought:
                 position = 0
-            # 或者：价格跌破中轨 → 离场
-            elif close < row["bb_middle"]:
+            elif close_v < middle_arr[i]:
                 position = 0
 
         positions.append(position)
@@ -119,3 +121,10 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal
+

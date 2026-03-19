@@ -361,6 +361,12 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
         'min_sharpe_ratio': cfg.get('min_sharpe_ratio', 1.0),
         'max_drawdown': cfg.get('max_drawdown', -0.15),
         'min_total_trades': cfg.get('min_total_trades', 5),
+        # 策略训练配置（支持 multi/stingle/custom 分类）
+        'strategy_training': cfg.get('strategy_training', {}),
+        'lookback_months': cfg.get('lookback_months', 3),
+        'train_years': cfg.get('train_years', 5),
+        # ML 策略专用配置
+        'ml_strategies': cfg.get('ml_strategies', {}),
     }
 
     # 使用 Vectorbt
@@ -404,20 +410,27 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
     if best_of_all and best_of_all.get('best_params'):
         print(f"\n  📊 绘制最优解结果图 ({best_of_all['strategy_name']}  夏普={best_of_all['best_value']:.4f})…")
         try:
-            # 使用最优参数重新运行策略
             trial_cfg = backtest_config.copy()
             trial_cfg.update(best_of_all['best_params'])
 
-            signal, _, meta = mod.run(hist_data.copy(), trial_cfg)
+            # 找到对应策略模块（避免依赖循环变量 mod）
+            best_mod = next((m for m in strategy_mods if m.NAME == best_of_all['strategy_name']), None)
+            if best_mod is None:
+                raise ValueError(f"找不到策略模块: {best_of_all['strategy_name']}")
 
-            # 回测
+            signal, _, meta = best_mod.run(hist_data.copy(), trial_cfg)
+
             if use_vectorbt:
                 from backtest_vectorbt import backtest_vectorbt as bt_vbt
                 detail = bt_vbt(hist_data, signal, trial_cfg)
             else:
                 detail = backtest(hist_data, signal, trial_cfg)
 
-            plot_strategy_result(detail, meta, trial_cfg)
+            # backtest() returns a dict with 'detail' key (DataFrame); extract it
+            import pandas as _pd
+            detail_df = detail.get('detail') if isinstance(detail, dict) else detail
+            if isinstance(detail_df, _pd.DataFrame) and not detail_df.empty:
+                plot_strategy_result(detail_df, meta, trial_cfg)
         except Exception as e:
             print(f"  ⚠️  绘图失败: {e}")
 
@@ -441,17 +454,19 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
             'total_trades': best_of_all.get('all_results', [{}])[0].get('total_trades', 0) if best_of_all.get('all_results') else 0,
         }
 
-        # 添加 detail 用于绘图
+        # 添加 detail 用于绘图（使用 best_mod，避免依赖循环变量 mod）
         try:
             trial_cfg = backtest_config.copy()
             trial_cfg.update(best_of_all['best_params'])
-            signal, _, meta = mod.run(hist_data.copy(), trial_cfg)
-            if use_vectorbt:
-                from backtest_vectorbt import backtest_vectorbt as bt_vbt
-                best_result['detail'] = bt_vbt(hist_data, signal, trial_cfg)
-            else:
-                best_result['detail'] = backtest(hist_data, signal, trial_cfg)
-        except:
+            save_mod = next((m for m in strategy_mods if m.NAME == best_of_all['strategy_name']), None)
+            if save_mod is not None:
+                signal, _, meta = save_mod.run(hist_data.copy(), trial_cfg)
+                if use_vectorbt:
+                    from backtest_vectorbt import backtest_vectorbt as bt_vbt
+                    best_result['detail'] = bt_vbt(hist_data, signal, trial_cfg)
+                else:
+                    best_result['detail'] = backtest(hist_data, signal, trial_cfg)
+        except Exception:
             pass
 
         try:
@@ -571,16 +586,27 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
         if d.weekday() < 5:
             future_dates.append(d)
 
-    # ── ML 策略：准备滚动特征 ──
+    # ── ML 策略：准备最新特征（用 predict() 接口，避免硬编码 ret_i）──
     latest_feats = None
+    pred_signal_series = None
     if is_ml:
-        test_days = len(feat_cols)
-        df['returns'] = df['Close'].pct_change()
-        for i in range(1, test_days + 1):
-            df[f'ret_{i}'] = df['returns'].shift(i)
-        df = df.dropna()
-        latest_feats = list(df[feat_cols].iloc[-1].values)
-        print(f"\n  模型: {type(model).__name__}  特征窗口: {test_days} 天")
+        print(f"\n  模型: {type(model).__name__}  特征: {len(feat_cols)} 个")
+        if strategy_mod is not None and hasattr(strategy_mod, 'predict'):
+            try:
+                # 用 predict() 接口在最新数据上推断，取最后一个信号作为方向
+                pred_signal_series = strategy_mod.predict(model, df, config, meta)
+            except Exception as e:
+                print(f"  ⚠️  predict() 接口失败，回退 ret_i 特征: {e}")
+
+        if pred_signal_series is None:
+            # 回退：手工构造 ret_i 特征（仅对 ret_i 类策略有效）
+            test_days = len(feat_cols)
+            df['returns'] = df['Close'].pct_change()
+            for i in range(1, test_days + 1):
+                df[f'ret_{i}'] = df['returns'].shift(i)
+            df_clean = df.dropna()
+            if not df_clean.empty and all(c in df_clean.columns for c in feat_cols):
+                latest_feats = list(df_clean[feat_cols].iloc[-1].values)
     else:
         print(f"\n  规则信号驱动，方向=最新信号，振幅=历史均值")
 
@@ -602,15 +628,26 @@ def predict_next_days(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> 
     print(f"  {'-'*80}")
 
     # 存储预测结果用于生成 markdown
+    # ML 方向：优先用 pred_signal_series 的最后信号，其次用 latest_feats 滚动
+    ml_direction = 1
+    if is_ml and pred_signal_series is not None and not pred_signal_series.empty:
+        ml_direction = int(pred_signal_series.dropna().iloc[-1])
+
     predictions = []
     sim_close = last_close
     for fd in future_dates:
         if is_ml:
-            test_days = len(feat_cols)
-            X_pred    = np.array(latest_feats[-test_days:]).reshape(1, -1)
-            pred_ret  = float(model.predict(X_pred)[0])
-            direction = "上涨" if pred_ret > 0 else "下跌"
-            latest_feats = [pred_ret] + latest_feats[:-1]
+            if latest_feats is not None:
+                # ret_i 滚动预测路径
+                test_days = len(feat_cols)
+                X_pred   = np.array(latest_feats[-test_days:]).reshape(1, -1)
+                pred_ret = float(model.predict(X_pred)[0])
+                direction = "上涨" if pred_ret > 0 else "下跌"
+                latest_feats = [pred_ret] + latest_feats[:-1]
+            else:
+                # predict() 路径：方向固定用最新信号，幅度用历史均值
+                pred_ret  = avg_abs_ret * (1 if ml_direction == 1 else -1)
+                direction = "上涨" if ml_direction == 1 else "下跌"
         else:
             pred_ret  = avg_abs_ret * (1 if rule_direction == 1 else -1)
             direction = "上涨" if rule_direction == 1 else "下跌"
@@ -1162,7 +1199,7 @@ def main():
         validation_md, report_path, validation_data = generate_test_report(
             hist_data, strategy_mod, params, config
         )
-        print(f"  📊 验证报告已保存: {report_path.name}")
+        print(f"  📊 验证报告已保存: {Path(report_path).name if report_path else '(未保存)'}")
         print(f"\n{validation_md}")
 
         # 发送到飞书（带验证数据）

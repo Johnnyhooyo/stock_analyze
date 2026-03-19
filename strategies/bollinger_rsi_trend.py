@@ -81,27 +81,30 @@ def run(data: pd.DataFrame, config: dict):
 
     position = 0
     positions = []
-    for idx, row in df.iterrows():
-        close = row["Close"]
-        upper = row["bb_upper"]
-        lower = row["bb_lower"]
-        middle = row["bb_middle"]
-        rsi_val = row["rsi"]
-        trend_up = row.get("trend_up", 1)
+    close_arr  = df["Close"].values
+    upper_arr  = df["bb_upper"].values
+    lower_arr  = df["bb_lower"].values
+    middle_arr = df["bb_middle"].values
+    rsi_arr    = df["rsi"].values
+    trend_arr  = df["trend_up"].values
+
+    for i in range(len(df)):
+        close_v    = close_arr[i]
+        upper_v    = upper_arr[i]
+        lower_v    = lower_arr[i]
+        middle_v   = middle_arr[i]
+        rsi_val    = rsi_arr[i]
+        trend_up   = trend_arr[i]
 
         if position == 0:
-            # 进场：触及下轨 + RSI超卖 + (热度上升)
-            if close <= lower and rsi_val < rsi_oversold:
+            if close_v <= lower_v and rsi_val < rsi_oversold:
                 position = 1
-            # 或者：突破上轨 + RSI未超买 + 热度上升
-            elif close >= upper and rsi_val < rsi_overbought and trend_up == 1:
+            elif close_v >= upper_v and rsi_val < rsi_overbought and trend_up == 1:
                 position = 1
         else:
-            # 离场：触及上轨 + RSI超买
-            if close >= upper and rsi_val > rsi_overbought:
+            if close_v >= upper_v and rsi_val > rsi_overbought:
                 position = 0
-            # 或者：跌破中轨
-            elif close < middle:
+            elif close_v < middle_v:
                 position = 0
 
         positions.append(position)
@@ -127,3 +130,10 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal
+

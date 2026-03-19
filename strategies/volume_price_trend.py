@@ -29,15 +29,23 @@ def run(data: pd.DataFrame, config: dict):
     df["price_ma"] = df["Close"].rolling(window=price_period).mean()
     df["price_above_ma"] = df["Close"] > df["price_ma"]
 
-    # 信号：成交量放大 + 价格站上均线 = 买入
-    # 成交量萎缩 + 价格跌破均线 = 卖出
-    df["signal"] = 0
-    df.loc[df["volume_increase"] & df["price_above_ma"], "signal"] = 1
+    # ⚠️ 前视偏差修复：去掉 ffill() 平滑，改为状态机。
+    # 进场：成交量放大 + 价格站上均线；离场：任一条件不满足。
+    df = df.dropna(subset=["volume_ma", "price_ma"])
 
-    # 平滑信号
-    df["signal"] = df["signal"].replace(0, np.nan).ffill().fillna(0).astype(int)
+    buy_signal  = (df["volume_increase"] & df["price_above_ma"]).values
+    sell_signal = (~df["price_above_ma"]).values  # 价格跌破均线即离场
 
-    signal = df["signal"]
+    position = 0
+    positions = []
+    for i in range(len(df)):
+        if position == 0 and buy_signal[i]:
+            position = 1
+        elif position == 1 and sell_signal[i]:
+            position = 0
+        positions.append(position)
+
+    signal = pd.Series(positions, index=df.index, dtype=int)
 
     meta = {
         "name": NAME,
@@ -52,3 +60,9 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal

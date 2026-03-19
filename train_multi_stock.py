@@ -53,6 +53,10 @@ def load_all_hsi_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
             ticker = csv_file.stem.split('_')[0] + '.HK'
 
             if len(df) >= min_days:
+                # 捕获日期范围（必须在 reset_index() 之前，否则 index 变成整数）
+                start_date = df.index.min().date()
+                end_date   = df.index.max().date()
+
                 # 添加股票标识
                 df = df.reset_index()  # 重置索引，将日期变成列
                 df['ticker'] = ticker
@@ -64,11 +68,12 @@ def load_all_hsi_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
                 all_data.append(df)
                 stock_info.append({
                     'ticker': ticker,
-                    'days': len(df),
-                    'start': df.index.min().date(),
-                    'end': df.index.max().date(),
+                    'days':   len(df),
+                    'start':  start_date,
+                    'end':    end_date,
                 })
         except Exception as e:
+            print(f"  [load_all_hsi_data] 跳过 {csv_file.name}: {e}")
             continue
 
     if not all_data:
@@ -110,6 +115,7 @@ def create_multi_stock_dataset(
     tickers = combined_data['ticker'].unique()
     all_X = []
     all_y = []
+    feat_cols = []  # 初始化，避免循环体内未赋值就被返回
 
     for ticker in tickers:
         stock_data = combined_data[combined_data['ticker'] == ticker].copy()
@@ -176,7 +182,6 @@ def train_multi_stock_model(
     Returns:
         训练结果字典
     """
-    from sklearn.model_selection import train_test_split
     from sklearn.metrics import accuracy_score, classification_report
 
     print("=" * 60)
@@ -191,10 +196,12 @@ def train_multi_stock_model(
     if len(X) == 0:
         return {'error': '没有足够的数据'}
 
-    # 分割训练/测试
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=42, shuffle=True
-    )
+    # 按时间顺序分割训练/测试（禁止 shuffle，防止未来数据泄露到训练集）
+    split_idx = int(len(X) * (1 - test_size))
+    X_train = X.iloc[:split_idx]
+    X_test = X.iloc[split_idx:]
+    y_train = y.iloc[:split_idx]
+    y_test = y.iloc[split_idx:]
 
     print(f"\n训练集: {len(X_train)} 样本")
     print(f"测试集: {len(X_test)} 样本")
@@ -281,25 +288,44 @@ def optimize_multi_stock_params(
 ) -> Dict:
     """
     使用 Optuna 优化多股票模型参数
+
+    ⚠️ 前视偏差修复：先按时间切分原始数据，再分别提取特征（含 shift(-label_period) 标签），
+    确保测试集的未来标签不会泄露到训练集的特征/标签生成过程中。
     """
     import optuna
-    from sklearn.model_selection import train_test_split
     from sklearn.metrics import accuracy_score
 
     print("=" * 60)
     print("Optuna 多股票模型参数优化")
     print("=" * 60)
 
-    # 创建数据集
-    X, y, feat_cols = create_multi_stock_dataset(combined_data, test_days=5, label_period=1)
-
-    if len(X) == 0:
+    # ⚠️ 前视偏差修复：先按时间对原始行切分，再分别调用 create_multi_stock_dataset
+    # 旧做法（错误）：对全量数据提取特征（含 shift(-1) 标签）后再切分 → 测试集标签已参与训练集特征计算
+    # 新做法（正确）：先用原始价格数据按 80/20 时间切分，再分别提取特征，测试集标签与训练集完全隔离
+    if combined_data.empty:
         return {'error': '没有足够的数据'}
 
-    # 分割数据
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, shuffle=True
-    )
+    # 按时间排序，确保切分有意义
+    df_sorted = combined_data.sort_index()
+    unique_dates = df_sorted.index.unique().sort_values()
+    split_date = unique_dates[int(len(unique_dates) * 0.8)]
+
+    train_raw = df_sorted[df_sorted.index < split_date]
+    test_raw  = df_sorted[df_sorted.index >= split_date]
+
+    # 分别提取特征（标签 shift(-label_period) 只在各自子集内计算）
+    X_train, y_train, feat_cols = create_multi_stock_dataset(train_raw, test_days=5, label_period=1)
+    X_test,  y_test,  _         = create_multi_stock_dataset(test_raw,  test_days=5, label_period=1)
+
+    # 对齐特征列（测试集对齐到训练集的列）
+    for c in feat_cols:
+        if c not in X_test.columns:
+            X_test[c] = 0.0
+    if feat_cols:
+        X_test = X_test[feat_cols]
+
+    if len(X_train) == 0 or len(X_test) == 0:
+        return {'error': '没有足够的数据'}
 
     print(f"训练集: {len(X_train)}, 测试集: {len(X_test)}")
 

@@ -31,15 +31,23 @@ def run(data: pd.DataFrame, config: dict):
     df["upper_band"] = df["ma"] + atr_multiplier * df["atr"]
     df["lower_band"] = df["ma"] - atr_multiplier * df["atr"]
 
-    # 信号：突破上轨买入，跌破下轨卖出
-    df["signal"] = 0
-    df.loc[df["Close"] > df["upper_band"], "signal"] = 1
-    df.loc[df["Close"] < df["lower_band"], "signal"] = 0
+    # ⚠️ 前视偏差修复：去掉 ffill() 平滑，改为状态机。
+    # 突破上轨进场，跌破下轨离场，中间维持持仓。
+    df = df.dropna(subset=["atr", "ma", "upper_band", "lower_band"])
 
-    # 平滑信号
-    df["signal"] = df["signal"].replace(0, np.nan).ffill().fillna(0).astype(int)
+    buy_signal  = (df["Close"] > df["upper_band"]).values
+    sell_signal = (df["Close"] < df["lower_band"]).values
 
-    signal = df["signal"]
+    position = 0
+    positions = []
+    for i in range(len(df)):
+        if position == 0 and buy_signal[i]:
+            position = 1
+        elif position == 1 and sell_signal[i]:
+            position = 0
+        positions.append(position)
+
+    signal = pd.Series(positions, index=df.index, dtype=int)
 
     meta = {
         "name": NAME,
@@ -55,3 +63,9 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal

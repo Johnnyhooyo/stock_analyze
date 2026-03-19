@@ -138,7 +138,37 @@ STRATEGY_PARAMS = {
         'xgb_learning_rate': (0.01, 0.3),
         'label_period': (1, 5),
     },
+    'xgboost_enhanced_tsfresh': {
+        'test_days': (3, 15),
+        'xgb_n_estimators': (50, 200),
+        'xgb_max_depth': (3, 8),
+        'xgb_learning_rate': (0.01, 0.3),
+        'label_period': (1, 5),
+    },
+    'xgboost_enhanced_ta_tsfresh': {
+        'test_days': (3, 15),
+        'xgb_n_estimators': (50, 200),
+        'xgb_max_depth': (3, 8),
+        'xgb_learning_rate': (0.01, 0.3),
+        'label_period': (1, 5),
+    },
     'lightgbm_enhanced': {
+        'test_days': (3, 15),
+        'lgbm_n_estimators': (50, 200),
+        'lgbm_max_depth': (3, 8),
+        'lgbm_learning_rate': (0.01, 0.3),
+        'lgbm_num_leaves': (15, 63),
+        'label_period': (1, 5),
+    },
+    'lightgbm_enhanced_tsfresh': {
+        'test_days': (3, 15),
+        'lgbm_n_estimators': (50, 200),
+        'lgbm_max_depth': (3, 8),
+        'lgbm_learning_rate': (0.01, 0.3),
+        'lgbm_num_leaves': (15, 63),
+        'label_period': (1, 5),
+    },
+    'lightgbm_enhanced_ta_tsfresh': {
         'test_days': (3, 15),
         'lgbm_n_estimators': (50, 200),
         'lgbm_max_depth': (3, 8),
@@ -201,10 +231,131 @@ class StrategyOptimizer:
         self.strategy_name = strategy_name
         self.param_space = _get_param_space(strategy_name)
 
-        # 记录最佳结果
+        # 判断是否为多股票策略
+        self.train_type = self._get_training_type(strategy_name)
+
+        # 多股票训练数据（按需加载）
+        self.multi_stock_data = None
+        if self.train_type == 'multi':
+            self.multi_stock_data = self._load_multi_stock_data()
+
+        # 记录最佳结果（_lock 保护 all_results 在并行 trial 中的写入）
         self.best_value = float('-inf') if direction == 'maximize' else float('inf')
         self.best_params = None
         self.all_results = []
+        self._lock = __import__('threading').Lock()
+
+    def _get_training_type(self, strategy_name: str) -> str:
+        """获取策略的训练类型"""
+        train_config = self.config.get('strategy_training', {})
+        if strategy_name in train_config.get('multi', []):
+            return 'multi'
+        if strategy_name in train_config.get('single', []):
+            return 'single'
+        if strategy_name in train_config.get('custom', []):
+            return 'custom'
+        # 默认: xgboost/lightgbm 相关的是 multi，其他是 single
+        if 'xgboost' in strategy_name or 'lightgbm' in strategy_name or \
+           'ridge' in strategy_name or 'linear' in strategy_name or 'forest' in strategy_name:
+            return 'multi'
+        return 'single'
+
+    def _load_multi_stock_data(self) -> pd.DataFrame:
+        """加载多股票训练数据"""
+        try:
+            from train_multi_stock import load_all_hsi_data
+            multi_data = load_all_hsi_data(period='3y', min_days=300)
+            if not multi_data.empty and 'Close' in multi_data.columns:
+                print(f"    [多股票优化] 已加载多股票数据 ({len(multi_data)} 条记录)")
+                return multi_data
+        except Exception as e:
+            print(f"    [多股票优化] 加载多股票数据失败: {e}")
+        return pd.DataFrame()
+
+    def _merge_ml_strategy_config(self, cfg: dict) -> dict:
+        """
+        合并 ML 策略专用配置
+        与 run_trial() in analyze_factor.py 保持一致的合并逻辑
+        """
+        ml_strategies_config = cfg.get('ml_strategies', {})
+        strategy_name = self.strategy_name
+
+        if strategy_name not in ml_strategies_config:
+            return cfg
+
+        merged_cfg = cfg.copy()
+        strategy_base = ml_strategies_config[strategy_name].copy()
+
+        # runtime config 覆盖策略专用配置中的同名参数
+        for key in list(strategy_base.keys()):
+            if key in cfg:
+                strategy_base[key] = cfg[key]
+
+        merged_cfg.update(strategy_base)
+        return merged_cfg
+
+    def _run_multi_stock(self, trial_cfg: dict):
+        """
+        多股票训练模式:
+        1. 在多股票数据上训练模型
+        2. 在目标股票数据上进行预测
+        """
+        import pandas as pd
+
+        lookback_months = int(trial_cfg.get('lookback_months', 3))
+        train_years = int(trial_cfg.get('train_years', 2))
+
+        # 准备多股票训练数据
+        df_train = self.multi_stock_data.copy()
+        df_train = df_train.sort_index()
+        df_train['returns'] = df_train['Close'].pct_change(fill_method=None)
+        df_train = df_train.dropna(subset=['returns'])
+
+        # 目标股票验证数据
+        df_target = self.data.copy().sort_index()
+        if not pd.api.types.is_datetime64_any_dtype(df_target.index):
+            try:
+                df_target.index = pd.to_datetime(df_target.index)
+            except Exception:
+                raise optuna.TrialPruned("目标股票数据日期格式错误")
+
+        df_target['returns'] = df_target['Close'].pct_change(fill_method=None)
+        df_target = df_target.dropna(subset=['returns'])
+
+        # 验证时间范围（与目标股票验证开始时间对齐）
+        target_end_date = df_target.index.max()
+        val_start = target_end_date - pd.DateOffset(months=lookback_months)
+        val_df = df_target.loc[df_target.index >= val_start]
+
+        if val_df.empty:
+            raise optuna.TrialPruned("验证数据为空")
+
+        # 多股票训练数据截止时间与目标股票验证开始时间对齐
+        train_end = val_start
+        train_start = train_end - pd.DateOffset(years=train_years)
+        train_df = df_train.loc[(df_train.index >= train_start) & (df_train.index < train_end)]
+
+        if train_df.empty:
+            # 如果对齐后没有数据，使用全部多股票数据
+            train_df = df_train.loc[df_train.index < train_end]
+
+        if train_df.empty:
+            raise optuna.TrialPruned("多股票训练数据为空")
+
+        # 步骤1: 在多股票训练数据上训练模型
+        train_signal, model, meta = self.strategy_mod.run(train_df, trial_cfg)
+
+        # 步骤2: 在目标股票验证数据上生成信号
+        # ⚠️ 前视偏差修复：使用已训练模型独立推断，不在 val_df 上重新 fit
+        if model is not None and hasattr(self.strategy_mod, 'predict'):
+            val_signal = self.strategy_mod.predict(model, val_df, trial_cfg, meta)
+            val_signal = val_signal.reindex(val_df.index).fillna(0)
+        else:
+            val_cfg = trial_cfg.copy()
+            val_cfg['no_internal_split'] = True
+            val_signal, _, _ = self.strategy_mod.run(val_df, val_cfg)
+
+        return val_signal, model, meta, val_df
 
     def objective(self, trial: optuna.Trial) -> float:
         """Optuna 目标函数"""
@@ -213,18 +364,51 @@ class StrategyOptimizer:
         trial_cfg = self.config.copy()
         trial_cfg.update(params)
 
-        # 2. 运行策略
+        # 2. 合并 ML 策略专用配置
+        trial_cfg = self._merge_ml_strategy_config(trial_cfg)
+
+        # 3. 根据训练类型运行策略
         try:
-            signal, _, meta = self.strategy_mod.run(self.data.copy(), trial_cfg)
+            if self.train_type == 'multi' and not self.multi_stock_data.empty:
+                # 多股票训练模式
+                signal, _, meta, val_df = self._run_multi_stock(trial_cfg)
+                backtest_data = val_df
+            else:
+                # ⚠️ 前视偏差修复：单股票也需训练/验证分离，不能全量 in-sample
+                lookback_months = int(trial_cfg.get('lookback_months', 3))
+                train_years = int(trial_cfg.get('train_years', 2))
+                df_s = self.data.copy().sort_index()
+                if not pd.api.types.is_datetime64_any_dtype(df_s.index):
+                    df_s.index = pd.to_datetime(df_s.index)
+                end_date  = df_s.index.max()
+                val_start = end_date - pd.DateOffset(months=lookback_months)
+                tr_start  = val_start - pd.DateOffset(years=train_years)
+                train_df_s = df_s.loc[(df_s.index >= tr_start) & (df_s.index < val_start)]
+                val_df_s   = df_s.loc[df_s.index >= val_start]
+                if train_df_s.empty:
+                    train_df_s = df_s.loc[df_s.index < val_start]
+                if train_df_s.empty or val_df_s.empty:
+                    raise optuna.TrialPruned("单股票训练/验证数据不足")
+                _, model_s, meta = self.strategy_mod.run(train_df_s, trial_cfg)
+                if model_s is not None and hasattr(self.strategy_mod, 'predict'):
+                    signal = self.strategy_mod.predict(model_s, val_df_s, trial_cfg, meta)
+                    signal = signal.reindex(val_df_s.index).fillna(0)
+                else:
+                    vcfg = trial_cfg.copy()
+                    vcfg['no_internal_split'] = True
+                    signal, _, _ = self.strategy_mod.run(val_df_s, vcfg)
+                backtest_data = val_df_s
+        except optuna.exceptions.TrialPruned:
+            raise
         except Exception as e:
             raise optuna.TrialPruned(f"策略运行失败: {e}")
 
-        # 3. 回测
+        # 3. 回测（使用对应的数据进行回测）
         try:
             if self.use_vectorbt:
-                result = backtest_vectorbt(self.data, signal, trial_cfg)
+                result = backtest_vectorbt(backtest_data, signal, trial_cfg)
             else:
-                result = backtest_native(self.data, signal, trial_cfg)
+                result = backtest_native(backtest_data, signal, trial_cfg)
         except Exception as e:
             raise optuna.TrialPruned(f"回测失败: {e}")
 
@@ -255,26 +439,25 @@ class StrategyOptimizer:
         if value is None or np.isnan(value):
             value = 0
 
-        # 记录结果
-        self.all_results.append({
-            'params': params,
-            'value': value,
-            'cum_return': result.get('cum_return', 0),
-            'sharpe_ratio': result.get('sharpe_ratio', 0),
-            'max_drawdown': result.get('max_drawdown', 0),
-            'win_rate': result.get('win_rate', 0),
-            'total_trades': total_trades,
-        })
-
-        # 更新最佳（此时已通过所有阈值检查）
-        if self.direction == 'maximize':
-            if value > self.best_value:
-                self.best_value = value
-                self.best_params = params.copy()
-        else:
-            if value < self.best_value:
-                self.best_value = value
-                self.best_params = params.copy()
+        # 记录结果并更新最佳（加锁保护并行写入）
+        with self._lock:
+            self.all_results.append({
+                'params': params,
+                'value': value,
+                'cum_return': result.get('cum_return', 0),
+                'sharpe_ratio': result.get('sharpe_ratio', 0),
+                'max_drawdown': result.get('max_drawdown', 0),
+                'win_rate': result.get('win_rate', 0),
+                'total_trades': total_trades,
+            })
+            if self.direction == 'maximize':
+                if value > self.best_value:
+                    self.best_value = value
+                    self.best_params = params.copy()
+            else:
+                if value < self.best_value:
+                    self.best_value = value
+                    self.best_params = params.copy()
 
         # 注意：这里不启用自动剪枝，因为单步报告会触发默认的 median 剪枝
         # 如果需要剪枝，可以在创建 study 时配置 pruner
@@ -504,21 +687,54 @@ def optimize_multiobjective(
     )
 
     def objective(trial):
-        # 单次trial可能返回多个值
+        """
+        ⚠️ 前视偏差修复：不再用全量数据训练+回测（in-sample）。
+        复用 StrategyOptimizer 的 train/val 切分逻辑，确保回测发生在验证集上。
+        """
         params = _suggest_params(trial, optimizer.param_space)
         trial_cfg = config.copy()
         trial_cfg.update(params)
 
         try:
-            signal, _, _ = strategy_mod.run(data.copy(), trial_cfg)
-            if use_vectorbt:
-                result = backtest_vectorbt(data, signal, trial_cfg)
+            # 复用已修复的单/多股票切分逻辑
+            if optimizer.train_type == 'multi' and optimizer.multi_stock_data is not None \
+                    and not optimizer.multi_stock_data.empty:
+                signal, _, _, backtest_data = optimizer._run_multi_stock(trial_cfg)
             else:
-                result = backtest_native(data, signal, trial_cfg)
+                # 单股票：train/val 切分
+                lookback_months = int(trial_cfg.get('lookback_months', 3))
+                train_years = int(trial_cfg.get('train_years', 2))
+                df_s = data.copy().sort_index()
+                if not pd.api.types.is_datetime64_any_dtype(df_s.index):
+                    df_s.index = pd.to_datetime(df_s.index)
+                val_start  = df_s.index.max() - pd.DateOffset(months=lookback_months)
+                tr_start   = val_start - pd.DateOffset(years=train_years)
+                train_df_s = df_s.loc[(df_s.index >= tr_start) & (df_s.index < val_start)]
+                val_df_s   = df_s.loc[df_s.index >= val_start]
+                if train_df_s.empty:
+                    train_df_s = df_s.loc[df_s.index < val_start]
+                if train_df_s.empty or val_df_s.empty:
+                    raise optuna.TrialPruned("数据不足")
+                _, model_s, meta_s = strategy_mod.run(train_df_s, trial_cfg)
+                if model_s is not None and hasattr(strategy_mod, 'predict'):
+                    signal = strategy_mod.predict(model_s, val_df_s, trial_cfg, meta_s)
+                    signal = signal.reindex(val_df_s.index).fillna(0)
+                else:
+                    vcfg = trial_cfg.copy()
+                    vcfg['no_internal_split'] = True
+                    signal, _, _ = strategy_mod.run(val_df_s, vcfg)
+                backtest_data = val_df_s
+
+            if use_vectorbt:
+                result = backtest_vectorbt(backtest_data, signal, trial_cfg)
+            else:
+                result = backtest_native(backtest_data, signal, trial_cfg)
+        except optuna.exceptions.TrialPruned:
+            raise
         except Exception:
             raise optuna.TrialPruned()
 
-        # 返回多个目标
+        # 返回多个目标值
         values = []
         for m in metrics:
             v = result.get(m, 0)

@@ -18,7 +18,7 @@
 
 import numpy as np
 import pandas as pd
-from typing import Tuple, Optional
+from typing import Tuple
 
 NAME = "tsfresh_xgboost"
 
@@ -35,14 +35,7 @@ except ImportError:
     extract_simple_ts_features = None
 
 # 导入技术指标计算
-from strategies.xgboost_enhanced import (
-    add_features as add_technical_features,
-    _calculate_rsi,
-    _calculate_macd,
-    _calculate_bollinger_bands,
-    _calculate_kdj,
-    _calculate_atr,
-)
+from strategies.xgboost_enhanced import add_features as add_technical_features
 
 
 def prepare_data(
@@ -68,12 +61,13 @@ def prepare_data(
     tsfresh_features = pd.DataFrame()
 
     if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
-        # 创建标签 (与 df_feat 对齐)
+        # ⚠️ 前视偏差修复：特征选择标签仅用 df_feat（即传入的数据切片）的标签，
+        # 调用方必须只传入训练集数据，不得包含验证/测试集数据。
         label = np.where(
             df_feat['Close'].shift(-label_period) > df_feat['Close'],
             1, 0
         )
-        y_full = pd.Series(label, index=df_feat.index)
+        y_train_for_selection = pd.Series(label, index=df_feat.index)
 
         # 提取 tsfresh 特征 (使用较短窗口避免数据不足)
         window_sizes = [10, 20]
@@ -82,7 +76,7 @@ def prepare_data(
             window_sizes=window_sizes,
             extraction_level='efficient',
             with_selection=True,
-            y=y_full,
+            y=y_train_for_selection,
         )
 
         if not tsfresh_features.empty:
@@ -157,43 +151,57 @@ def run(data: pd.DataFrame, config: dict):
     learning_rate = float(config.get('xgb_learning_rate', 0.1))
     label_period = int(config.get('label_period', 1))
 
-    # 准备数据
-    X, y, feat_cols = prepare_data(data, config)
+    no_split = config.get('no_internal_split', False)
 
-    if X.empty:
+    # ⚠️ 前视偏差修复：先确定分割点，tsfresh 特征选择只能用训练集数据
+    # 粗算分割行数（基于原始数据长度），prepare_data 后精确切分
+    prelim_split = int(len(data) * 0.8) if not no_split else len(data)
+    train_data_raw = data.iloc[:prelim_split]
+    test_data_raw  = data.iloc[prelim_split:]
+
+    # 分别为训练集和测试集提取特征（tsfresh 特征选择仅用训练集标签）
+    X_train, y_train, feat_cols = prepare_data(train_data_raw, config)
+    if X_train.empty:
         print(f"  [tsfresh_xgboost] 特征提取失败，返回零信号")
         signal = pd.Series(0, index=data.index)
         meta = {
-            'name': NAME,
-            'params': {
-                'test_days': test_days,
-                'label_period': label_period,
-            },
-            'feat_cols': [],
-            'model': None,
-            'error': '特征提取失败',
+            'name': NAME, 'params': {'test_days': test_days, 'label_period': label_period},
+            'feat_cols': [], 'model': None, 'error': '特征提取失败',
         }
         return signal, None, meta
 
-    print(f"  [tsfresh_xgboost] 特征数: {len(feat_cols)}, 样本数: {len(X)}")
+    # 测试集特征（对齐到训练集选出的列）
+    X_test = pd.DataFrame()
+    if not no_split and len(test_data_raw) >= 10:
+        try:
+            df_test_feat = add_technical_features(test_data_raw)
+            exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'label',
+                            'Dividends', 'dividends', 'Stock Splits', 'Adj Close', 'adjclose', 'returns']
+            tech_cols_test = [c for c in df_test_feat.columns if c not in exclude_cols
+                              and not c.lower().startswith('adj')]
+            # tsfresh 特征（无特征选择，对齐到训练集列）
+            tsfresh_test = pd.DataFrame()
+            if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
+                ts_test, _ = extract_tsfresh_features(
+                    test_data_raw, window_sizes=[10, 20],
+                    extraction_level='efficient', with_selection=False, y=None)
+                if not ts_test.empty:
+                    tsfresh_test = ts_test.reindex(df_test_feat.index)
 
-    # 分割训练/测试
-    no_split = config.get('no_internal_split', False)
-    if no_split:
-        if len(X) < 10:
-            raise ValueError(f"数据不足: 需要 > 10 个样本")
-        X_train = X
-        y_train = y
-        X_test = X
-        y_test = y
-    else:
-        if len(X) < 10:
-            raise ValueError(f"数据不足: 需要 > 10 个样本")
-        split_idx = int(len(X) * 0.8)
-        X_train = X.iloc[:split_idx]
-        y_train = y.iloc[:split_idx]
-        X_test = X.iloc[split_idx:]
-        y_test = y.iloc[split_idx:]
+            if not tsfresh_test.empty:
+                combined_test = pd.concat([df_test_feat[tech_cols_test], tsfresh_test], axis=1)
+            else:
+                combined_test = df_test_feat[tech_cols_test]
+
+            # 补齐训练集有但测试集缺失的列
+            for c in feat_cols:
+                if c not in combined_test.columns:
+                    combined_test[c] = 0.0
+            X_test = combined_test[feat_cols].dropna()
+        except Exception as e:
+            print(f"  [tsfresh_xgboost] 测试集特征提取失败: {e}")
+
+    print(f"  [tsfresh_xgboost] 特征数: {len(feat_cols)}, 训练样本: {len(X_train)}, 测试样本: {len(X_test)}")
 
     # 训练模型
     model = None
@@ -233,24 +241,36 @@ def run(data: pd.DataFrame, config: dict):
 
     model.fit(X_train, y_train)
 
-    # 预测
-    train_pred = model.predict(X_train)
-    test_pred = model.predict(X_test)
-    test_proba = model.predict_proba(X_test)[:, 1] if len(X_test) > 0 else np.array([])
-
-    # 生成信号
-    signal = pd.Series(0, index=X.index)
+    # 生成信号（只填入测试集的预测结果）
+    signal = pd.Series(0, index=data.index)
+    test_pred = np.array([])
+    test_proba = np.array([])
+    y_test = pd.Series(dtype=int)
 
     if no_split:
-        signal.iloc[:] = test_pred
-    else:
-        if len(X_test) > 0:
-            signal.iloc[split_idx:] = test_pred
+        # no_internal_split：对全部数据推断（val 阶段调用）
+        full_X, full_y, _ = prepare_data(data, config)
+        if not full_X.empty:
+            full_pred = model.predict(full_X)
+            signal = pd.Series(full_pred.astype(int), index=full_X.index)
+            test_pred = full_pred
+            test_proba = model.predict_proba(full_X)[:, 1]
+            y_test = full_y
+        else:
+            test_pred = np.array([])
+            test_proba = np.array([])
+            y_test = pd.Series(dtype=int)
+    elif not X_test.empty:
+        test_pred = model.predict(X_test)
+        test_proba = model.predict_proba(X_test)[:, 1]
+        signal.loc[X_test.index] = test_pred.astype(int)
+        y_test = y_train.iloc[0:0]  # placeholder
+
+    train_pred = model.predict(X_train)
 
     # 特征重要性
     if hasattr(model, 'feature_importances_'):
         importance = dict(zip(feat_cols, model.feature_importances_.round(4)))
-        # 显示前 10 重要特征
         top_features = sorted(importance.items(), key=lambda x: -x[1])[:10]
         print(f"  [tsfresh_xgboost] Top 10 特征:")
         for fname, fimp in top_features:
@@ -258,14 +278,11 @@ def run(data: pd.DataFrame, config: dict):
     else:
         importance = {}
 
-    # 元数据
     meta = {
         'name': NAME,
         'params': {
-            'test_days': test_days,
-            'n_estimators': n_estimators,
-            'max_depth': max_depth,
-            'learning_rate': learning_rate,
+            'test_days': test_days, 'n_estimators': n_estimators,
+            'max_depth': max_depth, 'learning_rate': learning_rate,
             'label_period': label_period,
         },
         'feat_cols': feat_cols,
@@ -273,13 +290,50 @@ def run(data: pd.DataFrame, config: dict):
         'model': model_name,
         'feature_importances': importance,
         'indicators': {
-            'pred_proba': pd.Series(test_proba, index=X_test.index) if len(X_test) > 0 else pd.Series(),
+            'pred_proba': pd.Series(test_proba, index=X_test.index) if len(test_proba) and not X_test.empty else pd.Series(),
         },
         'train_acc': float((train_pred == y_train).mean()),
-        'test_acc': float((test_pred == y_test).mean()) if len(y_test) > 0 else None,
+        'test_acc': float((test_pred == y_test).mean()) if len(test_pred) and len(y_test) else None,
         'train_size': len(X_train),
         'test_size': len(X_test),
         'tsfresh_available': TSFRESH_AVAILABLE,
     }
 
     return signal, model, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """独立推断：用已训练模型在新数据上生成信号，不重新 fit。"""
+    feat_cols = meta.get('feat_cols', [])
+    if not feat_cols:
+        return pd.Series(0, index=data.index)
+
+    df_feat = add_technical_features(data)
+    exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'label',
+                    'Dividends', 'dividends', 'Stock Splits', 'Adj Close', 'adjclose', 'returns']
+    tech_cols = [c for c in df_feat.columns if c not in exclude_cols and not c.lower().startswith('adj')]
+
+    tsfresh_df = pd.DataFrame()
+    if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
+        try:
+            ts_feats, _ = extract_tsfresh_features(
+                data, window_sizes=[10, 20],
+                extraction_level='efficient', with_selection=False, y=None)
+            if not ts_feats.empty:
+                tsfresh_df = ts_feats.reindex(df_feat.index)
+        except Exception:
+            pass
+
+    if not tsfresh_df.empty:
+        combined = pd.concat([df_feat[tech_cols], tsfresh_df], axis=1)
+    else:
+        combined = df_feat[tech_cols]
+
+    for c in feat_cols:
+        if c not in combined.columns:
+            combined[c] = 0.0
+
+    X = combined[feat_cols].fillna(0)
+    predictions = model.predict(X)
+    return pd.Series(predictions.astype(int), index=X.index)
+

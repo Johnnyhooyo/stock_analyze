@@ -17,31 +17,36 @@ try:
 except ImportError:
     VECTORBT_AVAILABLE = False
 
-# 多股票数据缓存
-_MULTI_STOCK_CACHE = {}
+# ── 多股票数据缓存（P3-A：改用 joblib.Memory 磁盘缓存） ──────────────
+# 旧做法：进程级 dict，Optuna 多进程时每个 worker 各自重复加载磁盘数据。
+# 新做法：joblib.Memory 写到 data/cache/，所有进程共享同一份缓存文件。
+import joblib as _joblib
+_CACHE_DIR = Path(__file__).parent / 'data' / 'cache'
+_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+_memory = _joblib.Memory(location=str(_CACHE_DIR), verbose=0)
 
 
-def _load_multi_stock_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
-    """加载多股票数据（带缓存）"""
-    cache_key = f'{period}_{min_days}'
-    if cache_key in _MULTI_STOCK_CACHE:
-        return _MULTI_STOCK_CACHE[cache_key]
-
+@_memory.cache
+def _load_multi_stock_data_cached(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
+    """实际加载逻辑，结果由 joblib.Memory 缓存到磁盘。"""
     try:
         from train_multi_stock import load_all_hsi_data
         data = load_all_hsi_data(period=period, min_days=min_days)
         if not data.empty and 'ticker' in data.columns:
             data = data.drop(columns=['ticker'])
-        _MULTI_STOCK_CACHE[cache_key] = data
         return data
     except ImportError:
         return pd.DataFrame()
 
 
+def _load_multi_stock_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
+    """加载多股票数据（磁盘缓存，多进程安全）。"""
+    return _load_multi_stock_data_cached(period, min_days)
+
+
 def clear_multi_stock_cache():
-    """清除多股票数据缓存"""
-    global _MULTI_STOCK_CACHE
-    _MULTI_STOCK_CACHE = {}
+    """清除多股票数据磁盘缓存。"""
+    _memory.clear(warn=False)
 
 
 
@@ -172,7 +177,9 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
     stamp_duty = float(config.get('stamp_duty', 0.001))   # 印花税 ~0.1%（仅卖出）
 
     bt = data.copy()
-    bt['signal']    = signal.reindex(bt.index).fillna(0).astype(int)
+    # ⚠️ 前视偏差修复：信号在第 T 天收盘后生成，最早在第 T+1 天开盘执行。
+    # 将信号整体后移 1 个交易日，确保回测中不会在生成信号的同一根 K 线上成交。
+    bt['signal']    = signal.reindex(bt.index).fillna(0).shift(1).fillna(0).astype(int)
     bt['position']  = 0
     bt['trade']     = 0
     bt['shares']    = 0
@@ -449,15 +456,20 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
         return None
 
     # ── 验证集：用同一模型在 val_df 上生成信号 ──
-    # 对于 multi 策略，设置 no_internal_split=True 使用全部数据进行预测
+    # ⚠️ 前视偏差修复：验证集必须使用训练集已拟合的模型进行推断，
+    # 绝不能在 val_df 上重新执行 fit（无论 single 还是 multi 策略）。
     try:
-        if train_type == 'multi':
+        if model is not None and hasattr(strategy_mod, 'predict'):
+            # ML 策略：直接用已训练模型独立推断，不重新 fit
+            val_signal = strategy_mod.predict(model, val_df, config, meta)
+            val_signal = val_signal.reindex(val_df.index).fillna(0)
+            val_meta = meta.copy()
+            val_meta['indicators'] = {}  # predict() 不返回 indicators，置空
+        else:
+            # 规则策略：设置 no_internal_split=True，确保用全量 val_df 生成信号（不内部重分割）
             val_config = config.copy()
             val_config['no_internal_split'] = True
-        else:
-            val_config = config
-
-        val_signal, _, val_meta = strategy_mod.run(val_df, val_config)
+            val_signal, _, val_meta = strategy_mod.run(val_df, val_config)
     except Exception as e:
         print(f"    [{meta['name']}] 验证集推理异常: {e}")
         return None
@@ -489,7 +501,10 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict) -> Optional[dict]:
             pass
 
     # ── 回测（验证集） ──
-    # 根据配置选择回测引擎
+    # ✅ 1-C 确认：两个回测引擎均在内部对信号做 shift(1)，即"T日收盘生成信号 → T+1日开盘执行"。
+    #    - analyze_factor.backtest()：   bt['signal'] = signal.shift(1)  (约第163行)
+    #    - backtest_vectorbt():          signal_shifted = signal.shift(1) (约第41行)
+    #    此处传入原始策略信号，由各引擎独立处理，不存在双重偏移或当日执行偏差。
     backtest_engine = config.get('backtest_engine', 'vectorbt')
     if backtest_engine == 'vectorbt' and VECTORBT_AVAILABLE:
         bt = backtest_vbt(val_df, val_signal, config)
@@ -745,8 +760,6 @@ def run_search(
 # ══════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    import datetime as _dt
-
     _cfg = _load_config()
 
     # 自动发现数据文件
@@ -772,41 +785,16 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"  ⚠️  绘图失败: {e}")
 
-    # ── 统一保存一个带编号的因子文件 ──
+    # ── 统一保存一个带编号的因子文件（复用 main._save_factor 避免重复逻辑）──
     if _best is not None:
-        _factors_dir = Path(__file__).parent / 'data' / 'factors'
-        _factors_dir.mkdir(parents=True, exist_ok=True)
-        _existing = list(_factors_dir.glob('factor_*.pkl'))
-        _ids = []
-        for _p in _existing:
-            try:
-                _ids.append(int(_p.stem.split('_')[1]))
-            except (IndexError, ValueError):
-                pass
-        _run_id   = max(_ids) + 1 if _ids else 1
-        _out_path = _factors_dir / f"factor_{_run_id:04d}.pkl"
-        joblib.dump(
-            {
-                'model':              _best['model'],
-                'meta':               _best['meta'],
-                'config':             _best.get('config', {}),
-                'run_id':             _run_id,
-                'cum_return':         _best['cum_return'],
-                'annualized_return':  _best.get('annualized_return', float('nan')),
-                'sharpe_ratio':      _best.get('sharpe_ratio', float('nan')),
-                'max_drawdown':       _best.get('max_drawdown', float('nan')),
-                'volatility':         _best.get('volatility', float('nan')),
-                'win_rate':           _best.get('win_rate', 0),
-                'profit_loss_ratio':  _best.get('profit_loss_ratio', 0),
-                'calmar_ratio':       _best.get('calmar_ratio', float('nan')),
-                'sortino_ratio':      _best.get('sortino_ratio', float('nan')),
-                'total_trades':       _best.get('total_trades', 0),
-                'saved_at':           _dt.datetime.now().isoformat(),
-            },
-            _out_path,
-        )
-        print(f"\n  💾 因子已保存: {_out_path.name}"
-              f"  (策略={_best['strategy_name']}  收益={_best['cum_return']:.2%}"
-              f"  夏普={_best.get('sharpe_ratio', float('nan')):.4f})")
+        try:
+            from main import _save_factor, _next_factor_run_id
+            _factors_dir = Path(__file__).parent / 'data' / 'factors'
+            _factor_path = _save_factor(_best, _factors_dir)
+            print(f"\n  💾 因子已保存: {Path(_factor_path).name}"
+                  f"  (策略={_best['strategy_name']}  收益={_best['cum_return']:.2%}"
+                  f"  夏普={_best.get('sharpe_ratio', float('nan')):.4f})")
+        except Exception as _e:
+            print(f"  ⚠️  因子保存失败: {_e}")
 
 

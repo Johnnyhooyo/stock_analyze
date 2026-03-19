@@ -37,11 +37,15 @@ def backtest_vectorbt(
     signal = pd.Series(signal).astype(float)
     close, signal = close.align(signal, join='inner')
 
+    # ⚠️ 前视偏差修复：信号在第 T 天收盘后生成，最早在第 T+1 天开盘执行。
+    # 将信号整体后移 1 个交易日，确保不会在生成信号的同一根 K 线上成交。
+    signal_shifted = signal.shift(1).fillna(0)
+
     # 生成买入和卖出信号
     # 买入点：当前持仓=1，前一天持仓=0
-    entries = (signal == 1) & (signal.shift(1).fillna(0) == 0)
+    entries = (signal_shifted == 1) & (signal_shifted.shift(1).fillna(0) == 0)
     # 卖出点：当前持仓=0，前一天持仓=1
-    exits = (signal == 0) & (signal.shift(1).fillna(0) == 1)
+    exits = (signal_shifted == 0) & (signal_shifted.shift(1).fillna(0) == 1)
 
     # 港股往返费率：买入~0.088% + 卖出~0.188%（含印花税）
     # 使用平均费率简化计算
@@ -84,8 +88,8 @@ def backtest_vectorbt(
     # 创建 detail DataFrame 用于绘图
     detail = data.copy()
 
-    # 添加交易信号和持仓
-    detail['signal'] = signal.reindex(detail.index).fillna(0).astype(int)
+    # 添加交易信号和持仓（使用后移的信号，与前视偏差修复保持一致）
+    detail['signal'] = signal_shifted.reindex(detail.index).fillna(0).astype(int)
 
     # 计算持仓
     detail['position'] = detail['signal']
@@ -167,37 +171,62 @@ def run_param_scan_vectorbt(
     """
     from itertools import product
 
+    # ⚠️ 前视偏差修复：预先切分 train/val，扫描回测只在验证集上进行
+    df = data.copy().sort_index()
+    if not pd.api.types.is_datetime64_any_dtype(df.index):
+        df.index = pd.to_datetime(df.index)
+    lookback_months = int(config.get('lookback_months', 3))
+    train_years     = int(config.get('train_years', 2))
+    val_start       = df.index.max() - pd.DateOffset(months=lookback_months)
+    tr_start        = val_start - pd.DateOffset(years=train_years)
+    train_df        = df.loc[(df.index >= tr_start) & (df.index < val_start)]
+    val_df          = df.loc[df.index >= val_start]
+    if train_df.empty:
+        train_df = df.loc[df.index < val_start]
+    if train_df.empty or val_df.empty:
+        print("  [param_scan] 数据不足，无法切分 train/val，回退全量扫描")
+        train_df = df
+        val_df   = df
+
     # 生成参数组合
-    param_names = list(param_grid.keys())
+    param_names  = list(param_grid.keys())
     param_values = list(param_grid.values())
     combinations = list(product(*param_values))
 
     results = []
 
     for params in combinations:
-        # 构建参数配置
         trial_config = config.copy()
         for i, name in enumerate(param_names):
             trial_config[name] = params[i]
 
         try:
-            # 运行策略
-            signal, _, meta = strategy_mod.run(data.copy(), trial_config)
+            # 在训练集上 fit 模型
+            _, model, meta = strategy_mod.run(train_df.copy(), trial_config)
 
-            # 回测
-            bt_result = backtest_vectorbt(data, signal, trial_config)
+            # 在验证集上生成信号（用 predict() 或 no_internal_split 模式）
+            if model is not None and hasattr(strategy_mod, 'predict'):
+                signal = strategy_mod.predict(model, val_df, trial_config, meta)
+                signal = signal.reindex(val_df.index).fillna(0)
+            else:
+                vcfg = trial_config.copy()
+                vcfg['no_internal_split'] = True
+                signal, _, _ = strategy_mod.run(val_df.copy(), vcfg)
+
+            # 仅在验证集上回测
+            bt_result = backtest_vectorbt(val_df, signal, trial_config)
 
             results.append({
                 'params': dict(zip(param_names, params)),
-                'cum_return': bt_result['cum_return'],
+                'cum_return':   bt_result['cum_return'],
                 'sharpe_ratio': bt_result['sharpe_ratio'],
                 'max_drawdown': bt_result['max_drawdown'],
                 'total_trades': bt_result['total_trades'],
-                'win_rate': bt_result['win_rate'],
+                'win_rate':     bt_result['win_rate'],
                 'sortino_ratio': bt_result['sortino_ratio'],
                 'calmar_ratio': bt_result['calmar_ratio'],
             })
-        except Exception as e:
+        except Exception:
             continue
 
     return results

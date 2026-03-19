@@ -83,20 +83,22 @@ def run(data: pd.DataFrame, config: dict):
 
     df = df.dropna(subset=["macd_line", "signal_line", "rsi"])
 
+    # P3-B: 用 .values 数组替代 iterrows()，避免逐行 pd.Series 访问开销
     position = 0
     positions = []
-    for idx, row in df.iterrows():
-        golden = row.get("golden_cross", 0)
-        death = row.get("death_cross", 0)
-        rsi_val = row["rsi"]
-        histogram = row["histogram"]
+    golden_arr = df["golden_cross"].values
+    death_arr  = df["death_cross"].values
+    rsi_arr    = df["rsi"].values
+
+    for i in range(len(df)):
+        golden  = golden_arr[i]
+        death   = death_arr[i]
+        rsi_val = rsi_arr[i]
 
         if position == 0:
-            # MACD 金叉 且 RSI 处于中性偏多区域 → 进场
             if golden == 1 and rsi_oversold < rsi_val < rsi_overbought:
                 position = 1
         else:
-            # MACD 死叉 或 RSI 进入超买区域 → 离场
             if death == 1 or rsi_val > rsi_overbought:
                 position = 0
 
@@ -123,3 +125,10 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal
+

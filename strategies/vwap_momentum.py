@@ -29,13 +29,23 @@ def run(data: pd.DataFrame, config: dict):
     df["above_vwap"] = df["Close"] > df["vwap"]
     df["momentum_positive"] = df["momentum"] > 0
 
-    df["signal"] = 0
-    df.loc[df["above_vwap"] & df["momentum_positive"], "signal"] = 1
+    # ⚠️ 前视偏差修复：去掉 ffill() 平滑，改为状态机。
+    # 进场：价格 > VWAP 且动量为正；离场：价格跌破 VWAP 或动量转负。
+    df = df.dropna(subset=["vwap", "momentum"])
 
-    # 平滑信号
-    df["signal"] = df["signal"].replace(0, np.nan).ffill().fillna(0).astype(int)
+    buy_signal  = (df["above_vwap"] & df["momentum_positive"]).values
+    sell_signal = (~df["above_vwap"]).values  # 价格跌破 VWAP 即离场
 
-    signal = df["signal"]
+    position = 0
+    positions = []
+    for i in range(len(df)):
+        if position == 0 and buy_signal[i]:
+            position = 1
+        elif position == 1 and sell_signal[i]:
+            position = 0
+        positions.append(position)
+
+    signal = pd.Series(positions, index=df.index, dtype=int)
 
     meta = {
         "name": NAME,
@@ -50,3 +60,9 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal

@@ -43,15 +43,26 @@ python3 main.py --n-days 5         # Prediction horizon
 
 ### Strategy Interface
 
-All strategies in `strategies/` must expose:
+All strategies in `strategies/` must expose **both** functions:
 ```python
 def run(data: pd.DataFrame, config: dict) -> (signal: pd.Series, model, meta: dict)
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series
 ```
 - `signal`: int Series (1=long, 0=flat), aligned to data.index
-- `model`: serializable object or None
+- `model`: serializable object or None (rule strategies return None)
 - `meta`: `{"name": str, "params": dict, "feat_cols": list, "indicators": dict}`
+- `predict()`: for ML strategies, uses the trained model to infer on new data without refitting; for rule strategies, re-runs `run()` (no model needed, `model` arg ignored)
 
-### Strategy Training Types (analyze_factor.py)
+**Rule strategies must not use `ffill()` signal smoothing** — use explicit state machines (enter/hold/exit logic) to avoid inflated holding periods and win rates.
+
+### Strategy Discovery
+
+Strategies are auto-discovered via `_discover_strategies()` in `analyze_factor.py`:
+- Reads from `config.yaml` → `strategy_training` (single/multi/custom lists)
+- Imports modules dynamically from `strategies/` package
+- Module must have both `run` function and `NAME` attribute
+
+### Strategy Training Types
 
 | Type | Training Data | Validation Data |
 |------|--------------|-----------------|
@@ -59,15 +70,46 @@ def run(data: pd.DataFrame, config: dict) -> (signal: pd.Series, model, meta: di
 | `multi` | Multiple HSI stocks | Target stock (lookback_months) |
 | `custom` | Strategy-defined | Strategy-defined |
 
-Configured in `config.yaml` under `strategy_training`.
+**Rule-based strategies** (RSI, MACD, Bollinger, etc.) → use `single` training
+**ML strategies** (XGBoost, LightGBM) → use `multi` training with HSI stocks
 
-### Backtesting Engine
+### Look-Ahead Bias Prevention
+
+All backtesting is designed to be free of look-ahead bias:
+
+1. **Signal execution delay**: Both `analyze_factor.backtest()` and `backtest_vectorbt()` apply `signal.shift(1)` internally — signals generated on day T execute on day T+1. Do not shift signals before passing them in.
+2. **Train/val split**: `run_trial()` trains on `[train_start, val_start)` and validates on `[val_start, end]`. The validation set is **never** used during training.
+3. **ML prediction**: `predict()` is called on the validation set with the already-fitted model — never re-fit on validation data.
+4. **Multi-stock optimization** (`train_multi_stock.optimize_multi_stock_params`): Raw price data is split by time **before** `create_multi_stock_dataset()` is called, so `shift(-label_period)` labels in the test set cannot leak into training features.
+5. **Rule strategy signals**: State-machine loops (not `ffill()`) — only explicit entry/exit conditions change position.
+
+### Walk-Forward Validation
+
+`validate_strategy.py` provides:
+- `out_of_sample_test()`: Trains on 12 months, tests on 3 months
+- `walk_forward_analysis()`: Rolling windows, all windows (including losing ones) are included in win-rate statistics
+- `generate_test_report()`: Generates markdown report combining both
+
+### Standalone Modules
+
+`train_multi_stock.py` is a **standalone script** — it is not called by `main.py` at runtime. Its `load_all_hsi_data()` is used indirectly via `analyze_factor._load_multi_stock_data()`. Run it directly for multi-stock dataset exploration:
+```bash
+python3 train_multi_stock.py   # optimize params with Optuna (standalone)
+```
+
+### Multi-Stock Data Cache
+
+`analyze_factor._load_multi_stock_data()` uses `joblib.Memory` (disk cache at `data/cache/`) so multiple Optuna worker processes share the same cached data and avoid repeated disk I/O.
+
+### tsfresh Parallelism
+
+`strategies/tsfresh_features.py` limits `n_jobs` to `cpu_count // 2` to prevent process explosion when Optuna runs parallel trials alongside tsfresh's internal parallelism.
+
+
 
 Configured via `config.yaml` → `backtest_engine`:
-- `native` (default): Pure Python backtester in `analyze_factor.py:backtest()` - handles HK fees (0.088% + 0.1% stamp duty)
+- `native` (recommended): Pure Python backtester in `analyze_factor.py:backtest()` - handles HK fees (0.088% + 0.1% stamp duty)
 - `vectorbt`: Vectorbt-based backtesting - results differ slightly
-
-**Recommendation**: Use `native` engine for accurate Hong Kong market fee simulation.
 
 ### Multi-Dimensional Threshold Validation
 
@@ -88,10 +130,12 @@ Strategies must pass all thresholds to be saved:
 | `train_years` | 5 | Training window |
 | `backtest_engine` | vectorbt | native or vectorbt |
 | `use_optuna` | true | Enable Bayesian optimization |
-| `optuna_trials` | 50 | Optuna search iterations |
+| `optuna_trials` | 100 | Optuna search iterations |
 | `max_tries` | 300 | Random search iterations |
 | `min_return` | 0.10 | Validation threshold |
 | `min_sharpe_ratio` | 1.0 | Validation threshold |
+| `max_drawdown` | -0.15 | Maximum drawdown (negative) |
+| `min_total_trades` | 5 | Minimum trade count |
 
 ### keys.yaml (not committed)
 ```yaml
@@ -107,15 +151,26 @@ feishu_webhook: https://open.feishu.cn/...
 - Trending data: `data/trends/tencent_trends.csv`
 - Sentiment cache: `data/sentiment/sentiment_cache.csv`
 - HSI stocks: `data/historical/*_HK_*.csv` (via `fetch_hsi_stocks.py`)
+- Multi-stock cache: `data/cache/` (joblib.Memory, auto-managed)
+
+## Testing
+
+```bash
+python3 smoke_test.py   # Offline smoke test — no network required, uses synthetic data
+```
+
+Covers: all major rule strategies, `analyze_factor.backtest()`, and the `predict()` interface.
 
 ## ML Strategies
 
 | Strategy | Model | Features | Training Type |
 |----------|-------|----------|---------------|
-| `xgboost_enhanced` | XGBoost | 95 (RSI, MACD, Bollinger, KDJ, ATR, OBV, returns) | multi |
-| `xgboost_enhanced_tsfresh` | XGBoost | 技术指标 + tsfresh 自动特征 (~7000+) | multi |
-| `lightgbm_enhanced` | LightGBM | 95 (same features) | multi |
-| `tsfresh_xgboost` | XGBoost | tsfresh auto-features only | multi |
+| `xgboost_enhanced` | XGBoost | 技术指标 (pandas) | multi |
+| `xgboost_enhanced_tsfresh` | XGBoost | 技术指标 + tsfresh | multi |
+| `xgboost_enhanced_ta_tsfresh` | XGBoost | ta-lib 技术指标 + tsfresh | multi |
+| `lightgbm_enhanced` | LightGBM | 技术指标 (pandas) | multi |
+| `lightgbm_enhanced_tsfresh` | LightGBM | 技术指标 + tsfresh | multi |
+| `lightgbm_enhanced_ta_tsfresh` | LightGBM | ta-lib 技术指标 + tsfresh | multi |
 
 ### tsfresh Integration
 
@@ -144,4 +199,14 @@ ml_strategies:
 - optuna - Bayesian optimization
 - pytrends - Google Trends
 - tsfresh, pyts - automatic time series feature extraction
+- ta - technical analysis library (200+ indicators, wraps TA-Lib C library)
 - yfinance, akshare - market data
+
+### ta-lib Integration
+
+ta-lib (`pip install ta`) provides standardized technical indicator calculations:
+
+- **strategies/indicators.py** - Central module wrapping ta-lib
+- **xgboost_enhanced** supports `use_ta_lib: true` config to enable
+- Falls back to pandas implementation if ta not available
+- Same feature output as pandas version for compatibility

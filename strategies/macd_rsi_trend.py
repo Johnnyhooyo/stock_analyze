@@ -87,19 +87,21 @@ def run(data: pd.DataFrame, config: dict):
 
     position = 0
     positions = []
-    for idx, row in df.iterrows():
-        golden = row.get("golden_cross", 0)
-        death = row.get("death_cross", 0)
-        rsi_val = row["rsi"]
-        histogram = row["histogram"]
-        trend_up = row.get("trend_up", 1)
+    golden_arr = df["golden_cross"].values
+    death_arr  = df["death_cross"].values
+    rsi_arr    = df["rsi"].values
+    trend_arr  = df["trend_up"].values
+
+    for i in range(len(df)):
+        golden   = golden_arr[i]
+        death    = death_arr[i]
+        rsi_val  = rsi_arr[i]
+        trend_up = trend_arr[i]
 
         if position == 0:
-            # 进场：MACD金叉 + RSI不过热 + 热度上升
             if golden == 1 and rsi_val < rsi_overbought and trend_up == 1:
                 position = 1
         else:
-            # 离场：MACD死叉 或 RSI超买 或 热度下降
             if death == 1 or rsi_val > rsi_overbought or trend_up == 0:
                 position = 0
 
@@ -127,3 +129,10 @@ def run(data: pd.DataFrame, config: dict):
         },
     }
     return signal, None, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal
+

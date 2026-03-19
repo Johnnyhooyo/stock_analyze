@@ -27,3 +27,8 @@ def run(data: pd.DataFrame, config: dict):
     }
     return signal, None, meta
 
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """规则策略独立推断接口：重新运行策略，返回信号序列（无需 model）。"""
+    signal, _, _ = run(data, config)
+    return signal

@@ -7,8 +7,14 @@
   - 波动率特征
   - 成交量特征
   - 趋势特征
+  - (可选) ta-lib 技术指标
+  - (可选) tsfresh 自动特征
 
 模型: LightGBM Classifier
+
+配置选项:
+  use_ta_lib: 是否使用 ta-lib 计算技术指标 (默认 False)
+  use_tsfresh_features: 是否添加 tsfresh 自动特征 (默认 False)
 """
 
 import numpy as np
@@ -28,6 +34,7 @@ from strategies.xgboost_enhanced import (
     _calculate_atr,
     _calculate_obv,
     _calculate_pvt,
+    TSFRESH_AVAILABLE,
 )
 
 
@@ -37,6 +44,10 @@ def run(data: pd.DataFrame, config: dict):
 
     训练: 使用前 80% 的数据训练模型
     预测: 在后 20% 的数据上生成交易信号
+
+    可选配置:
+      use_ta_lib: 是否使用 ta-lib 计算技术指标 (默认 False)
+      use_tsfresh_features: 是否添加 tsfresh 自动特征 (默认 False)
     """
     # 参数
     test_days = int(config.get('test_days', 5))
@@ -45,16 +56,93 @@ def run(data: pd.DataFrame, config: dict):
     learning_rate = float(config.get('lgbm_learning_rate', 0.1))
     num_leaves = int(config.get('lgbm_num_leaves', 31))
     label_period = int(config.get('label_period', 1))
+    use_ta_lib = config.get('use_ta_lib', False)
+    use_tsfresh = config.get('use_tsfresh_features', False)
 
-    # 添加特征
-    df = add_features(data)
+    # 添加技术指标特征
+    df = add_features(data, use_ta_lib=use_ta_lib)
+
+    # ===== 可选: 添加 tsfresh 特征 =====
+    # ⚠️ 关键：tsfresh 特征选择只能使用训练集数据，不得泄露测试期标签
+    no_split = config.get('no_internal_split', False)
+    _prelim_split_idx = int(len(df) * 0.8) if not no_split else len(df)
+
+    tsfresh_feat_count = 0
+    selected_tsfresh_cols = []
+    if use_tsfresh:
+        try:
+            from strategies.tsfresh_features import (
+                extract_tsfresh_features,
+                extract_simple_ts_features,
+            )
+        except ImportError:
+            extract_tsfresh_features = None
+            extract_simple_ts_features = None
+
+        if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
+            window_sizes = config.get('tsfresh_window_sizes', [10, 20])
+
+            # ---- 训练集部分：提取特征 + 特征选择（只用训练期标签） ----
+            train_data_for_ts = data.iloc[:_prelim_split_idx]
+            train_label = np.where(
+                train_data_for_ts['Close'].shift(-label_period) > train_data_for_ts['Close'],
+                1, 0
+            )
+            y_train_for_selection = pd.Series(train_label, index=train_data_for_ts.index)
+
+            train_tsfresh, train_tsfresh_cols = extract_tsfresh_features(
+                train_data_for_ts,
+                window_sizes=window_sizes,
+                extraction_level='efficient',
+                with_selection=True,
+                y=y_train_for_selection,
+            )
+            selected_tsfresh_cols = list(train_tsfresh_cols)
+
+            # ---- 测试集部分：只提取特征，对齐到训练集的列 ----
+            if not no_split and len(data) > _prelim_split_idx:
+                test_data_for_ts = data.iloc[_prelim_split_idx:]
+                test_tsfresh, _ = extract_tsfresh_features(
+                    test_data_for_ts,
+                    window_sizes=window_sizes,
+                    extraction_level='efficient',
+                    with_selection=False,
+                    y=None,
+                )
+                if not test_tsfresh.empty and selected_tsfresh_cols:
+                    test_tsfresh = test_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+
+                if not train_tsfresh.empty and not test_tsfresh.empty:
+                    tsfresh_features = pd.concat([train_tsfresh, test_tsfresh])
+                elif not train_tsfresh.empty:
+                    tsfresh_features = train_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+                else:
+                    tsfresh_features = pd.DataFrame()
+            else:
+                tsfresh_features = train_tsfresh
+
+            if not tsfresh_features.empty:
+                tsfresh_features = tsfresh_features.reindex(df.index)
+                tsfresh_feat_count = len(selected_tsfresh_cols)
+                print(f"  [lightgbm_enhanced] tsfresh 特征数: {tsfresh_feat_count} (已修复前视偏差)")
+                df = pd.concat([df, tsfresh_features], axis=1)
+        elif extract_simple_ts_features is not None:
+            print(f"  [lightgbm_enhanced] 使用简化版时间序列特征")
+            simple_features = extract_simple_ts_features(data, windows=[5, 10, 20])
+            if not simple_features.empty:
+                simple_features = simple_features.reindex(df.index)
+                df = pd.concat([df, simple_features], axis=1)
+                tsfresh_feat_count = len(simple_features.columns)
+                print(f"  [lightgbm_enhanced] 简化版特征数: {tsfresh_feat_count}")
 
     # 准备数据
     X, y, feat_cols = prepare_data(df, test_days, label_period)
 
+    if tsfresh_feat_count > 0:
+        print(f"  [lightgbm_enhanced] 总特征数: {len(feat_cols)} (技术指标 + tsfresh)")
+
     # 分割训练/测试（80% 训练，20% 测试）
-    # 如果 config 中设置了 no_internal_split，则使用全部数据训练
-    no_split = config.get('no_internal_split', False)
+    split_idx = len(X)  # 默认值，no_split 时使用全部数据
     if no_split:
         # 使用全部数据训练
         if len(X) < 10:
@@ -75,27 +163,16 @@ def run(data: pd.DataFrame, config: dict):
     # 训练模型
     try:
         import lightgbm as lgb
-        # 尝试使用 GPU
-        try:
-            model = lgb.LGBMClassifier(
-                n_estimators=n_estimators,
-                max_depth=max_depth,
-                learning_rate=learning_rate,
-                num_leaves=num_leaves,
-                random_state=42,
-                verbose=-1,
-                device='gpu',
-            )
-        except Exception:
-            # GPU 不可用，回退到 CPU
-            model = lgb.LGBMClassifier(
-                n_estimators=n_estimators,
-                max_depth=max_depth,
-                learning_rate=learning_rate,
-                num_leaves=num_leaves,
-                random_state=42,
-                verbose=-1,
-            )
+        # 尝试使用 GPU（不可用时在 fit() 阶段捕获并回退 CPU）
+        model = lgb.LGBMClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            num_leaves=num_leaves,
+            random_state=42,
+            verbose=-1,
+            device='gpu',
+        )
         model_name = 'LightGBM'
     except ImportError:
         # 降级使用 XGBoost
@@ -112,7 +189,6 @@ def run(data: pd.DataFrame, config: dict):
             )
             model_name = 'XGBoost'
         except ImportError:
-            # 最后降级到 sklearn
             from sklearn.ensemble import GradientBoostingClassifier
             model = GradientBoostingClassifier(
                 n_estimators=n_estimators,
@@ -122,7 +198,28 @@ def run(data: pd.DataFrame, config: dict):
             )
             model_name = 'GradientBoosting'
 
-    model.fit(X_train, y_train)
+    # ⚠️ GPU 修复：GPU 错误在 fit() 时才实际触发，在此捕获并静默回退 CPU
+    try:
+        model.fit(X_train, y_train)
+    except Exception as gpu_err:
+        _msg = str(gpu_err).lower()
+        if 'gpu' in _msg or 'cuda' in _msg or 'opencl' in _msg or 'device' in _msg:
+            print(f"  [lightgbm_enhanced] GPU 不可用，回退 CPU ({gpu_err})")
+            try:
+                import lightgbm as lgb
+                model = lgb.LGBMClassifier(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    num_leaves=num_leaves,
+                    random_state=42,
+                    verbose=-1,
+                )
+                model.fit(X_train, y_train)
+            except Exception:
+                raise
+        else:
+            raise
 
     # 预测
     train_pred = model.predict(X_train)
@@ -151,8 +248,13 @@ def run(data: pd.DataFrame, config: dict):
             'learning_rate': learning_rate,
             'num_leaves': num_leaves,
             'label_period': label_period,
+            'use_ta_lib': use_ta_lib,
+            'use_tsfresh_features': use_tsfresh,
         },
         'feat_cols': feat_cols,
+        'feat_count': len(feat_cols),
+        'tsfresh_feat_count': tsfresh_feat_count,
+        'selected_tsfresh_cols': selected_tsfresh_cols,  # 训练集选出的 tsfresh 特征列
         'model': model_name,
         'feature_importances': dict(zip(feat_cols, model.feature_importances_.round(4))) if hasattr(model, 'feature_importances_') else {},
         'indicators': {
@@ -162,6 +264,66 @@ def run(data: pd.DataFrame, config: dict):
         'test_acc': (test_pred == y_test).mean() if len(y_test) > 0 else None,
         'train_size': len(X_train),
         'test_size': len(X_test),
+        'tsfresh_available': TSFRESH_AVAILABLE,
     }
 
     return signal, model, meta
+
+
+def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
+    """
+    独立推断函数：只做特征工程 + model.predict()，不做 model.fit()。
+
+    供 validate_strategy.py 的 Walk-Forward 和 out_of_sample_test() 调用，
+    确保模型在训练集上 fit 后，可以在测试集上独立推断，不泄露未来信息。
+
+    Args:
+        model: 已训练的模型对象（来自 run() 返回的第二个值）
+        data: 待推断的 OHLCV 数据（测试集）
+        config: 配置字典
+        meta: run() 返回的 meta 字典（包含 feat_cols、selected_tsfresh_cols 等）
+
+    Returns:
+        信号序列 (0/1)，索引与 data 对齐
+    """
+    use_ta_lib = config.get('use_ta_lib', False)
+    use_tsfresh = config.get('use_tsfresh_features', False)
+    label_period = int(config.get('label_period', 1))
+
+    feat_cols = meta.get('feat_cols', [])
+    selected_tsfresh_cols = meta.get('selected_tsfresh_cols', [])
+
+    # 添加技术指标特征（与训练时相同流程）
+    df = add_features(data, use_ta_lib=use_ta_lib)
+
+    # 添加 tsfresh 特征（仅变换，不做特征选择，对齐到训练集选出的列）
+    if use_tsfresh and selected_tsfresh_cols and TSFRESH_AVAILABLE:
+        try:
+            from strategies.tsfresh_features import extract_tsfresh_features
+            window_sizes = config.get('tsfresh_window_sizes', [10, 20])
+            ts_features, _ = extract_tsfresh_features(
+                data,
+                window_sizes=window_sizes,
+                extraction_level='efficient',
+                with_selection=False,  # 推断时不做特征选择
+                y=None,
+            )
+            if not ts_features.empty:
+                ts_features = ts_features.reindex(columns=selected_tsfresh_cols, fill_value=0)
+                ts_features = ts_features.reindex(df.index)
+                df = pd.concat([df, ts_features], axis=1)
+        except Exception:
+            pass
+
+    # 补充训练时有但推断时缺失的列（填 0）
+    for c in feat_cols:
+        if c not in df.columns:
+            df[c] = 0.0
+
+    X = df[feat_cols].fillna(0)
+
+    predictions = model.predict(X)
+    signal = pd.Series(predictions, index=X.index, dtype=int)
+    return signal
+
+

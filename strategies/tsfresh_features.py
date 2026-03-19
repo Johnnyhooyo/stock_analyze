@@ -311,12 +311,15 @@ class TSFreshFeatureExtractor:
             # tsfresh select_features 要求无 NaN，先用 impute 处理
             features_aligned = impute(features_aligned)
 
+            # P3-C: 限制 n_jobs，避免 Optuna 多进程下与 tsfresh 并行叠加导致进程爆炸
+            import os as _os
+            _tsfresh_jobs = max(1, (_os.cpu_count() or 2) // 2)
             selected = select_features(
                 features_aligned,
                 y_aligned,
                 fdr_level=0.05,
                 show_warnings=False,
-                n_jobs=-1,  # 多线程并行
+                n_jobs=_tsfresh_jobs,
             )
 
             self.selected_features_ = list(selected.columns)
@@ -390,27 +393,32 @@ def extract_tsfresh_features(
                 from tsfresh.utilities.dataframe_functions import impute
 
                 features_aligned = combined.loc[common_idx]
-                y_aligned = y.loc[common_idx].values
-
-                # tsfresh select_features 要求无 NaN，先用 impute 处理
+                # ⚠️ 修复：保持 pd.Series 类型并重置索引，避免 tsfresh 内部
+                # 对 numpy array 做布尔运算时出现 "Series ambiguous" 错误
+                y_aligned = y.loc[common_idx]
+                if not isinstance(y_aligned, pd.Series):
+                    y_aligned = pd.Series(y_aligned, index=common_idx)
+                y_aligned = y_aligned.reset_index(drop=True)
                 features_aligned = impute(features_aligned)
+                features_for_sel  = features_aligned.reset_index(drop=True)
 
                 selected = select_features(
-                    features_aligned,
+                    features_for_sel,
                     y_aligned,
                     fdr_level=0.05,
                     show_warnings=False,
-                    n_jobs=0,  # 单线程，特征选择不是瓶颈
+                    n_jobs=0,
                 )
 
                 if not selected.empty and len(selected.columns) > 0:
                     if len(selected.columns) > 200:
-                        # 按方差排序选择前200个
-                        variances = features_aligned.var().sort_values(ascending=False)
+                        variances = features_for_sel.var().sort_values(ascending=False)
                         top_cols = variances.head(200).index.tolist()
-                        selected = features_aligned[top_cols]
+                        selected = features_for_sel[top_cols]
 
-                    combined = selected
+                    # 恢复原始索引
+                    selected.index = common_idx
+                    combined = features_aligned[selected.columns]
                     print(f"  [tsfresh] 特征选择后保留 {len(selected.columns)} 个特征")
                 else:
                     print(f"  [tsfresh] 无显著特征，选择前 100 个")
