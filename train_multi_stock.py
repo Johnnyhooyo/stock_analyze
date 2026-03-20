@@ -126,6 +126,10 @@ def create_multi_stock_dataset(
         # 添加特征
         stock_with_features = add_features(stock_data)
 
+        # ── 修复项5：截断末尾 label_period 行，消除 shift(-label_period) 边界泄露 ──
+        if len(stock_with_features) > label_period:
+            stock_with_features = stock_with_features.iloc[:-label_period]
+
         # 准备数据
         try:
             X, y, feat_cols = prepare_data(stock_with_features, test_days, label_period)

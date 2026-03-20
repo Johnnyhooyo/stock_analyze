@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, date, time
 import re
 import logging
 import sys
+import concurrent.futures
 
 # Setup logging to file and stdout
 LOG_DIR = Path(__file__).parent / 'data' / 'logs'
@@ -23,6 +24,70 @@ if not logger.handlers:
     sh.setFormatter(fmt)
     logger.addHandler(fh)
     logger.addHandler(sh)
+
+
+# ── 港股公众假期（每年常规节假日，不含补充公告假期） ─────────────────
+# 仅覆盖规律性节假日；遇法定调休/台风等临时停市请在 keys.yaml 中追加。
+_HK_HOLIDAYS: set = {
+    # 元旦
+    date(2024, 1, 1), date(2025, 1, 1), date(2026, 1, 1), date(2027, 1, 1),
+    # 农历新年（以香港交易所公告为准，此处列三日）
+    date(2024, 2, 10), date(2024, 2, 12), date(2024, 2, 13),
+    date(2025, 1, 29), date(2025, 1, 30), date(2025, 1, 31),
+    date(2026, 2, 17), date(2026, 2, 18), date(2026, 2, 19),
+    # 清明节
+    date(2024, 4, 4), date(2025, 4, 4), date(2026, 4, 5),
+    # 耶稣受难节（Good Friday）及翌日
+    date(2024, 3, 29), date(2024, 3, 30),
+    date(2025, 4, 18), date(2025, 4, 19),
+    date(2026, 4, 3),  date(2026, 4, 4),
+    # 复活节星期一
+    date(2024, 4, 1), date(2025, 4, 21), date(2026, 4, 6),
+    # 劳动节
+    date(2024, 5, 1), date(2025, 5, 1), date(2026, 5, 1),
+    # 佛诞
+    date(2024, 5, 15), date(2025, 5, 5), date(2026, 5, 24),
+    # 端午节
+    date(2024, 6, 10), date(2025, 5, 31), date(2026, 6, 19),
+    # 香港回归纪念日
+    date(2024, 7, 1), date(2025, 7, 1), date(2026, 7, 1),
+    # 国庆节
+    date(2024, 10, 1), date(2025, 10, 1), date(2026, 10, 1),
+    # 重阳节
+    date(2024, 10, 11), date(2025, 10, 29), date(2026, 10, 18),
+    # 圣诞节
+    date(2024, 12, 25), date(2024, 12, 26),
+    date(2025, 12, 25), date(2025, 12, 26),
+    date(2026, 12, 25), date(2026, 12, 26),
+}
+
+# 尝试从 keys.yaml 追加额外假期（格式: extra_hk_holidays: ['2026-03-20', ...]）
+try:
+    _keys_path = Path(__file__).parent / 'keys.yaml'
+    if _keys_path.exists():
+        import yaml as _yaml
+        with open(_keys_path, encoding='utf-8') as _f:
+            _keys = _yaml.safe_load(_f) or {}
+        for _d in _keys.get('extra_hk_holidays', []):
+            try:
+                _HK_HOLIDAYS.add(date.fromisoformat(str(_d)))
+            except Exception:
+                pass
+except Exception:
+    pass
+
+
+def _is_hk_trading_day(d: date) -> bool:
+    """判断某天是否为港股交易日（非周末且非公众假期）"""
+    return d.weekday() < 5 and d not in _HK_HOLIDAYS
+
+
+def _prev_hk_trading_day(ref: date) -> date:
+    """返回 ref 之前（不含 ref）最近一个港股交易日"""
+    d = ref - timedelta(days=1)
+    while not _is_hk_trading_day(d):
+        d -= timedelta(days=1)
+    return d
 
 
 def _parse_period_to_days(period):
@@ -43,7 +108,7 @@ def _parse_period_to_days(period):
     return days
 
 
-def _try_pandas_datareader(ticker, period):
+def _try_pandas_datareader(ticker, period, timeout=20):
     try:
         from pandas_datareader import data as pdr
     except Exception as e:
@@ -54,22 +119,28 @@ def _try_pandas_datareader(ticker, period):
     end_date = datetime.today()
     start_date = end_date - timedelta(days=days)
     # 尝试 yahoo，然后 stooq
-    try:
+
+    def _fetch_yahoo():
         logger.info(f"尝试通过 pandas_datareader/yahoo 下载 {ticker} from {start_date.date()} to {end_date.date()}")
         df = pdr.DataReader(ticker, 'yahoo', start=start_date, end=end_date)
-        if df is not None and not df.empty:
-            df = df.sort_index()
-            return df
-    except Exception as e:
-        logger.info(f"pandas_datareader yahoo 下载失败: {e}")
-    try:
+        return df if df is not None and not df.empty else None
+
+    def _fetch_stooq():
         logger.info(f"尝试通过 pandas_datareader/stooq 下载 {ticker} from {start_date.date()} to {end_date.date()}")
         df = pdr.DataReader(ticker, 'stooq', start=start_date, end=end_date)
-        if df is not None and not df.empty:
-            df = df.sort_index()
-            return df
-    except Exception as e:
-        logger.info(f"pandas_datareader stooq 下载失败: {e}")
+        return df if df is not None and not df.empty else None
+
+    for fn in [_fetch_yahoo, _fetch_stooq]:
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(fn)
+                df = fut.result(timeout=timeout)
+            if df is not None and not df.empty:
+                return df.sort_index()
+        except concurrent.futures.TimeoutError:
+            logger.info(f"pandas_datareader 超时（{timeout}s）")
+        except Exception as e:
+            logger.info(f"pandas_datareader 下载失败: {e}")
     return None
 
 
@@ -496,9 +567,9 @@ def download_stock_data(retries=3, backoff=1.0, sources_override=None):
         if file_path.exists():
             old_data = pd.read_csv(file_path, index_col=0, parse_dates=True)
             # 统一时区处理：移除时区信息进行比较
-            if old_data.index.tz is not None:
+            if getattr(old_data.index, 'tz', None) is not None:
                 old_data.index = old_data.index.tz_localize(None)
-            if data.index.tz is not None:
+            if getattr(data.index, 'tz', None) is not None:
                 data.index = data.index.tz_localize(None)
             # 合并：使用新数据更新旧数据，保留最新值
             combined = pd.concat([old_data, data])
@@ -517,3 +588,153 @@ def download_stock_data(retries=3, backoff=1.0, sources_override=None):
 
 if __name__ == "__main__":
     download_stock_data()
+
+
+# ══════════════════════════════════════════════════════════════════
+#  HSI 成分股增量更新
+# ══════════════════════════════════════════════════════════════════
+
+def _hsi_file_is_stale(file_path: Path) -> bool:
+    """
+    判断一只 HSI 成分股的本地 CSV 是否需要更新，逻辑与 _hist_data_is_stale 一致。
+    返回 True 表示需要更新。
+    """
+    try:
+        df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+        if df.empty:
+            return True
+        last_date = df.index.max()
+        if pd.isna(last_date):
+            return True
+        # 移除时区以便比较
+        if hasattr(last_date, 'tzinfo') and last_date.tzinfo is not None:
+            last_date = last_date.tz_convert(None)
+        last_date = last_date.date()
+
+        now = datetime.now()
+        if now.time() < time(18, 0):
+            target = date.today() - timedelta(days=1)
+            while target.weekday() >= 5:
+                target -= timedelta(days=1)
+        else:
+            target = date.today()
+            if target.weekday() >= 5:
+                target -= timedelta(days=1)
+                while target.weekday() >= 5:
+                    target -= timedelta(days=1)
+
+        return last_date < target
+    except Exception:
+        return True  # 无法判断时默认需要更新
+
+
+def download_hsi_incremental(
+    period: str = '3y',
+    out_dir: Path = None,
+    delay: float = 0.3,
+) -> dict:
+    """
+    增量更新所有 HSI 成分股数据。
+
+    - 已有文件且是最新的 → 跳过
+    - 已有文件但数据过期 → 下载最新数据并合并到现有文件（保留历史，追加新行）
+    - 无文件 → 全量下载
+
+    Args:
+        period:  数据周期，与 HSI 文件命名约定一致（默认 '3y'）
+        out_dir: 输出目录，默认 data/historical/
+        delay:   每次请求间隔（秒），避免触发频率限制
+
+    Returns:
+        {'total': N, 'skipped': N, 'updated': N, 'failed': [...]}
+    """
+    import time as _time
+
+    if out_dir is None:
+        out_dir = Path(__file__).parent / 'data' / 'historical'
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 从 fetch_hsi_stocks 拿到股票列表和下载函数
+    try:
+        from fetch_hsi_stocks import get_hsi_stocks, download_hsi_stock
+    except ImportError as e:
+        logger.error(f"无法导入 fetch_hsi_stocks: {e}")
+        return {'total': 0, 'skipped': 0, 'updated': 0, 'failed': []}
+
+    stocks = get_hsi_stocks()
+    total   = len(stocks)
+    skipped = 0
+    updated = 0
+    failed  = []
+
+    logger.info(f"[HSI增量] 开始检查 {total} 只成分股（period={period}）…")
+
+    for i, ticker in enumerate(stocks, 1):
+        # 文件命名规则：{XXXX_HK}_{period}.csv，与 train_multi_stock.load_all_hsi_data 的 glob 一致
+        safe_name = ticker.replace('.', '_')          # 0700.HK → 0700_HK
+        file_path = out_dir / f"{safe_name}_{period}.csv"
+
+        # ── 检查是否需要更新 ──────────────────────────────────────
+        if file_path.exists() and not _hsi_file_is_stale(file_path):
+            logger.info(f"[{i}/{total}] ✅ 跳过 {ticker}（已是最新）")
+            skipped += 1
+            continue
+
+        action = "更新" if file_path.exists() else "全量下载"
+        logger.info(f"[{i}/{total}] ⬇  {action} {ticker}…")
+
+        # ── 下载新数据 ────────────────────────────────────────────
+        new_data = download_hsi_stock(ticker, period=period)
+
+        if new_data is None or new_data.empty:
+            logger.warning(f"[{i}/{total}] ❌ {ticker} 无数据，跳过")
+            failed.append(ticker)
+            _time.sleep(delay)
+            continue
+
+        # ── 标准化列名 + 索引 ─────────────────────────────────────
+        try:
+            new_data = _normalize_df(new_data)
+            if new_data is None or new_data.empty:
+                raise ValueError("normalize 后为空")
+
+            # 确保索引名为 'date'（与 load_all_hsi_data 的 set_index('date') 一致）
+            new_data.index.name = 'date'
+
+            # 移除时区
+            if getattr(new_data.index, 'tz', None) is not None:
+                new_data.index = new_data.index.tz_convert(None)
+
+            # ── 与现有数据合并（增量追加，保留历史） ──────────────
+            if file_path.exists():
+                old_data = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                if getattr(old_data.index, 'tz', None) is not None:
+                    old_data.index = old_data.index.tz_convert(None)
+                combined = pd.concat([old_data, new_data])
+                combined = combined[~combined.index.duplicated(keep='last')]
+                combined = combined.sort_index()
+                rows_added = len(combined) - len(old_data)
+            else:
+                combined = new_data.sort_index()
+                rows_added = len(combined)
+
+            combined.to_csv(file_path, index_label='date')
+            logger.info(f"[{i}/{total}] ✅ {ticker} 已保存 → {file_path.name}  (+{rows_added} 行，共 {len(combined)} 行)")
+            updated += 1
+
+        except Exception as e:
+            logger.warning(f"[{i}/{total}] ❌ {ticker} 处理失败: {e}")
+            failed.append(ticker)
+
+        _time.sleep(delay)
+
+    logger.info(
+        f"[HSI增量] 完成：总计 {total}，跳过 {skipped}，更新 {updated}，失败 {len(failed)}"
+        + (f"  失败列表: {failed}" if failed else "")
+    )
+    return {
+        'total':   total,
+        'skipped': skipped,
+        'updated': updated,
+        'failed':  failed,
+    }

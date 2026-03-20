@@ -3,6 +3,7 @@ import pandas as pd
 
 
 NAME = "ma_crossover"
+MIN_BARS = 60   # 需要足够的 K 线计算长周期 MA
 
 
 def run(data: pd.DataFrame, config: dict):

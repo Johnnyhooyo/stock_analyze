@@ -5,10 +5,9 @@
 数据持久化：每天只获取一次，保存到本地文件
 """
 
-import requests
 import pandas as pd
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 # 情感数据目录
@@ -73,36 +72,56 @@ def _load_sentiment_cache(ticker: str) -> Optional[dict]:
     return None
 
 
+def _is_mostly_chinese(text: str) -> bool:
+    """判断文本是否以中文为主（CJK 字符占比 > 30%）"""
+    if not text:
+        return False
+    cjk = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    return cjk / max(len(text), 1) > 0.3
+
+
 def analyze_sentiment(text: str) -> dict:
     """
-    分析文本情感（使用 TextBlob 库）
-
-    Args:
-        text: 待分析文本
-
-    Returns:
-        dict: 情感分数 (-1 ~ 1), 情感标签 (positive/negative/neutral)
+    分析文本情感。
+    - 中文文本：优先使用 SnowNLP，回退到关键词匹配
+    - 英文文本：使用 TextBlob，回退到关键词匹配
+    注：情感分析结果为参考信息，不直接参与交易决策（见 config.yaml sentiment_weight）
     """
-    try:
-        from textblob import TextBlob
-        blob = TextBlob(text)
-        polarity = blob.sentiment.polarity  # -1 ~ 1
-
-        if polarity > 0.1:
-            label = "positive"
-        elif polarity < -0.1:
-            label = "negative"
-        else:
-            label = "neutral"
-
-        return {
-            'polarity': polarity,
-            'label': label,
-            'subjectivity': blob.sentiment.subjectivity
-        }
-    except ImportError:
-        # 如果没有 textblob，使用简单的关键词匹配
+    if _is_mostly_chinese(text):
+        # ── 中文路径：SnowNLP ─────────────────────────────────────
+        try:
+            from snownlp import SnowNLP
+            s = SnowNLP(text)
+            polarity = float(s.sentiments) * 2 - 1  # [0,1] → [-1,1]
+            if polarity > 0.1:
+                label = "positive"
+            elif polarity < -0.1:
+                label = "negative"
+            else:
+                label = "neutral"
+            return {'polarity': polarity, 'label': label, 'subjectivity': 0.5}
+        except ImportError:
+            pass  # SnowNLP 未安装，回退关键词匹配
         return _simple_sentiment(text)
+    else:
+        # ── 英文路径：TextBlob ────────────────────────────────────
+        try:
+            from textblob import TextBlob
+            blob = TextBlob(text)
+            polarity = blob.sentiment.polarity  # -1 ~ 1
+            if polarity > 0.1:
+                label = "positive"
+            elif polarity < -0.1:
+                label = "negative"
+            else:
+                label = "neutral"
+            return {
+                'polarity': polarity,
+                'label': label,
+                'subjectivity': blob.sentiment.subjectivity
+            }
+        except ImportError:
+            return _simple_sentiment(text)
 
 
 def _simple_sentiment(text: str) -> dict:

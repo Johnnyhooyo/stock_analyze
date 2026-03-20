@@ -34,17 +34,22 @@ python3 main.py --n-days 5         # Prediction horizon
 | `validate_strategy.py` | Out-of-sample and Walk-Forward validation |
 | `backtest_vectorbt.py` | Optional Vectorbt-based backtesting |
 | `fetch_data.py` | Data download with 2-day stale check |
-| `position_manager.py` | Position state and trade suggestions |
+| `position_manager.py` | Position state, ATR stop-loss, trade suggestions |
 | `sentiment_analysis.py` | News sentiment scoring with caching |
 | `google_trends.py` | Google Trends热度数据 with caching |
 | `feishu_notify.py` | Feishu webhook notifications |
 | `optimize_with_optuna.py` | Bayesian hyperparameter optimization |
 | `train_multi_stock.py` | Loads HSI stocks for multi-stock training |
+| `oms.py` | Broker API integration for live order submission |
+| `visualize.py` | Strategy plotting and chart generation |
+| `fetch_hsi_stocks.py` | Fetch Hang Seng Index constituent stocks |
 
 ### Strategy Interface
 
-All strategies in `strategies/` must expose **both** functions:
+All strategies in `strategies/` must expose **both** functions and a `NAME` attribute:
 ```python
+NAME: str = "strategy_name"   # Must match config key
+
 def run(data: pd.DataFrame, config: dict) -> (signal: pd.Series, model, meta: dict)
 def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series
 ```
@@ -54,6 +59,8 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series
 - `predict()`: for ML strategies, uses the trained model to infer on new data without refitting; for rule strategies, re-runs `run()` (no model needed, `model` arg ignored)
 
 **Rule strategies must not use `ffill()` signal smoothing** — use explicit state machines (enter/hold/exit logic) to avoid inflated holding periods and win rates.
+
+**Strategy parameter search**: `run()` receives a `config` dict with strategy-specific params sampled by Optuna/random search. `meta["params"]` stores the final selected params.
 
 ### Strategy Discovery
 
@@ -70,7 +77,8 @@ Strategies are auto-discovered via `_discover_strategies()` in `analyze_factor.p
 | `multi` | Multiple HSI stocks | Target stock (lookback_months) |
 | `custom` | Strategy-defined | Strategy-defined |
 
-**Rule-based strategies** (RSI, MACD, Bollinger, etc.) → use `single` training
+**Rule-based strategies** (RSI, MACD, Bollinger, KDJ, ATR, VWAP, etc.) → use `single` training on target stock only. Includes: `bollinger_rsi_trend`, `macd_rsi_trend`, `rsi_divergence`, `stochastic_oscillator`, `vwap_momentum`, `atr_breakout`, `volume_price_trend`, `ma_crossover`, `rsi_reversion`, `kdj_obv`, `kdj_pvt`, `rsi_obv`, `rsi_pvt`, `bollinger_breakout`, `macd_rsi_combo`, `rsi_drawdown_0225` (with stop-loss logic).
+
 **ML strategies** (XGBoost, LightGBM) → use `multi` training with HSI stocks
 
 ### Look-Ahead Bias Prevention
@@ -135,13 +143,55 @@ Strategies must pass all thresholds to be saved:
 | `min_return` | 0.10 | Validation threshold |
 | `min_sharpe_ratio` | 1.0 | Validation threshold |
 | `max_drawdown` | -0.15 | Maximum drawdown (negative) |
-| `min_total_trades` | 5 | Minimum trade count |
+| `min_total_trades` | 4 | Minimum trade count |
+| `test_months` | 6 | Hold-out period (months, not used in search) |
+| `test_days` | 5 | Prediction horizon |
+| `early_stop_threshold` | 0.03 | Skip trial if val return below this (trial >= 10) |
+| `wf_min_window_win_rate` | 0.5 | Walk-forward minimum window win rate |
+| `use_cv` | false | Enable TimeSeriesSplit CV (keep false for tsfresh variants) |
+| `sentiment_weight` | 0.0 | Sentiment signal weight (0=display only, 0.0-0.3 for light weighting) |
 
 ### keys.yaml (not committed)
 ```yaml
 alpha_vantage_key: null
 feishu_webhook: https://open.feishu.cn/...
+broker_api_key: null
+broker_account: null
 ```
+
+### Backtest Engine Fees
+| Key | Default | Description |
+|-----|---------|-------------|
+| `invest_fraction` | 0.95 | Position size (5% cash buffer) |
+| `slippage` | 0.001 | Slippage for both engines |
+| `fees_rate` | 0.00088 | Hong Kong trading fee (0.088%) |
+| `stamp_duty` | 0.001 | Hong Kong stamp duty (0.1%) |
+
+### Risk Management
+| Key | Default | Description |
+|-----|---------|-------------|
+| `use_atr_stop` | true | Enable ATR dynamic stop-loss |
+| `atr_period` | 14 | ATR calculation period |
+| `atr_multiplier` | 2.0 | Stop-loss = peak - multiplier × ATR |
+| `trailing_stop` | true | Use trailing stop (else fixed entry price) |
+| `use_kelly` | false | Enable Kelly position sizing |
+| `kelly_fraction` | 0.5 | Kelly scaling (0.5 = half Kelly) |
+| `max_position_pct` | 0.25 | Maximum single position (% of portfolio) |
+| `portfolio_value` | 200000.0 | Kelly calculation base |
+| `daily_loss_limit` | 0.05 | Circuit breaker (% daily loss threshold) |
+| `max_consecutive_loss_days` | 3 | Circuit breaker consecutive loss days |
+
+### Position Management
+| Key | Default | Description |
+|-----|---------|-------------|
+| `position_shares` | 200 | Current holding shares (0 = flat) |
+| `position_avg_cost` | 600.0 | Average cost per share |
+| `position_peak_price` | 0.0 | Peak price during holding (0 = use entry price) |
+
+### OMS / Live Trading
+| Key | Default | Description |
+|-----|---------|-------------|
+| `broker_api_url` | null | Broker API URL (Futu/Tiger/IBKR), null = paper trade |
 
 ## Data Storage
 
@@ -163,14 +213,24 @@ Covers: all major rule strategies, `analyze_factor.backtest()`, and the `predict
 
 ## ML Strategies
 
-| Strategy | Model | Features | Training Type |
-|----------|-------|----------|---------------|
-| `xgboost_enhanced` | XGBoost | 技术指标 (pandas) | multi |
-| `xgboost_enhanced_tsfresh` | XGBoost | 技术指标 + tsfresh | multi |
-| `xgboost_enhanced_ta_tsfresh` | XGBoost | ta-lib 技术指标 + tsfresh | multi |
-| `lightgbm_enhanced` | LightGBM | 技术指标 (pandas) | multi |
-| `lightgbm_enhanced_tsfresh` | LightGBM | 技术指标 + tsfresh | multi |
-| `lightgbm_enhanced_ta_tsfresh` | LightGBM | ta-lib 技术指标 + tsfresh | multi |
+All ML strategies use **multi** training (trained on HSI stocks, validated on target stock).
+
+| Strategy | Model | Features |
+|----------|-------|----------|
+| `xgboost_enhanced` | XGBoost | Technical indicators (pandas) + optional ta-lib |
+| `xgboost_enhanced_tsfresh` | XGBoost | Technical indicators + tsfresh features |
+| `xgboost_enhanced_ta_tsfresh` | XGBoost | ta-lib indicators + tsfresh features |
+| `lightgbm_enhanced` | LightGBM | Technical indicators (pandas) + optional ta-lib |
+| `lightgbm_enhanced_tsfresh` | LightGBM | Technical indicators + tsfresh features |
+| `lightgbm_enhanced_ta_tsfresh` | LightGBM | ta-lib indicators + tsfresh features |
+
+### ML Strategy Configuration
+Each ML strategy inherits config from `config.yaml → ml_strategies.<strategy_name>`:
+- `use_tsfresh_features`: bool — add tsfresh rolling-window features
+- `use_ta_lib`: bool — use ta-lib instead of pandas for indicators
+- `tsfresh_window_sizes`: list — rolling windows for tsfresh (default [10, 20])
+- XGBoost params: `xgb_n_estimators`, `xgb_max_depth`, `xgb_learning_rate`, `xgb_subsample`, `xgb_colsample_bytree`, `xgb_reg_alpha`, `xgb_reg_lambda`, `xgb_min_child_weight`
+- LightGBM params: `lgbm_n_estimators`, `lgbm_max_depth`, `lgbm_learning_rate`, `lgbm_num_leaves`, `lgb_feature_fraction`, `lgb_bagging_fraction`, `lgb_reg_alpha`, `lgb_reg_lambda`, `lgb_min_child_samples`
 
 ### tsfresh Integration
 

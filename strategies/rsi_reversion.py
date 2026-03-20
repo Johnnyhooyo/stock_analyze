@@ -8,6 +8,7 @@ import numpy as np
 
 
 NAME = "rsi_reversion"
+MIN_BARS = 30   # RSI 需要至少 period+几个预热 K 线
 
 
 def _rsi(series: pd.Series, period: int) -> pd.Series:

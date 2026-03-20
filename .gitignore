@@ -14,12 +14,13 @@ env/
 .vscode/
 *.swp
 *.swo
+.claude/*
 
 # Data
 data/factors/*.pkl
 data/timekline/*.csv
 data/plots/*.png
-data/logs/*.log
+data/logs/*
 data/reports/*.*
 
 # 持久化的数据（推送到远程）

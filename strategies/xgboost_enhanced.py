@@ -22,6 +22,23 @@ from typing import Tuple, Optional
 
 NAME = "xgboost_enhanced"
 
+# ── 策略元数据 ───────────────────────────────────────────────────
+MIN_BARS = 100  # 运行此策略所需的最少数据行数
+
+# 超参数空间（供 optimize_with_optuna.py 读取，避免在两处维护）
+PARAM_SPACE = {
+    'test_days':              (3, 15),
+    'xgb_n_estimators':      (50, 200),
+    'xgb_max_depth':         (3, 8),
+    'xgb_learning_rate':     (0.01, 0.3),
+    'label_period':          (1, 5),
+    'xgb_subsample':         (0.6, 1.0),
+    'xgb_colsample_bytree':  (0.6, 1.0),
+    'xgb_reg_alpha':         (0.0, 1.0),
+    'xgb_reg_lambda':        (0.0, 1.0),
+    'xgb_min_child_weight':  (1, 10),
+}
+
 # 尝试导入 tsfresh 特征提取器
 try:
     from strategies.tsfresh_features import (
@@ -285,6 +302,12 @@ def run(data: pd.DataFrame, config: dict):
     label_period = int(config.get('label_period', 1))  # 预测未来第几天
     use_tsfresh = config.get('use_tsfresh_features', False)  # 是否使用 tsfresh 特征
     use_ta_lib = config.get('use_ta_lib', False)  # 是否使用 ta-lib 计算指标
+    # ── 修复项4：正则化参数（防过拟合，默认值与 XGBoost 官方一致） ──
+    subsample         = float(config.get('xgb_subsample', 0.8))
+    colsample_bytree  = float(config.get('xgb_colsample_bytree', 0.8))
+    reg_alpha         = float(config.get('xgb_reg_alpha', 0.0))
+    reg_lambda        = float(config.get('xgb_reg_lambda', 1.0))
+    min_child_weight  = int(config.get('xgb_min_child_weight', 1))
 
     # 添加技术指标特征
     df = add_features(data, use_ta_lib=use_ta_lib)
@@ -387,31 +410,28 @@ def run(data: pd.DataFrame, config: dict):
     # 训练模型
     try:
         from xgboost import XGBClassifier
+        # 正则化参数（修复项4）传入模型
+        _xgb_kwargs = dict(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
+            min_child_weight=min_child_weight,
+            random_state=42,
+            use_label_encoder=False,
+            eval_metric='logloss',
+            verbosity=0,
+            tree_method='hist',
+        )
         # 尝试使用 GPU
         try:
-            model = XGBClassifier(
-                n_estimators=n_estimators,
-                max_depth=max_depth,
-                learning_rate=learning_rate,
-                random_state=42,
-                use_label_encoder=False,
-                eval_metric='logloss',
-                verbosity=0,
-                tree_method='hist',
-                device='cuda',
-            )
+            model = XGBClassifier(**_xgb_kwargs, device='cuda')
         except Exception:
             # GPU 不可用，回退到 CPU
-            model = XGBClassifier(
-                n_estimators=n_estimators,
-                max_depth=max_depth,
-                learning_rate=learning_rate,
-                random_state=42,
-                use_label_encoder=False,
-                eval_metric='logloss',
-                verbosity=0,
-                tree_method='hist',
-            )
+            model = XGBClassifier(**_xgb_kwargs)
     except ImportError:
         # 降级使用 sklearn
         from sklearn.ensemble import GradientBoostingClassifier
@@ -422,7 +442,25 @@ def run(data: pd.DataFrame, config: dict):
             random_state=42,
         )
 
-    model.fit(X_train, y_train)
+    # ── 修复项3a：Early Stopping，复用已有 X_test/y_test，零额外数据消耗 ──
+    _fit_kwargs = {}
+    if not no_split and len(X_test) > 0 and hasattr(model, 'get_booster'):
+        _fit_kwargs = {
+            'eval_set': [(X_test, y_test)],
+            'verbose': False,
+        }
+        # XGBoost >= 2.0 early_stopping_rounds 在构造时传入，< 2.0 在 fit() 传入
+        try:
+            import xgboost as _xgb
+            _xgb_ver = tuple(int(x) for x in _xgb.__version__.split('.')[:2])
+            if _xgb_ver >= (2, 0):
+                model.set_params(early_stopping_rounds=20)
+            else:
+                _fit_kwargs['early_stopping_rounds'] = 20
+        except Exception:
+            _fit_kwargs['early_stopping_rounds'] = 20
+
+    model.fit(X_train, y_train, **_fit_kwargs)
 
     # 预测
     train_pred = model.predict(X_train)
@@ -440,6 +478,27 @@ def run(data: pd.DataFrame, config: dict):
     else:
         if len(X_test) > 0:
             signal.iloc[split_idx:] = test_pred
+
+    # ── 修复项3b：TimeSeriesSplit CV（仅在 use_cv=True 且非 no_split 模式下执行） ──
+    cv_val_acc_mean = float('nan')
+    cv_overfit_gap  = float('nan')
+    if config.get('use_cv', False) and not no_split and len(X) >= 50:
+        try:
+            from sklearn.model_selection import TimeSeriesSplit
+            from sklearn.metrics import accuracy_score as _acc
+            tscv = TimeSeriesSplit(n_splits=5)
+            cv_train_accs, cv_val_accs = [], []
+            for _tr_idx, _val_idx in tscv.split(X):
+                _Xtr, _Xvl = X.iloc[_tr_idx], X.iloc[_val_idx]
+                _ytr, _yvl = y.iloc[_tr_idx], y.iloc[_val_idx]
+                _cv_model = model.__class__(**model.get_params())
+                _cv_model.fit(_Xtr, _ytr)
+                cv_train_accs.append(_acc(_ytr, _cv_model.predict(_Xtr)))
+                cv_val_accs.append(_acc(_yvl, _cv_model.predict(_Xvl)))
+            cv_val_acc_mean = float(np.mean(cv_val_accs))
+            cv_overfit_gap  = float(np.mean(np.array(cv_train_accs) - np.array(cv_val_accs)))
+        except Exception:
+            pass
 
     # 元数据
     meta = {
@@ -462,8 +521,11 @@ def run(data: pd.DataFrame, config: dict):
         'indicators': {
             'pred_proba': pd.Series(test_proba, index=X_test.index),
         },
-        'train_acc': (train_pred == y_train).mean(),
-        'test_acc': (test_pred == y_test).mean() if len(y_test) > 0 else None,
+        'train_acc': float((train_pred == y_train).mean()),
+        'test_acc': float((test_pred == y_test).mean()) if len(y_test) > 0 else None,
+        # 修复项3b：CV 评估指标
+        'cv_val_acc_mean': cv_val_acc_mean,
+        'cv_overfit_gap':  cv_overfit_gap,
         'train_size': len(X_train),
         'test_size': len(X_test),
         'tsfresh_available': TSFRESH_AVAILABLE,

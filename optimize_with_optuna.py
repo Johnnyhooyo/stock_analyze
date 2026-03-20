@@ -10,8 +10,7 @@ Optuna 超参数优化模块
 import optuna
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, Optional, Callable
-import warnings
+from typing import Dict, Any, Optional
 
 # 导入回测引擎
 try:
@@ -137,6 +136,12 @@ STRATEGY_PARAMS = {
         'xgb_max_depth': (3, 8),
         'xgb_learning_rate': (0.01, 0.3),
         'label_period': (1, 5),
+        # 修复项4：正则化参数
+        'xgb_subsample': (0.6, 1.0),
+        'xgb_colsample_bytree': (0.6, 1.0),
+        'xgb_reg_alpha': (0.0, 1.0),
+        'xgb_reg_lambda': (0.0, 1.0),
+        'xgb_min_child_weight': (1, 10),
     },
     'xgboost_enhanced_tsfresh': {
         'test_days': (3, 15),
@@ -144,6 +149,12 @@ STRATEGY_PARAMS = {
         'xgb_max_depth': (3, 8),
         'xgb_learning_rate': (0.01, 0.3),
         'label_period': (1, 5),
+        # 修复项4：正则化参数
+        'xgb_subsample': (0.6, 1.0),
+        'xgb_colsample_bytree': (0.6, 1.0),
+        'xgb_reg_alpha': (0.0, 1.0),
+        'xgb_reg_lambda': (0.0, 1.0),
+        'xgb_min_child_weight': (1, 10),
     },
     'xgboost_enhanced_ta_tsfresh': {
         'test_days': (3, 15),
@@ -151,6 +162,12 @@ STRATEGY_PARAMS = {
         'xgb_max_depth': (3, 8),
         'xgb_learning_rate': (0.01, 0.3),
         'label_period': (1, 5),
+        # 修复项4：正则化参数
+        'xgb_subsample': (0.6, 1.0),
+        'xgb_colsample_bytree': (0.6, 1.0),
+        'xgb_reg_alpha': (0.0, 1.0),
+        'xgb_reg_lambda': (0.0, 1.0),
+        'xgb_min_child_weight': (1, 10),
     },
     'lightgbm_enhanced': {
         'test_days': (3, 15),
@@ -159,6 +176,12 @@ STRATEGY_PARAMS = {
         'lgbm_learning_rate': (0.01, 0.3),
         'lgbm_num_leaves': (15, 63),
         'label_period': (1, 5),
+        # 修复项4：LightGBM 正则化参数（使用原生参数名）
+        'lgb_feature_fraction': (0.6, 1.0),
+        'lgb_bagging_fraction': (0.6, 1.0),
+        'lgb_reg_alpha': (0.0, 1.0),
+        'lgb_reg_lambda': (0.0, 1.0),
+        'lgb_min_child_samples': (10, 50),
     },
     'lightgbm_enhanced_tsfresh': {
         'test_days': (3, 15),
@@ -167,6 +190,12 @@ STRATEGY_PARAMS = {
         'lgbm_learning_rate': (0.01, 0.3),
         'lgbm_num_leaves': (15, 63),
         'label_period': (1, 5),
+        # 修复项4：LightGBM 正则化参数（使用原生参数名）
+        'lgb_feature_fraction': (0.6, 1.0),
+        'lgb_bagging_fraction': (0.6, 1.0),
+        'lgb_reg_alpha': (0.0, 1.0),
+        'lgb_reg_lambda': (0.0, 1.0),
+        'lgb_min_child_samples': (10, 50),
     },
     'lightgbm_enhanced_ta_tsfresh': {
         'test_days': (3, 15),
@@ -175,14 +204,23 @@ STRATEGY_PARAMS = {
         'lgbm_learning_rate': (0.01, 0.3),
         'lgbm_num_leaves': (15, 63),
         'label_period': (1, 5),
+        # 修复项4：LightGBM 正则化参数（使用原生参数名）
+        'lgb_feature_fraction': (0.6, 1.0),
+        'lgb_bagging_fraction': (0.6, 1.0),
+        'lgb_reg_alpha': (0.0, 1.0),
+        'lgb_reg_lambda': (0.0, 1.0),
+        'lgb_min_child_samples': (10, 50),
     },
 }
 
 
-def _get_param_space(strategy_name: str) -> dict:
-    """获取策略的参数空间"""
+def _get_param_space(strategy_name: str, strategy_mod=None) -> dict:
+    """获取策略的参数空间，优先读取策略模块中的 PARAM_SPACE 属性"""
     space = COMMON_PARAMS.copy()
-    if strategy_name in STRATEGY_PARAMS:
+    # 优先从策略模块本身读取（单一维护来源）
+    if strategy_mod is not None and hasattr(strategy_mod, 'PARAM_SPACE'):
+        space.update(strategy_mod.PARAM_SPACE)
+    elif strategy_name in STRATEGY_PARAMS:
         space.update(STRATEGY_PARAMS[strategy_name])
     return space
 
@@ -226,10 +264,10 @@ class StrategyOptimizer:
         self.direction = direction
         self.use_vectorbt = use_vectorbt and backtest_vectorbt is not None
 
-        # 获取策略参数空间
+        # 获取策略参数空间（优先读取策略模块的 PARAM_SPACE）
         strategy_name = getattr(strategy_mod, 'NAME', 'unknown')
         self.strategy_name = strategy_name
-        self.param_space = _get_param_space(strategy_name)
+        self.param_space = _get_param_space(strategy_name, strategy_mod)
 
         # 判断是否为多股票策略
         self.train_type = self._get_training_type(strategy_name)
@@ -239,11 +277,11 @@ class StrategyOptimizer:
         if self.train_type == 'multi':
             self.multi_stock_data = self._load_multi_stock_data()
 
-        # 记录最佳结果（_lock 保护 all_results 在并行 trial 中的写入）
+        # 记录最佳结果
+        # 注意：当 n_jobs=1（默认串行）时无需加锁；若启用 n_jobs>1 需外部同步
         self.best_value = float('-inf') if direction == 'maximize' else float('inf')
         self.best_params = None
         self.all_results = []
-        self._lock = __import__('threading').Lock()
 
     def _get_training_type(self, strategy_name: str) -> str:
         """获取策略的训练类型"""
@@ -439,25 +477,24 @@ class StrategyOptimizer:
         if value is None or np.isnan(value):
             value = 0
 
-        # 记录结果并更新最佳（加锁保护并行写入）
-        with self._lock:
-            self.all_results.append({
-                'params': params,
-                'value': value,
-                'cum_return': result.get('cum_return', 0),
-                'sharpe_ratio': result.get('sharpe_ratio', 0),
-                'max_drawdown': result.get('max_drawdown', 0),
-                'win_rate': result.get('win_rate', 0),
-                'total_trades': total_trades,
-            })
-            if self.direction == 'maximize':
-                if value > self.best_value:
-                    self.best_value = value
-                    self.best_params = params.copy()
-            else:
-                if value < self.best_value:
-                    self.best_value = value
-                    self.best_params = params.copy()
+        # 记录结果并更新最佳
+        self.all_results.append({
+            'params': params,
+            'value': value,
+            'cum_return': result.get('cum_return', 0),
+            'sharpe_ratio': result.get('sharpe_ratio', 0),
+            'max_drawdown': result.get('max_drawdown', 0),
+            'win_rate': result.get('win_rate', 0),
+            'total_trades': total_trades,
+        })
+        if self.direction == 'maximize':
+            if value > self.best_value:
+                self.best_value = value
+                self.best_params = params.copy()
+        else:
+            if value < self.best_value:
+                self.best_value = value
+                self.best_params = params.copy()
 
         # 注意：这里不启用自动剪枝，因为单步报告会触发默认的 median 剪枝
         # 如果需要剪枝，可以在创建 study 时配置 pruner

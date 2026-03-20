@@ -3,7 +3,9 @@ backtest_engine: vectorbt
 data_sources:
 - yahooquery
 fees_rate: 0.00088
-feishu_webhook: https://open.feishu.cn/open-apis/bot/v2/hook/ea59078b-e0f3-443f-a72a-d49d7114a58c
+invest_fraction: 0.95   # 买入仓位比例，0.95 保留5%现金缓冲（两个回测引擎共用）
+slippage: 0.001          # 滑点（两个回测引擎统一）
+feishu_webhook: null     # 飞书 Webhook 地址请配置在 keys.yaml 中，避免密钥泄露
 lookback_months: 3
 max_test_days: 20
 max_tries: 300
@@ -13,13 +15,42 @@ max_drawdown: -0.15
 min_total_trades: 4
 optuna_trials: 100
 period: 5y
-position_avg_cost: 600.0
+position_avg_cost: 500.0
 position_shares: 200
+position_peak_price: 0.0        # 持仓期间最高价（ATR 移动止损用），0 表示用入场价代替
+
+# ── 风险管理配置 ────────────────────────────────────────────────
+risk_management:
+  use_atr_stop: true             # 是否启用 ATR 动态止损
+  atr_period: 14                 # ATR 计算周期
+  atr_multiplier: 2.0            # 止损价 = 峰值 - multiplier × ATR
+  trailing_stop: true            # true = 移动止损（跟踪峰值），false = 固定入场价止损
+  use_kelly: false               # 是否启用 Kelly 仓位公式（需要回测胜率/盈亏比数据）
+  kelly_fraction: 0.5            # Kelly 缩放系数（0.5 = 半 Kelly）
+  max_position_pct: 0.25         # 单股最大仓位比例（25%）
+  portfolio_value: 200000.0      # 总资金（Kelly 仓位换算基准）
+  daily_loss_limit: 0.05         # 单日亏损超过此比例触发熔断（5%）
+  max_consecutive_loss_days: 3   # 连续亏损天数超过此值触发熔断
 stamp_duty: 0.001
 test_days: 5
+test_months: 6              # Hold-Out 封存段长度（月）：最近 N 个月完全封存，不参与超参搜索
+early_stop_threshold: 0.03  # 早停软阈值：val 累计收益低于此值直接跳过（trial >= 10 后生效）
+use_cv: false               # 修复项3b：是否启用 TimeSeriesSplit 时序 CV（tsfresh 变种建议保持 false）
+wf_min_window_win_rate: 0.5 # Walk-Forward 准入：窗口胜率最低要求
 ticker: 0700.hk
 train_years: 5
 use_optuna: true
+
+# 情感分析配置
+# sentiment_weight=0.0 表示情感仅作为参考信息展示，不影响交易决策
+# 设置 0.0~0.3 可让情感信号对策略信号进行轻微加权
+sentiment_weight: 0.03          # 情感信号权重（0=仅展示，>0=参与加权，建议不超过0.3）
+
+# ── 实盘接口配置（OMS）──────────────────────────────────────────
+# 填写后系统会在买入/卖出信号触发时通过 OMS 提交订单
+# 真实密钥请配置在 keys.yaml 中，避免泄露
+broker_api_url: null     # 券商 API 地址（如富途/Tiger/IBKR），null 表示使用纸面交易
+# broker_api_key 和 broker_account 请在 keys.yaml 中配置
 
 # 策略训练配置 (统一配置，替代旧的 strategies 列表)
 # 分类: single (单股票), multi (多股票), custom (自定义)
@@ -44,6 +75,7 @@ strategy_training:
     - rsi_pvt
     - bollinger_breakout
     - macd_rsi_combo
+    - rsi_drawdown_0225       # 含止损逻辑的 RSI 回撤策略
 
   # ML 策略 - 多股票训练
   multi:
@@ -67,6 +99,12 @@ ml_strategies:
     xgb_n_estimators: 100
     xgb_max_depth: 5
     xgb_learning_rate: 0.1
+    # 修复项4：正则化默认值
+    xgb_subsample: 0.8
+    xgb_colsample_bytree: 0.8
+    xgb_reg_alpha: 0.0
+    xgb_reg_lambda: 1.0          # XGBoost 官方默认值，勿设为 0.0
+    xgb_min_child_weight: 1
 
   # xgboost_enhanced_tsfresh 配置 (启用 tsfresh，禁用 ta-lib)
   xgboost_enhanced_tsfresh:
@@ -76,6 +114,12 @@ ml_strategies:
     xgb_n_estimators: 100
     xgb_max_depth: 5
     xgb_learning_rate: 0.1
+    # 修复项4：正则化默认值
+    xgb_subsample: 0.8
+    xgb_colsample_bytree: 0.8
+    xgb_reg_alpha: 0.0
+    xgb_reg_lambda: 1.0
+    xgb_min_child_weight: 1
 
   # xgboost_enhanced_ta_tsfresh 配置 (启用 ta-lib + tsfresh)
   xgboost_enhanced_ta_tsfresh:
@@ -85,6 +129,12 @@ ml_strategies:
     xgb_n_estimators: 100
     xgb_max_depth: 5
     xgb_learning_rate: 0.1
+    # 修复项4：正则化默认值
+    xgb_subsample: 0.8
+    xgb_colsample_bytree: 0.8
+    xgb_reg_alpha: 0.0
+    xgb_reg_lambda: 1.0
+    xgb_min_child_weight: 1
 
   # lightgbm_enhanced 配置
   lightgbm_enhanced:
@@ -94,6 +144,12 @@ ml_strategies:
     lgbm_max_depth: 5
     lgbm_learning_rate: 0.1
     lgbm_num_leaves: 31
+    # 修复项4：LightGBM 正则化默认值（使用原生参数名）
+    lgb_feature_fraction: 0.8
+    lgb_bagging_fraction: 0.8
+    lgb_reg_alpha: 0.0
+    lgb_reg_lambda: 0.0
+    lgb_min_child_samples: 20
 
   # lightgbm_enhanced_tsfresh 配置 (启用 tsfresh，禁用 ta-lib)
   lightgbm_enhanced_tsfresh:
@@ -104,6 +160,12 @@ ml_strategies:
     lgbm_max_depth: 5
     lgbm_learning_rate: 0.1
     lgbm_num_leaves: 31
+    # 修复项4：LightGBM 正则化默认值（使用原生参数名）
+    lgb_feature_fraction: 0.8
+    lgb_bagging_fraction: 0.8
+    lgb_reg_alpha: 0.0
+    lgb_reg_lambda: 0.0
+    lgb_min_child_samples: 20
 
   # lightgbm_enhanced_ta_tsfresh 配置 (启用 ta-lib + tsfresh)
   lightgbm_enhanced_ta_tsfresh:
@@ -114,3 +176,9 @@ ml_strategies:
     lgbm_max_depth: 5
     lgbm_learning_rate: 0.1
     lgbm_num_leaves: 31
+    # 修复项4：LightGBM 正则化默认值（使用原生参数名）
+    lgb_feature_fraction: 0.8
+    lgb_bagging_fraction: 0.8
+    lgb_reg_alpha: 0.0
+    lgb_reg_lambda: 0.0
+    lgb_min_child_samples: 20

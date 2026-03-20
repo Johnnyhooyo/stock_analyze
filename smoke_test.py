@@ -63,7 +63,7 @@ for name, fn in strategy_tests:
         print(f"  ❌ {name:30s}  FAIL: {e}")
         passed = False
 
-# ── Backtest smoke test ─────────────────────────────────────────────
+# ── Backtest smoke test ─────────────────────────────────────���───────
 print()
 try:
     from analyze_factor import backtest
@@ -86,6 +86,61 @@ try:
     print(f"  ✅ predict() interface (ma_crossover)  ok")
 except Exception as e:
     print(f"  ❌ predict() interface (ma_crossover)  FAIL: {e}")
+    passed = False
+
+# ── ML strategy smoke tests ────────────────────────────────────────
+print()
+print("ML strategy smoke tests (synthetic, n=300)")
+
+ml_tests = []
+try:
+    from strategies.xgboost_enhanced import run as xgb_run, NAME as xgb_name
+    ml_tests.append(("xgboost_enhanced", xgb_run, xgb_name))
+except ImportError as e:
+    print(f"  ⚠️  xgboost_enhanced import skipped: {e}")
+
+try:
+    from strategies.lightgbm_enhanced import run as lgbm_run, NAME as lgbm_name
+    ml_tests.append(("lightgbm_enhanced", lgbm_run, lgbm_name))
+except ImportError as e:
+    print(f"  ⚠️  lightgbm_enhanced import skipped: {e}")
+
+ml_cfg = {
+    'test_days': 5,
+    'label_period': 1,
+    'xgb_n_estimators': 30,
+    'xgb_max_depth': 3,
+    'xgb_learning_rate': 0.1,
+    'lgbm_n_estimators': 30,
+    'lgbm_max_depth': 3,
+    'lgbm_learning_rate': 0.1,
+    'lgbm_num_leaves': 15,
+}
+
+for name, fn, expected_name in ml_tests:
+    try:
+        sig, model, meta = fn(data, ml_cfg)
+        assert isinstance(sig, pd.Series), "signal not a Series"
+        assert set(sig.dropna().unique()).issubset({0, 1}), f"unexpected values: {sig.unique()}"
+        assert meta.get("name") == expected_name, f"meta name mismatch: {meta.get('name')}"
+        print(f"  ✅ {name:30s}  hold={int(sig.sum()):4d}/{len(sig)}d  model={'yes' if model else 'no'}")
+    except Exception as e:
+        print(f"  ❌ {name:30s}  FAIL: {e}")
+        passed = False
+
+# ── run_factor_analysis smoke test ────────────────────────────────
+print()
+try:
+    from analyze_factor import run_factor_analysis
+    sig_fa, _, _ = ma_run(data, {})
+    fa_result = run_factor_analysis(data, sig_fa, {})
+    assert 'ic_mean' in fa_result, "missing ic_mean"
+    assert 'quintile_df' in fa_result, "missing quintile_df"
+    assert 'decay_series' in fa_result, "missing decay_series"
+    ic = fa_result.get('ic_mean', float('nan'))
+    print(f"  ✅ run_factor_analysis()  ic_mean={ic:.4f}  icir={fa_result.get('icir', float('nan')):.4f}")
+except Exception as e:
+    print(f"  ❌ run_factor_analysis()  FAIL: {e}")
     passed = False
 
 print()

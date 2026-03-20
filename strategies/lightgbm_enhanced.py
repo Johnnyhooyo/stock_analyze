@@ -23,6 +23,24 @@ from typing import Tuple
 
 NAME = "lightgbm_enhanced"
 
+# ── 策略元数据 ───────────────────────────────────────────────────
+MIN_BARS = 100  # 运行此策略所需的最少数据行数
+
+# 超参数空间（供 optimize_with_optuna.py 读取，避免在两处维护）
+PARAM_SPACE = {
+    'test_days':            (3, 15),
+    'lgbm_n_estimators':   (50, 200),
+    'lgbm_max_depth':      (3, 8),
+    'lgbm_learning_rate':  (0.01, 0.3),
+    'lgbm_num_leaves':     (15, 63),
+    'label_period':        (1, 5),
+    'lgb_feature_fraction': (0.6, 1.0),
+    'lgb_bagging_fraction': (0.6, 1.0),
+    'lgb_reg_alpha':       (0.0, 1.0),
+    'lgb_reg_lambda':      (0.0, 1.0),
+    'lgb_min_child_samples': (10, 50),
+}
+
 # 导入特征工程函数
 from strategies.xgboost_enhanced import (
     add_features,
@@ -58,6 +76,12 @@ def run(data: pd.DataFrame, config: dict):
     label_period = int(config.get('label_period', 1))
     use_ta_lib = config.get('use_ta_lib', False)
     use_tsfresh = config.get('use_tsfresh_features', False)
+    # ── 修复项4：LightGBM 正则化参数（使用 LightGBM 原生参数名） ──
+    feature_fraction    = float(config.get('lgb_feature_fraction', 0.8))
+    bagging_fraction    = float(config.get('lgb_bagging_fraction', 0.8))
+    reg_alpha           = float(config.get('lgb_reg_alpha', 0.0))
+    reg_lambda          = float(config.get('lgb_reg_lambda', 0.0))
+    min_child_samples   = int(config.get('lgb_min_child_samples', 20))
 
     # 添加技术指标特征
     df = add_features(data, use_ta_lib=use_ta_lib)
@@ -163,16 +187,23 @@ def run(data: pd.DataFrame, config: dict):
     # 训练模型
     try:
         import lightgbm as lgb
-        # 尝试使用 GPU（不可用时在 fit() 阶段捕获并回退 CPU）
-        model = lgb.LGBMClassifier(
+        # 正则化参数（修复项4）传入模型，使用 LightGBM 原生参数名
+        _lgbm_kwargs = dict(
             n_estimators=n_estimators,
             max_depth=max_depth,
             learning_rate=learning_rate,
             num_leaves=num_leaves,
+            feature_fraction=feature_fraction,
+            bagging_fraction=bagging_fraction,
+            bagging_freq=1,        # bagging_fraction 生效需要 bagging_freq > 0
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
+            min_child_samples=min_child_samples,
             random_state=42,
             verbose=-1,
-            device='gpu',
         )
+        # 尝试使用 GPU（不可用时在 fit() 阶段捕获并回退 CPU）
+        model = lgb.LGBMClassifier(**_lgbm_kwargs, device='gpu')
         model_name = 'LightGBM'
     except ImportError:
         # 降级使用 XGBoost
@@ -198,24 +229,25 @@ def run(data: pd.DataFrame, config: dict):
             )
             model_name = 'GradientBoosting'
 
+    # ── 修复项3a：Early Stopping，复用已有 X_test/y_test，零额外数据消耗 ──
+    _fit_kwargs = {}
+    if not no_split and len(X_test) > 0 and model_name == 'LightGBM':
+        _fit_kwargs = {
+            'eval_set': [(X_test, y_test)],
+            'callbacks': [lgb.early_stopping(20, verbose=False)],
+        }
+
     # ⚠️ GPU 修复：GPU 错误在 fit() 时才实际触发，在此捕获并静默回退 CPU
     try:
-        model.fit(X_train, y_train)
+        model.fit(X_train, y_train, **_fit_kwargs)
     except Exception as gpu_err:
         _msg = str(gpu_err).lower()
         if 'gpu' in _msg or 'cuda' in _msg or 'opencl' in _msg or 'device' in _msg:
             print(f"  [lightgbm_enhanced] GPU 不可用，回退 CPU ({gpu_err})")
             try:
                 import lightgbm as lgb
-                model = lgb.LGBMClassifier(
-                    n_estimators=n_estimators,
-                    max_depth=max_depth,
-                    learning_rate=learning_rate,
-                    num_leaves=num_leaves,
-                    random_state=42,
-                    verbose=-1,
-                )
-                model.fit(X_train, y_train)
+                model = lgb.LGBMClassifier(**_lgbm_kwargs)
+                model.fit(X_train, y_train, **_fit_kwargs)
             except Exception:
                 raise
         else:
@@ -237,6 +269,27 @@ def run(data: pd.DataFrame, config: dict):
     else:
         if len(X_test) > 0:
             signal.iloc[split_idx:] = test_pred
+
+    # ── 修复项3b：TimeSeriesSplit CV（仅在 use_cv=True 且非 no_split 模式下执行） ──
+    cv_val_acc_mean = float('nan')
+    cv_overfit_gap  = float('nan')
+    if config.get('use_cv', False) and not no_split and len(X) >= 50:
+        try:
+            from sklearn.model_selection import TimeSeriesSplit
+            from sklearn.metrics import accuracy_score as _acc
+            tscv = TimeSeriesSplit(n_splits=5)
+            cv_train_accs, cv_val_accs = [], []
+            for _tr_idx, _val_idx in tscv.split(X):
+                _Xtr, _Xvl = X.iloc[_tr_idx], X.iloc[_val_idx]
+                _ytr, _yvl = y.iloc[_tr_idx], y.iloc[_val_idx]
+                _cv_model = model.__class__(**model.get_params())
+                _cv_model.fit(_Xtr, _ytr)
+                cv_train_accs.append(_acc(_ytr, _cv_model.predict(_Xtr)))
+                cv_val_accs.append(_acc(_yvl, _cv_model.predict(_Xvl)))
+            cv_val_acc_mean = float(np.mean(cv_val_accs))
+            cv_overfit_gap  = float(np.mean(np.array(cv_train_accs) - np.array(cv_val_accs)))
+        except Exception:
+            pass
 
     # 元数据
     meta = {
@@ -260,8 +313,11 @@ def run(data: pd.DataFrame, config: dict):
         'indicators': {
             'pred_proba': pd.Series(test_proba, index=X_test.index),
         },
-        'train_acc': (train_pred == y_train).mean(),
-        'test_acc': (test_pred == y_test).mean() if len(y_test) > 0 else None,
+        'train_acc': float((train_pred == y_train).mean()),
+        'test_acc': float((test_pred == y_test).mean()) if len(y_test) > 0 else None,
+        # 修复项3b：CV 评估指标
+        'cv_val_acc_mean': cv_val_acc_mean,
+        'cv_overfit_gap':  cv_overfit_gap,
         'train_size': len(X_train),
         'test_size': len(X_test),
         'tsfresh_available': TSFRESH_AVAILABLE,

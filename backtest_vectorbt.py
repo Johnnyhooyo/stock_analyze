@@ -24,11 +24,17 @@ def backtest_vectorbt(
     # 获取配置
     initial_capital = float(config.get('initial_capital', 100000.0))
 
-    # 港股费率设置（默认值）
+    # 港股费率设置（从 config 读取，与原生引擎保持一致）
     # 买入：佣金 ~0.08% + 征费0.005% + 交易费0.0027% ≈ 0.088%
     # 卖出：买入费率 + 印花税0.1% ≈ 0.188%
-    fees_rate = config.get('fees_rate', 0.00088)  # 买入费率
-    stamp_duty = config.get('stamp_duty', 0.001)  # 印花税（仅卖出）
+    fees_rate = float(config.get('fees_rate', 0.00088))   # 买入费率
+    stamp_duty = float(config.get('stamp_duty', 0.001))   # 印花税（仅卖出）
+    slippage = float(config.get('slippage', 0.001))        # 滑点：与原生引擎统一，从 config 读取
+    invest_fraction = float(config.get('invest_fraction', 0.95))  # 仓位比例，与原生引擎保持一致
+
+    # 港股往返费率：买入~0.088% + 卖出~0.188%（含印花税）
+    # 精确做法：买卖分别设置，此处用单向平均值作为 vectorbt 的 fees 参数
+    avg_fees = (fees_rate + fees_rate + stamp_duty) / 2  # ~0.0013 (0.13%)
 
     # 准备数据
     close = data['Close'].copy()
@@ -47,10 +53,6 @@ def backtest_vectorbt(
     # 卖出点：当前持仓=0，前一天持仓=1
     exits = (signal_shifted == 0) & (signal_shifted.shift(1).fillna(0) == 1)
 
-    # 港股往返费率：买入~0.088% + 卖出~0.188%（含印花税）
-    # 使用平均费率简化计算
-    avg_fees = (fees_rate + fees_rate + stamp_duty) / 2  # ~0.0013 (0.13%)
-
     # 运行回测
     portfolio = vbt.Portfolio.from_signals(
         close,
@@ -58,7 +60,9 @@ def backtest_vectorbt(
         exits=exits,
         init_cash=initial_capital,
         fees=avg_fees,
-        slippage=0.001,  # 滑点
+        slippage=slippage,
+        size=invest_fraction,       # 每次使用 invest_fraction 比例的现金
+        size_type='percent',        # 按百分比仓位
         freq='1D',  # 设置频率，避免夏普等指标警告
     )
 

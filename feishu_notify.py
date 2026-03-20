@@ -172,8 +172,21 @@ def send_full_report_to_feishu(
     if predictions:
         lines.append("### 🔮 预测结果")
         for p in predictions:
-            emoji = "🟢" if p['direction'] == "上涨" else "🔴"
-            lines.append(f"- {p['date']}: {p['price']:.2f} {emoji} {p['return']:+.2%} (区间: [{p['low']:.2f}, {p['high']:.2f}])")
+            # Support both old-style keys and new-style keys
+            if 'direction' in p:
+                emoji = "🟢" if p['direction'] == "上涨" else "🔴"
+                price_str = f"{p['price']:.2f} " if 'price' in p else ""
+                ret_str = f"{p['return']:+.2%} " if 'return' in p else ""
+                range_str = f"(区间: [{p['low']:.2f}, {p['high']:.2f}])" if 'low' in p else ""
+                lines.append(f"- {p['date']}: {price_str}{emoji} {ret_str}{range_str}")
+            else:
+                signal_str = p.get('signal_str', '—')
+                emoji = "🟢" if p.get('signal', 0) == 1 else "🔴"
+                pred_ret = p.get('pred_ret_raw', '—')
+                lo = p.get('price_lo', 0)
+                hi = p.get('price_hi', 0)
+                confidence = p.get('confidence', '')
+                lines.append(f"- {p['date']}: {signal_str} {emoji} 模型输出: {pred_ret}  区间: [{lo:.2f}, {hi:.2f}]  {confidence}")
         lines.append("")
 
     # 持仓状态

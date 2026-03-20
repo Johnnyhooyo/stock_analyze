@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 
 NAME = "bollinger_rsi_trend"
+MIN_BARS = 50   # 布林带需要足够的 K 线
 
 
 def _bollinger_bands(close: pd.Series, period: int = 20, num_std: float = 2.0):
