@@ -152,9 +152,72 @@ def _simple_sentiment(text: str) -> dict:
     }
 
 
+def _fetch_news_via_yfinance(ticker: str, max_results: int) -> list:
+    """通过 yfinance 获取新闻（主要来源）"""
+    news = []
+    import yfinance as yf
+
+    stock = yf.Ticker(ticker)
+    news_data = stock.news
+
+    if news_data:
+        for item in news_data[:max_results]:
+            try:
+                # 处理新版 yfinance 格式
+                content = item.get('content') or {}
+                title = content.get('title', '') or item.get('title', '')
+                summary = content.get('summary', '') or content.get('description', '') or item.get('summary', '')
+                provider = content.get('provider', {}).get('displayName', '') if isinstance(content.get('provider'), dict) else ''
+
+                if title:
+                    news.append({
+                        'title': title,
+                        'publisher': provider,
+                        'link': content.get('clickThroughUrl', {}).get('url', '') if isinstance(content.get('clickThroughUrl'), dict) else '',
+                        'pubDate': content.get('pubDate', ''),
+                        'summary': summary
+                    })
+            except Exception:
+                continue
+    return news
+
+
+def _fetch_news_via_rss(ticker: str, max_results: int) -> list:
+    """通过 Yahoo Finance RSS 直接获取新闻（备用来源）"""
+    import requests
+    import xml.etree.ElementTree as ET
+
+    news = []
+    rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+    try:
+        resp = requests.get(rss_url, timeout=10, headers={
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        })
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        for item in root.findall('.//item')[:max_results]:
+            title = item.findtext('title', '')
+            link = item.findtext('link', '')
+            pub_date = item.findtext('pubDate', '')
+            description = item.findtext('description', '')
+            if title:
+                news.append({
+                    'title': title,
+                    'publisher': 'Yahoo Finance',
+                    'link': link,
+                    'pubDate': pub_date,
+                    'summary': description,
+                })
+    except Exception:
+        pass
+    return news
+
+
 def fetch_stock_news(ticker: str = "0700.HK", max_results: int = 10) -> list:
     """
-    获取股票新闻（使用 Yahoo Finance RSS）
+    获取股票新闻（多来源容错）
+
+    优先使用 yfinance API，失败时回退到 Yahoo Finance RSS。
 
     Args:
         ticker: 股票代码
@@ -163,38 +226,25 @@ def fetch_stock_news(ticker: str = "0700.HK", max_results: int = 10) -> list:
     Returns:
         list: 新闻列表
     """
-    news = []
-
+    # 来源 1: yfinance API
     try:
-        import yfinance as yf
+        news = _fetch_news_via_yfinance(ticker, max_results)
+        if news:
+            return news
+    except Exception:
+        pass  # yfinance API 不可用（常见：Yahoo 返回空 JSON），静默降级
 
-        # 获取股票信息
-        stock = yf.Ticker(ticker)
-        news_data = stock.news
+    # 来源 2: Yahoo Finance RSS（备用）
+    try:
+        news = _fetch_news_via_rss(ticker, max_results)
+        if news:
+            return news
+    except Exception:
+        pass
 
-        if news_data:
-            for item in news_data[:max_results]:
-                try:
-                    # 处理新版 yfinance 格式
-                    content = item.get('content') or {}
-                    title = content.get('title', '') or item.get('title', '')
-                    summary = content.get('summary', '') or content.get('description', '') or item.get('summary', '')
-                    provider = content.get('provider', {}).get('displayName', '') if isinstance(content.get('provider'), dict) else ''
-
-                    if title:  # 只添加有标题的新闻
-                        news.append({
-                            'title': title,
-                            'publisher': provider,
-                            'link': content.get('clickThroughUrl', {}).get('url', '') if isinstance(content.get('clickThroughUrl'), dict) else '',
-                            'pubDate': content.get('pubDate', ''),
-                            'summary': summary
-                        })
-                except Exception:
-                    continue
-    except Exception as e:
-        print(f"  ⚠️ 获取新闻失败: {e}")
-
-    return news
+    # 所有来源均失败
+    print(f"  ⚠️ 获取新闻失败: Yahoo Finance API 暂时不可用，情感分析将返回中性结果")
+    return []
 
 
 def analyze_stock_sentiment(ticker: str = "0700.HK", force_refresh: bool = False) -> dict:

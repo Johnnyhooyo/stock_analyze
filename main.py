@@ -23,7 +23,8 @@ from datetime import datetime, timedelta
 # ──────────────────────────────────────────────────────────────────
 #  本地模块
 # ──────────────────────────────────────────────────────────────────
-from fetch_data import download_stock_data, download_hsi_incremental, _prev_hk_trading_day, _is_hk_trading_day
+from data.manager import DataManager
+from data.calendar import prev_trading_day as _prev_hk_trading_day, is_trading_day as _is_hk_trading_day
 from analyze_factor import (
     _load_config, _discover_strategies,
     run_search, backtest,
@@ -236,7 +237,22 @@ def step1_ensure_data(sources_override=None):
 
     # ── 1a. 历史日线 ────────────────────────────────────────────
     hist_dir = Path(__file__).parent / 'data' / 'historical'
-    hist_files = sorted(hist_dir.glob('*.csv'), key=lambda p: p.stat().st_mtime, reverse=True)
+
+    # 只匹配目标 ticker 的文件，避免误读 HSI 其他成分股数据
+    # 文件名格式：{ticker}_{period}.csv 或 {safe_name}_{period}.csv
+    # 例如 0700.hk_5y.csv 或 0700_HK_3y.csv
+    _ticker_lower = ticker.lower()
+    _ticker_safe  = ticker.replace('.', '_').lower()
+    def _is_ticker_file(p: Path) -> bool:
+        stem = p.stem.lower()
+        return stem.startswith(_ticker_lower + '_') or stem.startswith(_ticker_safe + '_')
+
+    hist_files = sorted(
+        [f for f in hist_dir.glob('*.csv') if _is_ticker_file(f)],
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    )
+
+    mgr = DataManager()
 
     if hist_files and not _hist_data_is_stale(str(hist_files[0])):
         hist_path = str(hist_files[0])
@@ -262,7 +278,7 @@ def step1_ensure_data(sources_override=None):
             print(f"  ⚠️  历史日线数据已过期（最新 {latest_date:%Y-%m-%d}  < 需要 {hint}），正在更新…")
         else:
             print("  ⚠️  本地无历史日线数据，正在下载…")
-        hist_data, hist_path = download_stock_data(sources_override=sources_override)
+        hist_data, hist_path = mgr.download_from_config(sources_override=sources_override)
         if hist_data is None or hist_data.empty:
             # 下载失败时降级使用旧文件（如果存在）
             if hist_files:
@@ -276,11 +292,10 @@ def step1_ensure_data(sources_override=None):
             print(f"  ✅ 历史数据已更新: {hist_path}  ({len(hist_data)} 条)")
 
     # ── 1b. HSI 成分股增量更新 ──────────────────────────────────
-    cfg = _load_config_full()
     hsi_period = cfg.get('hsi_period', '3y')   # 可在 config.yaml 里配置
     print(f"\n  📥 正在增量更新 HSI 成分股数据（period={hsi_period}）…")
     try:
-        hsi_result = download_hsi_incremental(period=hsi_period)
+        hsi_result = mgr.download_hsi_incremental(period=hsi_period)
         total   = hsi_result['total']
         skipped = hsi_result['skipped']
         updated = hsi_result['updated']

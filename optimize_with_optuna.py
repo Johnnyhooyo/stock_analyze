@@ -439,7 +439,14 @@ class StrategyOptimizer:
         except optuna.exceptions.TrialPruned:
             raise
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             raise optuna.TrialPruned(f"策略运行失败: {e}")
+
+        # ── 信号安全检查：确保 signal 是一维 int Series ──
+        if isinstance(signal, pd.DataFrame):
+            signal = signal.iloc[:, 0]
+        signal = pd.Series(signal).astype(int)
 
         # 3. 回测（使用对应的数据进行回测）
         try:
@@ -457,10 +464,11 @@ class StrategyOptimizer:
         min_trades = int(self.config.get('min_total_trades', 5))
 
         # 5. 多维度验证（防止过拟合）
-        cum_return = result.get('cum_return', 0)
-        sharpe = result.get('sharpe_ratio', 0)
-        max_drawdown = result.get('max_drawdown', 0)
-        total_trades = result.get('total_trades', 0)
+        # ── 强制转 float，防止 vectorbt 返回 Series/array 导致布尔歧义 ──
+        cum_return = float(result.get('cum_return', 0))
+        sharpe = float(result.get('sharpe_ratio', 0))
+        max_drawdown = float(result.get('max_drawdown', 0))
+        total_trades = int(result.get('total_trades', 0))
 
         # 检查各项指标，不满足则剪枝
         if total_trades < min_trades:
@@ -473,9 +481,9 @@ class StrategyOptimizer:
             raise optuna.TrialPruned(f"回撤过大({max_drawdown:.2%}<{max_dd:.2%})")
 
         # 6. 获取优化指标
-        value = result.get(self.metric, 0)
+        value = float(result.get(self.metric, 0))
         if value is None or np.isnan(value):
-            value = 0
+            value = 0.0
 
         # 记录结果并更新最佳
         self.all_results.append({
@@ -731,6 +739,9 @@ def optimize_multiobjective(
         params = _suggest_params(trial, optimizer.param_space)
         trial_cfg = config.copy()
         trial_cfg.update(params)
+
+        # fix #8: 合并 ML 策略专用配置（与单目标 objective 保持一致）
+        trial_cfg = optimizer._merge_ml_strategy_config(trial_cfg)
 
         try:
             # 复用已修复的单/多股票切分逻辑

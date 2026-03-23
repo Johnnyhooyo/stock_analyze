@@ -12,3 +12,6 @@ requests
 vectorbt
 tsfresh
 pyts
+tenacity>=9.0
+exchange_calendars>=4.5
+pyarrow>=14.0

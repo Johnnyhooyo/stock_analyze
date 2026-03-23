@@ -54,6 +54,10 @@ def prepare_data(
     """
     label_period = int(config.get('label_period', 1))
 
+    # ===== 0. 去除重复列名，防止列访问返回 DataFrame =====
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
+
     # ===== 1. 添加传统技术指标特征 =====
     df_feat = add_technical_features(df)
 
@@ -63,8 +67,10 @@ def prepare_data(
     if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
         # ⚠️ 前视偏差修复：特征选择标签仅用 df_feat（即传入的数据切片）的标签，
         # 调用方必须只传入训练集数据，不得包含验证/测试集数据。
+        # squeeze() 确保 Close 列是 Series（防止重复列名导致 DataFrame 返回）
+        close_series = df_feat['Close'].squeeze() if isinstance(df_feat['Close'], pd.DataFrame) else df_feat['Close']
         label = np.where(
-            df_feat['Close'].shift(-label_period) > df_feat['Close'],
+            close_series.shift(-label_period) > close_series,
             1, 0
         )
         y_train_for_selection = pd.Series(label, index=df_feat.index)
@@ -98,11 +104,16 @@ def prepare_data(
         'Dividends', 'dividends', 'Stock Splits', 'Adj Close', 'adjclose',
         'returns',
     ]
+
+    def _col_has_data(df_check, col):
+        s = df_check[col].notna().sum()
+        return bool(s.any()) if isinstance(s, pd.Series) else bool(s > 0)
+
     tech_cols = [
         c for c in df_feat.columns
         if c not in exclude_cols
         and not c.lower().startswith('adj')
-        and df_feat[c].notna().sum() > 0
+        and _col_has_data(df_feat, c)
     ]
 
     # 合并特征
@@ -113,26 +124,39 @@ def prepare_data(
 
     # 去除全 NaN 列
     combined = combined.dropna(axis=1, how='all')
+    # 防止 tsfresh 生成名为 'label' 的特征列，污染 y 标签
+    if 'label' in combined.columns:
+        combined = combined.drop(columns=['label'])
 
     # ===== 4. 创建标签 =====
+    # 先删除 df_feat 中可能存在的 'label' 列，防止赋值产生重复列
+    if 'label' in df_feat.columns:
+        df_feat = df_feat.drop(columns=['label'])
+    close_s = df_feat['Close']
+    if isinstance(close_s, pd.DataFrame):
+        close_s = close_s.iloc[:, 0]
     df_feat['label'] = np.where(
-        df_feat['Close'].shift(-label_period) > df_feat['Close'],
+        close_s.shift(-label_period) > close_s,
         1, 0
     )
 
     # ===== 5. 清理数据 =====
-    feat_cols = [c for c in combined.columns if combined[c].notna().sum() > 0]
+    # 显式排除 'label'，防止 tsfresh 产生同名特征导致 join 后出现重复列
+    feat_cols = [c for c in combined.columns if _col_has_data(combined, c) and c != 'label']
 
     if not feat_cols:
         return pd.DataFrame(), pd.Series(dtype=int), []
 
-    df_clean = combined[feat_cols].join(df_feat['label']).dropna()
+    df_clean = combined[feat_cols].join(df_feat['label']).replace([np.inf, -np.inf], np.nan).dropna()
 
     if len(df_clean) < 20:
         return pd.DataFrame(), pd.Series(dtype=int), []
 
     X = df_clean[feat_cols]
     y = df_clean['label']
+    # 确保 y 是一维 Series（防止重复列导致 DataFrame 流入 model.fit）
+    if isinstance(y, pd.DataFrame):
+        y = y.iloc[:, 0]
 
     return X, y, feat_cols
 
@@ -333,7 +357,7 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
         if c not in combined.columns:
             combined[c] = 0.0
 
-    X = combined[feat_cols].fillna(0)
+    X = combined[feat_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
     predictions = model.predict(X)
     return pd.Series(predictions.astype(int), index=X.index)
 

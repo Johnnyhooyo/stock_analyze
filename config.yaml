@@ -25,6 +25,8 @@ risk_management:
   atr_period: 14                 # ATR 计算周期
   atr_multiplier: 2.0            # 止损价 = 峰值 - multiplier × ATR
   trailing_stop: true            # true = 移动止损（跟踪峰值），false = 固定入场价止损
+  simulate_in_backtest: true     # 回测是否模拟 ATR 止损（true=开启，false=关闭保持向后兼容）
+  cooldown_bars: 0               # 止损触发后冷却 bar 数（0=无冷却，>0 模拟熔断暂停）
   use_kelly: false               # 是否启用 Kelly 仓位公式（需要回测胜率/盈亏比数据）
   kelly_fraction: 0.5            # Kelly 缩放系数（0.5 = 半 Kelly）
   max_position_pct: 0.25         # 单股最大仓位比例（25%）

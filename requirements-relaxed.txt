@@ -8,4 +8,6 @@ matplotlib
 scikit-learn
 PyYAML
 joblib
+tenacity
+exchange_calendars
 

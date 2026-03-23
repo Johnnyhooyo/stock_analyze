@@ -117,8 +117,9 @@ def _discover_strategies(strategy_type: str = None) -> list:
             mod = importlib.import_module(f'strategies.{name}')
             if hasattr(mod, 'run') and hasattr(mod, 'NAME'):
                 modules.append(mod)
-        except ImportError:
-            pass
+        except ImportError as e:
+            import logging
+            logging.getLogger(__name__).warning(f"策略 '{name}' 导入失败: {e}")
     return modules
 
 
@@ -351,10 +352,10 @@ def _check_meets_threshold(bt: dict, min_return: float, min_sharpe: float,
     Returns:
         bool: 是否满足所有阈值
     """
-    cum_return = bt.get('cum_return', 0)
-    sharpe = bt.get('sharpe_ratio', float('nan'))
-    max_drawdown = bt.get('max_drawdown', 0)
-    total_trades = bt.get('total_trades', 0)
+    cum_return = float(bt.get('cum_return', 0))
+    sharpe = float(bt.get('sharpe_ratio', float('nan')))
+    max_drawdown = float(bt.get('max_drawdown', 0))
+    total_trades = int(bt.get('total_trades', 0))
 
     # 检查各项指标
     checks = {
@@ -401,6 +402,23 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
     # 港股费率设置
     fees_rate = float(config.get('fees_rate', 0.00088))  # 买入费率 ~0.088%
     stamp_duty = float(config.get('stamp_duty', 0.001))   # 印花税 ~0.1%（仅卖出）
+
+    # ── ATR 止损回测模拟（Issue #9 修复） ──────────────────────────
+    risk_cfg = config.get('risk_management', {})
+    if risk_cfg.get('simulate_in_backtest', True) and risk_cfg.get('use_atr_stop', True):
+        try:
+            from position_manager import simulate_atr_stoploss
+            signal = simulate_atr_stoploss(
+                data, signal,
+                atr_period=int(risk_cfg.get('atr_period', 14)),
+                atr_multiplier=float(risk_cfg.get('atr_multiplier', 2.0)),
+                trailing=bool(risk_cfg.get('trailing_stop', True)),
+                cooldown_bars=int(risk_cfg.get('cooldown_bars', 0)),
+            )
+        except Exception as _e:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(f"[backtest] ATR 止损模拟失败（已跳过）: {_e}")
+    # ────────────────────────────────────────────────────────────────
 
     bt = data.copy()
     # ⚠️ 前视偏差修复：信号在第 T 天收盘后生成，最早在第 T+1 天开盘执行。

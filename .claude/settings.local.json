@@ -60,7 +60,8 @@
       "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -E \"\\(xgboost_enhanced\\)\" | head -20)",
       "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -E \"\\(策略|xgboost_enhanced.*Trial|优化完成|样本外|Walk-Forward|汇总|窗口|结论\\)\" | head -50)",
       "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -E \"\\(优化策略|优化完成|xgboost_enhanced.*Trial|样本外测试|Walk-Forward|结论|分析流程\\)\" | head -50)",
-      "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -A 30 \"Walk-Forward\")"
+      "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -A 30 \"Walk-Forward\")",
+      "mcp__feishu__docx_builtin_search"
     ]
   }
 }

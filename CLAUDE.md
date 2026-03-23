@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-腾讯控股 (0700.hk) 股票智能分析系统 - Automated stock analysis with multi-strategy backtesting, hyperparameter optimization, signal prediction, and position management.
+港股智能分析系统 — 自动化多策略回测、超参数优化、信号预测与持仓管理。默认标的腾讯控股 (0700.HK)，支持 HSI 全部成分股。
 
 ## Running the Project
 
@@ -19,11 +19,11 @@ python3 main.py --n-days 5         # Prediction horizon
 ## Architecture
 
 ### Core Flow (main.py)
-1. **Data Check** - Load local CSV or download from yfinance/yahooquery
-2. **Strategy Search** - Random/Optuna hyperparameter search across all strategies
-3. **Validation** - Out-of-sample testing with multi-dimensional thresholds
-4. **Prediction** - Generate signals for next N trading days
-5. **Reporting** - Save reports to `data/reports/`, optionally send to Feishu
+1. **Data Check** — Load local CSV or download via vendor chain (yahooquery → yfinance → akshare …)
+2. **Strategy Search** — Random/Optuna hyperparameter search across all strategies
+3. **Validation** — Out-of-sample testing with multi-dimensional thresholds
+4. **Prediction** — Generate signals for next N trading days
+5. **Reporting** — Save reports to `data/reports/`, optionally send to Feishu
 
 ### Key Modules
 
@@ -33,16 +33,73 @@ python3 main.py --n-days 5         # Prediction horizon
 | `analyze_factor.py` | Core backtesting engine, strategy discovery, hyperparam search |
 | `validate_strategy.py` | Out-of-sample and Walk-Forward validation |
 | `backtest_vectorbt.py` | Optional Vectorbt-based backtesting |
-| `fetch_data.py` | Data download with 2-day stale check |
+| `fetch_data.py` | **Backward-compatible shim** → delegates to `data/` package |
+| `fetch_hsi_stocks.py` | **Backward-compatible shim** → delegates to `data/` package |
 | `position_manager.py` | Position state, ATR stop-loss, trade suggestions |
 | `sentiment_analysis.py` | News sentiment scoring with caching |
-| `google_trends.py` | Google Trends热度数据 with caching |
+| `google_trends.py` | Google Trends 热度数据 with caching |
 | `feishu_notify.py` | Feishu webhook notifications |
 | `optimize_with_optuna.py` | Bayesian hyperparameter optimization |
 | `train_multi_stock.py` | Loads HSI stocks for multi-stock training |
 | `oms.py` | Broker API integration for live order submission |
 | `visualize.py` | Strategy plotting and chart generation |
-| `fetch_hsi_stocks.py` | Fetch Hang Seng Index constituent stocks |
+| `easy_quptation.py` | 实时行情工具 (easyquotation wrapper, standalone) |
+| `time_kline.py` | 港股分时 K 线获取 (standalone) |
+
+### Data Package (`data/`)
+
+数据模块经过 Phase 2 重构后采用分层架构：
+
+```
+data/
+├── __init__.py              # 包入口 (导出所有公开 API)
+├── manager.py               # DataManager — 核心入口：vendor 链 → 校验 → 质量 → 存储
+├── vendor_base.py           # DataVendor 抽象基类 + fetch_with_retry() 统一重试
+├── vendors/                 # 各数据源适配器
+│   ├── yfinance_vendor.py   # yfinance (单次请求，重试由基类处理)
+│   ├── yahooquery_vendor.py # yahooquery
+│   ├── pandas_datareader_vendor.py
+│   ├── akshare_vendor.py    # akshare 中文列名映射
+│   └── alpha_vantage_vendor.py
+├── schemas.py               # OHLCV 列归一化 + schema 校验 (含 Adj Close)
+├── calendar.py              # 港股交易日历 (纯 exchange_calendars XHKG，无硬编码假期)
+├── quality.py               # 数据质量管道 (检测 + 自动修复)
+├── storage.py               # 存储后端 (CSV / Parquet, 含迁移工具)
+├── rate_limiter.py          # per-vendor 令牌桶限速器
+├── config.py                # DataConfig 配置模型 (从 config.yaml 加载)
+└── hsi_stocks.py            # HSI 成分股列表
+```
+
+**使用方式**：
+
+```python
+# 新 API（推荐）
+from data import DataManager
+mgr = DataManager()
+df, path = mgr.download("0700.HK", period="3y")
+
+# 纯读取（不触发网络请求）
+df = mgr.load("0700.HK", period="3y")
+
+```python
+from data import DataManager
+mgr = DataManager()
+df, path = mgr.download("0700.HK", period="3y")
+```
+
+**关键特性**：
+- **Vendor 链**：数据源按 config.yaml 优先级自动回退
+- **统一重试**：`DataVendor.fetch_with_retry()` 基类模板方法，指数退避 + rate limiting
+- **Rate Limiter**：per-vendor 令牌桶限速，防止批量下载触发限流
+- **exchange_calendars**：纯 XHKG 日历（不再维护硬编码假期表）
+- **Schema 校验**：自动列名归一化 (中英文同义词 + Adj Close) + OHLCV 校验
+- **质量管道**：检测 + 自动修复（OHLC clamp / 负 Volume → NaN / 缺口前值填充）
+- **存储后端**：支持 CSV / Parquet，`AutoBackend` 读取时自动检测格式
+- **并发下载**：`download_hsi_incremental()` 支持 `ThreadPoolExecutor` 并发（config.batch_max_workers）
+- **纯读取接口**：`DataManager.load()` 不触发网络请求，供策略模块直接调用
+- **原子写入**：tempfile → os.replace，防止中断损坏文件
+- **元数据追踪**：每个数据文件附带 `.meta.json` (来源/时间戳/SHA-256/last_bar_date)
+- **高效缓存判断**：`_is_stale()` 优先读 `.meta.json`，避免全量解析 CSV
 
 ### Strategy Interface
 
@@ -105,6 +162,8 @@ All backtesting is designed to be free of look-ahead bias:
 python3 train_multi_stock.py   # optimize params with Optuna (standalone)
 ```
 
+`easy_quptation.py` and `time_kline.py` are **standalone utility modules** for realtime quotes and intraday K-line data. They are not part of the core pipeline.
+
 ### Multi-Stock Data Cache
 
 `analyze_factor._load_multi_stock_data()` uses `joblib.Memory` (disk cache at `data/cache/`) so multiple Optuna worker processes share the same cached data and avoid repeated disk I/O.
@@ -113,11 +172,13 @@ python3 train_multi_stock.py   # optimize params with Optuna (standalone)
 
 `strategies/tsfresh_features.py` limits `n_jobs` to `cpu_count // 2` to prevent process explosion when Optuna runs parallel trials alongside tsfresh's internal parallelism.
 
-
+### Backtest Engines
 
 Configured via `config.yaml` → `backtest_engine`:
 - `native` (recommended): Pure Python backtester in `analyze_factor.py:backtest()` - handles HK fees (0.088% + 0.1% stamp duty)
 - `vectorbt`: Vectorbt-based backtesting - results differ slightly
+
+**ATR 止损模拟（Issue #9 已修复）**: 两个引擎均支持在回测中模拟 ATR 动态止损。通过 `config.yaml → risk_management.simulate_in_backtest`（默认 `true`）控制。开启后，`simulate_atr_stoploss()` 会在回测开始前逐 bar 扫描信号，当持仓期间收盘价跌破 `peak - multiplier × ATR` 时将信号强制置 0（平仓）。`cooldown_bars > 0` 可模拟止损后暂停重入的冷却期。设为 `false` 可恢复旧行为（向后兼容）。
 
 ### Multi-Dimensional Threshold Validation
 
@@ -134,6 +195,9 @@ Strategies must pass all thresholds to be saved:
 |-----|---------|-------------|
 | `ticker` | 0700.hk | Stock code |
 | `period` | 5y | Backtest period |
+| `data_sources` | [yahooquery] | Data vendor priority chain |
+| `storage_format` | csv | Storage format: "csv" or "parquet" |
+| `batch_max_workers` | 4 | Concurrent download threads for HSI batch |
 | `lookback_months` | 3 | Validation window |
 | `train_years` | 5 | Training window |
 | `backtest_engine` | vectorbt | native or vectorbt |
@@ -149,7 +213,7 @@ Strategies must pass all thresholds to be saved:
 | `early_stop_threshold` | 0.03 | Skip trial if val return below this (trial >= 10) |
 | `wf_min_window_win_rate` | 0.5 | Walk-forward minimum window win rate |
 | `use_cv` | false | Enable TimeSeriesSplit CV (keep false for tsfresh variants) |
-| `sentiment_weight` | 0.0 | Sentiment signal weight (0=display only, 0.0-0.3 for light weighting) |
+| `sentiment_weight` | 0.03 | Sentiment signal weight (0=display only, 0.0-0.3 for light weighting) |
 
 ### keys.yaml (not committed)
 ```yaml
@@ -157,6 +221,7 @@ alpha_vantage_key: null
 feishu_webhook: https://open.feishu.cn/...
 broker_api_key: null
 broker_account: null
+extra_hk_holidays: []          # 临时停市日 (如台风), 格式: ['2026-09-15']
 ```
 
 ### Backtest Engine Fees
@@ -174,6 +239,8 @@ broker_account: null
 | `atr_period` | 14 | ATR calculation period |
 | `atr_multiplier` | 2.0 | Stop-loss = peak - multiplier × ATR |
 | `trailing_stop` | true | Use trailing stop (else fixed entry price) |
+| `simulate_in_backtest` | true | Simulate ATR stop-loss in backtest (false = legacy behaviour) |
+| `cooldown_bars` | 0 | Bars to pause after a stop-loss (0 = no cooldown) |
 | `use_kelly` | false | Enable Kelly position sizing |
 | `kelly_fraction` | 0.5 | Kelly scaling (0.5 = half Kelly) |
 | `max_position_pct` | 0.25 | Maximum single position (% of portfolio) |
@@ -185,7 +252,7 @@ broker_account: null
 | Key | Default | Description |
 |-----|---------|-------------|
 | `position_shares` | 200 | Current holding shares (0 = flat) |
-| `position_avg_cost` | 600.0 | Average cost per share |
+| `position_avg_cost` | 500.0 | Average cost per share |
 | `position_peak_price` | 0.0 | Peak price during holding (0 = use entry price) |
 
 ### OMS / Live Trading
@@ -195,13 +262,19 @@ broker_account: null
 
 ## Data Storage
 
-- Historical data: `data/historical/*.csv`
-- Factors: `data/factors/factor_*.pkl`
-- Reports: `data/reports/report_*.md`
-- Trending data: `data/trends/tencent_trends.csv`
-- Sentiment cache: `data/sentiment/sentiment_cache.csv`
-- HSI stocks: `data/historical/*_HK_*.csv` (via `fetch_hsi_stocks.py`)
-- Multi-stock cache: `data/cache/` (joblib.Memory, auto-managed)
+```
+data/
+├── historical/          # OHLCV 数据 (*.csv 或 *.parquet) + 元数据 (*.meta.json)
+├── factors/             # 有效因子存储 (factor_*.pkl)
+├── reports/             # 回测报告 (report_*.md)
+├── trends/              # Google Trends 数据
+├── sentiment/           # 情感分析缓存
+├── cache/               # joblib.Memory 多股票数据缓存
+├── logs/                # 运行日志 (fetch.log, fetch_hsi.log)
+│   └── quality_report.json  # 数据质量报告 (自动追加)
+├── timekline/           # 分时 K 线缓存
+└── plots/               # 图表输出
+```
 
 ## Testing
 
@@ -232,41 +305,27 @@ Each ML strategy inherits config from `config.yaml → ml_strategies.<strategy_n
 - XGBoost params: `xgb_n_estimators`, `xgb_max_depth`, `xgb_learning_rate`, `xgb_subsample`, `xgb_colsample_bytree`, `xgb_reg_alpha`, `xgb_reg_lambda`, `xgb_min_child_weight`
 - LightGBM params: `lgbm_n_estimators`, `lgbm_max_depth`, `lgbm_learning_rate`, `lgbm_num_leaves`, `lgb_feature_fraction`, `lgb_bagging_fraction`, `lgb_reg_alpha`, `lgb_reg_lambda`, `lgb_min_child_samples`
 
-### tsfresh Integration
-
-tsfresh (Time Series Feature extraction) automatically extracts thousands of features from time series data:
-
-- **Automatic feature extraction**: Statistical, trend, seasonality, FFT, entropy features
-- **Rolling window**: Configurable windows (default 10, 20 days)
-- **Feature selection**: FDR correction (p < 0.05) to filter significant features
-- **Hybrid mode**: `xgboost_enhanced` can use `use_tsfresh_features: true` to combine technical indicators + tsfresh
-
-**Config example** (`config.yaml`):
-```yaml
-ml_strategies:
-  xgboost_enhanced:
-    use_tsfresh_features: false  # set true to add tsfresh features
-  xgboost_enhanced_tsfresh:
-    use_tsfresh_features: true
-    tsfresh_window_sizes: [10, 20]
-```
-
 ## Dependencies
 
-- pandas, numpy, scikit-learn - data processing
-- xgboost, lightgbm - ML strategies
-- vectorbt - optional backtesting engine
-- optuna - Bayesian optimization
-- pytrends - Google Trends
-- tsfresh, pyts - automatic time series feature extraction
-- ta - technical analysis library (200+ indicators, wraps TA-Lib C library)
-- yfinance, akshare - market data
+Core:
+- `yfinance`, `yahooquery`, `akshare` — market data vendors
+- `pandas`, `numpy`, `scikit-learn` — data processing
+- `pyarrow` — Parquet storage backend
+- `tenacity` — retry with exponential backoff (data downloads)
+- `exchange_calendars` — HK trading calendar (XHKG, required dependency)
+- `PyYAML` — config loading
 
-### ta-lib Integration
+ML:
+- `xgboost`, `lightgbm` — ML strategies
+- `tsfresh`, `pyts` — automatic time series feature extraction
+- `ta` — technical analysis library (200+ indicators)
 
-ta-lib (`pip install ta`) provides standardized technical indicator calculations:
+Backtesting:
+- `vectorbt` — optional backtesting engine
+- `optuna` — Bayesian optimization
 
-- **strategies/indicators.py** - Central module wrapping ta-lib
-- **xgboost_enhanced** supports `use_ta_lib: true` config to enable
-- Falls back to pandas implementation if ta not available
-- Same feature output as pandas version for compatibility
+Other:
+- `pytrends` — Google Trends
+- `textblob`, `snownlp` — sentiment analysis
+- `matplotlib` — visualization
+- `requests` — HTTP client

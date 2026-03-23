@@ -1,0 +1,8 @@
+{
+  "ticker": "0004.HK",
+  "source": "yahooquery",
+  "download_ts": "2026-03-23T19:56:37.517872",
+  "rows": 740,
+  "sha256": "6da83826361311fa3679508f73b07a0d3d46403fe54015a22fd0e7cb03c6ea00",
+  "last_bar_date": "2026-03-20"
+}

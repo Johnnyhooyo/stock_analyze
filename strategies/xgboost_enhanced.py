@@ -158,6 +158,11 @@ def add_features(df: pd.DataFrame, use_ta_lib: bool = False) -> pd.DataFrame:
 
     df = df.copy()
 
+    # 去除重复列名（可能来自多股票 concat 或 tsfresh 特征合并）
+    # 保留每个列名的第一次出现，确保 df['Close'] 等列访问始终返回 Series 而非 DataFrame
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
+
     has_high   = 'High'   in df.columns
     has_low    = 'Low'    in df.columns
     has_volume = 'Volume' in df.columns
@@ -255,8 +260,18 @@ def prepare_data(df: pd.DataFrame, test_days: int, label_period: int = 1) -> Tup
     Returns:
         X, y, feature_columns
     """
+    # 去除重复列名（tsfresh concat 后可能引入重复列），防止 df['Close'] 返回 DataFrame
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
+
     # 标签: 未来 label_period 天是否上涨
-    df['label'] = np.where(df['Close'].shift(-label_period) > df['Close'], 1, 0)
+    # 先删除可能存在的 'label' 列（例如 tsfresh 可能生成同名特征），防止产生重复列
+    if 'label' in df.columns:
+        df = df.drop(columns=['label'])
+    close_s = df['Close']
+    if isinstance(close_s, pd.DataFrame):
+        close_s = close_s.iloc[:, 0]
+    df['label'] = np.where(close_s.shift(-label_period) > close_s, 1, 0)
 
     # 特征列（排除标签和原始数据，以及无用的列）
     exclude_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'label',
@@ -264,20 +279,26 @@ def prepare_data(df: pd.DataFrame, test_days: int, label_period: int = 1) -> Tup
                     'ticker']  # 多股票数据中的 ticker 列
     feat_cols = [c for c in df.columns if c not in exclude_cols and not c.lower().startswith('adj')]
 
-    # 只保留有数据的特征列
-    feat_cols = [c for c in feat_cols if df[c].notna().sum() > 0]
+    # 只保留有数据的特征列（兼容 MultiIndex 列，notna().sum() 可能返回 Series）
+    def _has_data(col):
+        s = df[col].notna().sum()
+        return bool(s.any()) if isinstance(s, pd.Series) else bool(s > 0)
+    feat_cols = [c for c in feat_cols if _has_data(c)]
 
     if not feat_cols:
         return pd.DataFrame(), pd.Series(dtype=int), []
 
-    # 只选择特征列和标签，去除 NaN
-    df_clean = df[feat_cols + ['label']].dropna()
+    # 只选择特征列和标签，去除 NaN / inf
+    df_clean = df[feat_cols + ['label']].replace([np.inf, -np.inf], np.nan).dropna()
 
     if len(df_clean) < 10:
         return pd.DataFrame(), pd.Series(dtype=int), []
 
     X = df_clean[feat_cols]
     y = df_clean['label']
+    # 确保 y 是一维 Series（防止重复列导致 DataFrame 流入 model.fit）
+    if isinstance(y, pd.DataFrame):
+        y = y.iloc[:, 0]
 
     return X, y, feat_cols
 
@@ -492,7 +513,12 @@ def run(data: pd.DataFrame, config: dict):
                 _Xtr, _Xvl = X.iloc[_tr_idx], X.iloc[_val_idx]
                 _ytr, _yvl = y.iloc[_tr_idx], y.iloc[_val_idx]
                 _cv_model = model.__class__(**model.get_params())
-                _cv_model.fit(_Xtr, _ytr)
+                # fix #12: 传入 eval_set 以启用 early_stopping_rounds
+                _cv_model.fit(
+                    _Xtr, _ytr,
+                    eval_set=[(_Xvl, _yvl)],
+                    verbose=False,
+                )
                 cv_train_accs.append(_acc(_ytr, _cv_model.predict(_Xtr)))
                 cv_val_accs.append(_acc(_yvl, _cv_model.predict(_Xvl)))
             cv_val_acc_mean = float(np.mean(cv_val_accs))
@@ -586,7 +612,7 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
         for c in missing_cols:
             df[c] = 0.0
 
-    X = df[feat_cols].fillna(0)
+    X = df[feat_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
 
     # 推断
     predictions = model.predict(X)

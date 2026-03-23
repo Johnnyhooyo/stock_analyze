@@ -423,6 +423,9 @@ def extract_tsfresh_features(
                 else:
                     print(f"  [tsfresh] 无显著特征，选择前 100 个")
                     combined = features_aligned.iloc[:, :100]
+                    # fix #13: 确保空选择分支索引与 common_idx 对齐
+                    if not combined.index.equals(common_idx):
+                        combined.index = common_idx
         except Exception as e:
             print(f"  [tsfresh] 特征选择异常: {e}")
 

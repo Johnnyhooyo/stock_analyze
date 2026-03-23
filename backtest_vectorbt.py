@@ -43,6 +43,25 @@ def backtest_vectorbt(
     signal = pd.Series(signal).astype(float)
     close, signal = close.align(signal, join='inner')
 
+    # ── ATR 止损回测模拟（Issue #9 修复） ──────────────────────────
+    risk_cfg = config.get('risk_management', {})
+    if risk_cfg.get('simulate_in_backtest', True) and risk_cfg.get('use_atr_stop', True):
+        try:
+            from position_manager import simulate_atr_stoploss
+            # 对齐 data 到 signal/close 的共同索引后再模拟
+            data_aligned = data.reindex(signal.index)
+            signal = simulate_atr_stoploss(
+                data_aligned, signal,
+                atr_period=int(risk_cfg.get('atr_period', 14)),
+                atr_multiplier=float(risk_cfg.get('atr_multiplier', 2.0)),
+                trailing=bool(risk_cfg.get('trailing_stop', True)),
+                cooldown_bars=int(risk_cfg.get('cooldown_bars', 0)),
+            ).astype(float)
+        except Exception as _e:
+            import warnings as _w
+            _w.warn(f"[backtest_vectorbt] ATR 止损模拟失败（已跳过）: {_e}")
+    # ────────────────────────────────────────────────────────────────
+
     # ⚠️ 前视偏差修复：信号在第 T 天收盘后生成，最早在第 T+1 天开盘执行。
     # 将信号整体后移 1 个交易日，确保不会在生成信号的同一根 K 线上成交。
     signal_shifted = signal.shift(1).fillna(0)
@@ -115,7 +134,11 @@ def backtest_vectorbt(
     def get_stat(stats, *keys):
         for k in keys:
             if k in stats.index:
-                return stats[k]
+                v = stats[k]
+                # 确保返回 Python 标量，防止 Series/ndarray 泄漏
+                if hasattr(v, 'item'):
+                    return v.item()
+                return float(v) if not isinstance(v, (int, float)) else v
         return 0
 
     # 转换为兼容格式

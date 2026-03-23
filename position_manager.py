@@ -20,12 +20,20 @@ class Position:
     """持仓数据"""
     shares: int           # 持股数量
     avg_cost: float       # 平均成本
-    current_price: float  # 当前价格
+    current_price: Optional[float] = None  # 当前价格（None 表示未初始化）
     entry_atr: float = 0.0   # 入场时的 ATR 值（供止损用）
     daily_pnl: float = 0.0   # 当日盈亏金额
 
+    def _ensure_price(self):
+        """确保 current_price 已初始化"""
+        if self.current_price is None:
+            raise ValueError(
+                "current_price 未初始化，请先设置 position.current_price = last_close"
+            )
+
     @property
     def market_value(self) -> float:
+        self._ensure_price()
         return self.shares * self.current_price
 
     @property
@@ -34,6 +42,7 @@ class Position:
 
     @property
     def profit(self) -> float:
+        self._ensure_price()
         return self.market_value - self.cost_basis
 
     @property
@@ -94,7 +103,7 @@ def _load_risk_state() -> dict:
                 return json.load(f)
     except Exception:
         pass
-    return {"consecutive_loss_days": 0, "last_trade_date": ""}
+    return {"consecutive_loss_days": 0, "last_trade_date": "", "trailing_peak": None}
 
 
 def _save_risk_state(state: dict):
@@ -143,6 +152,11 @@ class PositionManager:
         # 移动止损跟踪器
         self._trailing = TrailingStop(multiplier=self.atr_multiplier)
 
+        # fix #10: 恢复持久化的 trailing peak
+        saved_state = _load_risk_state()
+        if saved_state.get("trailing_peak") is not None:
+            self._trailing._peak = saved_state["trailing_peak"]
+
     # ── 基本操作 ──────────────────────────────────────────────────
 
     def set_position(self, shares: int, avg_cost: float, current_price: float):
@@ -169,11 +183,14 @@ class PositionManager:
     ) -> bool:
         """
         检查是否触发 ATR 止损。
-        触发条件: close < peak_price - multiplier * atr
+        触发条件: close < max(peak_price - multiplier * atr, entry_price - multiplier * atr)
+        使用 entry_price 作为止损价下限，防止止损位低于入场成本保护线。
         Returns:
             True 表示应退出持仓
         """
-        stop_price = peak_price - self.atr_multiplier * atr
+        trailing_stop = peak_price - self.atr_multiplier * atr
+        entry_stop = entry_price - self.atr_multiplier * atr
+        stop_price = max(trailing_stop, entry_stop)
         return close_price < stop_price
 
     # ── Kelly 仓位公式 ────────────────────────────────────────────
@@ -250,15 +267,23 @@ class PositionManager:
         """
         state = _load_risk_state()
 
-        # 同一天不重复计数
+        # 同一天不重复计数，但用最新 pnl 重新评估是否触发熔断
         if trade_date and state.get("last_trade_date") == trade_date:
             tripped = (
-                abs(today_pnl_pct) > self.daily_loss_limit and today_pnl_pct < 0
+                today_pnl_pct < -self.daily_loss_limit
                 or state["consecutive_loss_days"] >= self.max_consecutive_loss_days
             )
+            if tripped:
+                reason = (
+                    f"单日亏损 {today_pnl_pct:.2%} 超过限制 {self.daily_loss_limit:.2%}"
+                    if today_pnl_pct < -self.daily_loss_limit
+                    else f"已连续亏损 {state['consecutive_loss_days']} 天"
+                )
+            else:
+                reason = "（今日已统计，风控正常）"
             return {
                 "tripped": tripped,
-                "reason": "（今日已统计）",
+                "reason": reason,
                 "action": "观望" if tripped else "正常",
                 "consecutive_loss_days": state["consecutive_loss_days"],
             }
@@ -269,6 +294,8 @@ class PositionManager:
         else:
             state["consecutive_loss_days"] = 0
         state["last_trade_date"] = trade_date
+        # fix #10: 持久化 trailing peak
+        state["trailing_peak"] = self._trailing._peak
         _save_risk_state(state)
 
         loss_days = state["consecutive_loss_days"]
@@ -369,10 +396,11 @@ class PositionManager:
             result["kelly_shares"] = kelly_shares
             result["kelly_amount"] = round(kelly_shares * price, 2)
         else:
-            # 即使不用 Kelly，也做仓位上限校验
-            if self.position:
+            # 即使不用 Kelly，也做仓位上限校验（使用 max_position_pct 计算建议仓位）
+            if self.position and price > 0:
+                proposed = int(self.max_position_pct * capital / price)
                 result["kelly_shares"] = self.validate_position_size(
-                    self.position.shares, price, capital
+                    proposed, price, capital
                 )
                 result["kelly_amount"] = round(result["kelly_shares"] * price, 2)
 
@@ -529,7 +557,7 @@ class PositionManager:
 
 def load_position_from_config(config: dict) -> Optional[Position]:
     """从配置加载持仓。
-    ⚠️ current_price 初始化为 -1（无效标记），调用方**必须**在使用前赋值为最新收盘价：
+    ⚠️ current_price 初始化为 None，调用方**必须**在使用 market_value / profit 前赋值为最新收盘价：
         position.current_price = last_close
     """
     shares   = config.get("position_shares", 0)
@@ -538,7 +566,7 @@ def load_position_from_config(config: dict) -> Optional[Position]:
         return Position(
             shares=shares,
             avg_cost=avg_cost,
-            current_price=-1.0,  # 无效标记；调用方必须更新为最新价格后再使用
+            current_price=None,  # 未初始化；调用方必须更新为最新价格后再使用
         )
     return None
 
@@ -554,7 +582,16 @@ def calc_atr(data: pd.DataFrame, period: int = 14) -> float:
     """
     if len(data) < period + 1:
         return 0.0
-    df = data[["high", "low", "close"]].copy().tail(period + 10)
+    # 兼容大小写列名（如 High/high, Low/low, Close/close）
+    col_map = {}
+    for col in data.columns:
+        if col.lower() in ("high", "low", "close"):
+            col_map[col.lower()] = col
+    missing = {"high", "low", "close"} - set(col_map.keys())
+    if missing:
+        return 0.0
+    df = data[[col_map["high"], col_map["low"], col_map["close"]]].copy().tail(period + 10)
+    df.columns = ["high", "low", "close"]
     tr1 = df["high"] - df["low"]
     tr2 = (df["high"] - df["close"].shift(1)).abs()
     tr3 = (df["low"]  - df["close"].shift(1)).abs()
@@ -562,6 +599,119 @@ def calc_atr(data: pd.DataFrame, period: int = 14) -> float:
     atr_series = tr.rolling(period).mean()
     val = atr_series.iloc[-1]
     return float(val) if not math.isnan(val) else 0.0
+
+
+def calc_atr_series(data: pd.DataFrame, period: int = 14) -> pd.Series:
+    """
+    从历史 K 线数据计算完整 ATR Series（不依赖 ta 库）。
+    Args:
+        data:   包含 High / Low / Close 列的 DataFrame
+        period: ATR 周期（默认 14）
+    Returns:
+        与 data 索引对齐的 ATR Series；数据不足的早期值为 NaN
+    """
+    col_map = {}
+    for col in data.columns:
+        if col.lower() in ("high", "low", "close"):
+            col_map[col.lower()] = col
+    missing = {"high", "low", "close"} - set(col_map.keys())
+    if missing:
+        return pd.Series(dtype=float, index=data.index)
+    df = data[[col_map["high"], col_map["low"], col_map["close"]]].copy()
+    df.columns = ["high", "low", "close"]
+    tr1 = df["high"] - df["low"]
+    tr2 = (df["high"] - df["close"].shift(1)).abs()
+    tr3 = (df["low"]  - df["close"].shift(1)).abs()
+    tr  = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return tr.rolling(period).mean()
+
+
+def simulate_atr_stoploss(
+    data: pd.DataFrame,
+    signal: pd.Series,
+    atr_period: int = 14,
+    atr_multiplier: float = 2.0,
+    trailing: bool = True,
+    cooldown_bars: int = 0,
+) -> pd.Series:
+    """
+    回测 ATR 止损模拟（纯函数，无副作用）。
+
+    逐 bar 扫描策略信号，当持仓期间收盘价跌破 ATR 止损位时将信号强制置 0（平仓），
+    并可选进入冷却期（模拟熔断暂停）。
+
+    Args:
+        data:            含 High / Low / Close 的 OHLCV DataFrame
+        signal:          原始策略信号 Series (1=多头持仓, 0=空仓)，索引须与 data 对齐
+        atr_period:      ATR 计算周期（默认 14）
+        atr_multiplier:  止损价 = max(峰值, 入场价) - multiplier × ATR（默认 2.0）
+        trailing:        True=移动止损（跟踪峰值）；False=固定入场价止损
+        cooldown_bars:   止损触发后冷却 bar 数（0=无冷却）
+
+    Returns:
+        修正后的信号 Series（与输入索引完全一致），止损触发时为 0
+    """
+    # 预计算 ATR
+    atr_series = calc_atr_series(data, atr_period)
+
+    # 对齐索引
+    sig = pd.Series(signal, dtype=float).reindex(data.index).fillna(0)
+    close = data[next(c for c in data.columns if c.lower() == "close")]
+
+    out = sig.copy()
+
+    in_position   = False
+    entry_price   = 0.0
+    peak_price    = 0.0
+    cooldown_left = 0
+
+    for i, idx in enumerate(data.index):
+        raw_sig  = int(sig.iloc[i])
+        c        = float(close.iloc[i])
+        atr_val  = float(atr_series.iloc[i]) if not pd.isna(atr_series.iloc[i]) else 0.0
+
+        # 冷却期内强制空仓
+        if cooldown_left > 0:
+            out.iloc[i] = 0
+            cooldown_left -= 1
+            in_position = False
+            continue
+
+        if not in_position:
+            if raw_sig == 1:
+                # 新开仓
+                in_position = True
+                entry_price = c
+                peak_price  = c
+                out.iloc[i] = 1
+            else:
+                out.iloc[i] = 0
+        else:
+            # 持仓中
+            if raw_sig == 0:
+                # 策略自行平仓
+                in_position = False
+                out.iloc[i] = 0
+            else:
+                # 更新峰值
+                if trailing:
+                    peak_price = max(peak_price, c)
+
+                # 计算止损价：取移动止损 vs 入场止损的较大值（更保守）
+                if atr_val > 0:
+                    trailing_stop = peak_price - atr_multiplier * atr_val
+                    entry_stop    = entry_price - atr_multiplier * atr_val
+                    stop_price    = max(trailing_stop, entry_stop) if trailing else entry_stop
+                    if c < stop_price:
+                        # 触发止损，强制平仓
+                        out.iloc[i]   = 0
+                        in_position   = False
+                        cooldown_left = cooldown_bars
+                        continue
+
+                out.iloc[i] = 1
+
+    return out.astype(int)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -632,5 +782,39 @@ if __name__ == "__main__":
         trade_date="2099-02-01",
     )
     print(f"  action={res2['action']}  kelly_shares={res2['kelly_shares']}  stop_price={res2['stop_price']}")
+
+    # ── simulate_atr_stoploss 测试 ──
+    print("\n[6] simulate_atr_stoploss（先涨后暴跌触发止损）")
+    import numpy as np
+    dates = pd.date_range('2025-01-01', periods=60, freq='B')
+    # 价格：先从100涨到120（前30天），再暴跌到95（后30天）
+    prices_up   = np.linspace(100, 120, 30)
+    prices_down = np.linspace(119, 95, 30)
+    closes      = np.concatenate([prices_up, prices_down])
+    highs       = closes * 1.005
+    lows        = closes * 0.995
+    sim_data    = pd.DataFrame({'Close': closes, 'High': highs, 'Low': lows}, index=dates)
+    # 全程持仓信号（持仓中不主动平仓）
+    raw_signal  = pd.Series(1, index=dates)
+    modified    = simulate_atr_stoploss(sim_data, raw_signal, atr_period=5, atr_multiplier=2.0)
+    stop_bars   = (modified == 0).sum()
+    first_stop  = modified[modified == 0].index[0].date() if stop_bars > 0 else None
+    print(f"  止损触发 bar 数: {stop_bars}（期望 > 0）")
+    print(f"  首次止损日期:    {first_stop}（期望在下跌阶段）")
+    assert stop_bars > 0, "❌ 未触发止损！"
+    assert first_stop >= dates[30].date(), "❌ 止损触发时间异常（应在下跌阶段）"
+    print("  ✅ 止损触发正确")
+
+    print("\n[7] simulate_atr_stoploss（冷却期测试）")
+    modified_cd = simulate_atr_stoploss(sim_data, raw_signal, atr_period=5,
+                                         atr_multiplier=2.0, cooldown_bars=5)
+    # 冷却期后不应立即重新开仓
+    if first_stop:
+        stop_idx = list(dates).index(pd.Timestamp(first_stop))
+        cooldown_end = stop_idx + 5
+        if cooldown_end < len(dates):
+            for ci in range(stop_idx, min(cooldown_end + 1, len(dates))):
+                assert modified_cd.iloc[ci] == 0, f"❌ 冷却期 bar {ci} 信号未为 0！"
+    print("  ✅ 冷却期信号正确")
 
     print("\n✅ 测试完成")

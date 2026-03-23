@@ -14,7 +14,7 @@ def _build_features(data: pd.DataFrame, test_days: int) -> tuple:
         df[f"ret_{i}"] = df["returns"].shift(i)
     # 标签：使用下一日收益方向（shift(-1）），避免使用当日收益造成泄露
     df["label"] = np.where(df["Close"].shift(-1) > df["Close"], 1, 0)
-    df = df.dropna()
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
     return df, [f"ret_{i}" for i in range(1, test_days + 1)]
 
 
@@ -79,6 +79,6 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
         if c not in df.columns:
             df[c] = 0.0
 
-    X = df[feat_cols].fillna(0)
+    X = df[feat_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
     predictions = model.predict(X)
     return pd.Series(predictions.astype(int), index=X.index)

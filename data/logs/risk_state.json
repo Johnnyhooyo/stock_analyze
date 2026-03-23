@@ -1,4 +1,5 @@
 {
-  "consecutive_loss_days": 0,
-  "last_trade_date": "2099-02-01"
+  "consecutive_loss_days": 1,
+  "last_trade_date": "2026-03-20",
+  "trailing_peak": null
 }

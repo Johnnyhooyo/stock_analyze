@@ -1,3 +1,28 @@
+"""
+easy_quptation.py — 港股实时行情与分时K线工具
+
+独立工具模块，不属于核心回测 pipeline。用于获取：
+- 实时行情（价格、涨跌、成交量等）
+- 日K 线数据（保存至 data/historical/）
+- 分时 K 线（1 分钟频率，用于盘中交易决策）
+
+数据来源：
+- 港股：easyquotation hkquote/daykline，或本地 time_kline 模块
+- 其他标的：easyquotation timekline
+
+使用方式（standalone）：
+    from easy_quptation import get_realtime, fetch_and_save_daykline, get_timekline
+
+    # 实时行情
+    df = get_realtime(['00700', '09988'])
+
+    # 日K 保存
+    fetch_and_save_daykline('00700')
+
+    # 分时K
+    tk = get_timekline('00700')
+"""
+
 import easyquotation
 import pandas as pd
 from pathlib import Path

@@ -1,3 +1,21 @@
+"""
+time_kline.py — 港股分时K线获取工具
+
+独立工具模块，从 GTIMG/ifzq 等数据源获取港股分时K线数据并缓存到本地。
+
+与 easy_quptation.py 的区别：
+- easy_quptation.get_timekline() 优先调用本模块（港股专用）
+- time_kline 更底层，专精港股分时数据，支持多数据源回退
+
+使用方式（standalone）：
+    from time_kline import get_hk_timekline
+
+    # 获取今日分时（自动缓存）
+    tk = get_hk_timekline('00700')
+
+数据缓存：data/timekline/{ticker}_{date}.csv
+"""
+
 from pathlib import Path
 from typing import Optional, Union
 import datetime as dt

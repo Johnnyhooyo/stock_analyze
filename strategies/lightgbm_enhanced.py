@@ -376,7 +376,7 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
         if c not in df.columns:
             df[c] = 0.0
 
-    X = df[feat_cols].fillna(0)
+    X = df[feat_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
 
     predictions = model.predict(X)
     signal = pd.Series(predictions, index=X.index, dtype=int)
