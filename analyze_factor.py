@@ -474,7 +474,14 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
     bt['strategy'] = bt['strategy'].astype(float)
     cum_return      = (1 + bt['strategy'].fillna(0)).prod() - 1
     try:
-        ann = (1 + cum_return) ** (12.0 / max(1, lookback_months)) - 1
+        # 使用实际交易天数计算年化收益，避免 lookback_months 近似误差。
+        # 当 (1+cum_return) ≤ 0（本金归零）时，年化无意义，直接返回 -1。
+        trading_days_total = max(1, len(bt))
+        base = 1 + cum_return
+        if base <= 0:
+            ann = -1.0
+        else:
+            ann = base ** (252.0 / trading_days_total) - 1
     except Exception:
         ann = float('nan')
 

@@ -148,9 +148,11 @@ def send_full_report_to_feishu(
         lines.append("")
 
     # 收益指标
+    import math as _math
+    _ann_return_str = f"{ann_return:+.2%}" if (ann_return is not None and _math.isfinite(ann_return)) else "N/A"
     lines.append("### 💰 收益指标")
     lines.append(f"- **累计收益**: {cum_return:+.2%}")
-    lines.append(f"- **年化收益**: {ann_return:+.2%}")
+    lines.append(f"- **年化收益**: {_ann_return_str}")
     lines.append(f"- **夏普比率**: {sharpe:.2f}")
     lines.append(f"- **卡玛比率**: {calmar:.2f}")
     lines.append("")
