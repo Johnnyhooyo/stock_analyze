@@ -1,7 +1,8 @@
 alpha_vantage_key: null
 backtest_engine: vectorbt
 data_sources:
-- yahooquery
+  - tickflow
+  - yahooquery
 fees_rate: 0.00088
 invest_fraction: 0.95   # 买入仓位比例，0.95 保留5%现金缓冲（两个回测引擎共用）
 slippage: 0.001          # 滑点（两个回测引擎统一）
@@ -12,7 +13,7 @@ max_tries: 300
 min_return: 0.10
 min_sharpe_ratio: 1.0
 max_drawdown: -0.15
-min_total_trades: 4
+min_total_trades: 2
 optuna_trials: 100
 period: 5y
 position_avg_cost: 500.0
@@ -184,3 +185,27 @@ ml_strategies:
     lgb_reg_alpha: 0.0
     lgb_reg_lambda: 0.0
     lgb_min_child_samples: 20
+
+# ── 每日推荐引擎配置（daily_run.py 专用） ──────────────────────────
+daily_run:
+  # 因子过期阈值（天）：超过此天数建议重新训练
+  # 建议: 每周一次完整训练（7天），每日只做轻量推断
+  min_factor_age_days: 7
+
+  # 因子过期时是否提示重训（true=提示，daily_run 本身不自动训练）
+  retrain_on_stale: true
+
+  # 并发分析线程数（同时处理多只股票）
+  # 建议: 4~8（受数据 I/O 瓶颈，过高无益）
+  max_workers: 4
+
+  # 默认历史数据周期
+  data_period: 3y
+
+  # 是否默认开启情感分析（耗时，每只股票约 3~10s）
+  enable_sentiment: true
+
+  # 参与共识投票的最大因子数量
+  # 取编号最新的 N 个因子，确保使用最近训练的策略
+  max_consensus_factors: 20
+

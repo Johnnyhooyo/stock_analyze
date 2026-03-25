@@ -4,7 +4,10 @@
 """
 
 import requests
-from typing import Optional, Dict, Any
+
+from log_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def send_feishu_message(webhook_url: str, message: str, msg_type: str = "text") -> bool:
@@ -12,7 +15,7 @@ def send_feishu_message(webhook_url: str, message: str, msg_type: str = "text") 
     发送消息到飞书群聊
     """
     if not webhook_url:
-        print("  ⚠️ 飞书 Webhook 未配置，跳过通知")
+        logger.warning("飞书 Webhook 未配置，跳过通知")
         return False
 
     try:
@@ -49,13 +52,13 @@ def send_feishu_message(webhook_url: str, message: str, msg_type: str = "text") 
             if result.get("code") == 0:
                 return True
             else:
-                print(f"  ⚠️ 飞书发送失败: {result.get('msg', '未知错误')}")
+                logger.warning("飞书发送失败: %s", result.get('msg', '未知错误'))
                 return False
         else:
-            print(f"  ⚠️ 飞书发送失败: HTTP {response.status_code}")
+            logger.warning("飞书发送失败: HTTP %s", response.status_code)
             return False
     except Exception as e:
-        print(f"  ⚠️ 飞书发送异常: {e}")
+        logger.error("飞书发送异常: %s", e, exc_info=True)
         return False
 
 
@@ -74,7 +77,7 @@ def send_full_report_to_feishu(
         bool: 是否发送成功
     """
     if not webhook_url:
-        print("  ⚠️ 飞书 Webhook 未配置，跳过通知")
+        logger.warning("飞书 Webhook 未配置，跳过通知")
         return False
 
     # 提取数据
@@ -263,6 +266,123 @@ def send_simple_report_to_feishu(
         'recommendation': recommendation,
     }
     return send_full_report_to_feishu(webhook_url, report_data)
+
+
+def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
+    """
+    发送每日操作建议到飞书（daily_run.py 专用接口）。
+
+    Args:
+        webhook_url:  飞书 Webhook 地址
+        daily_report: daily_run._build_daily_report() 返回的字典
+
+    Returns:
+        bool: 是否发送成功
+    """
+    if not webhook_url:
+        logger.warning("飞书 Webhook 未配置，跳过通知")
+        return False
+
+    run_date = daily_report.get("run_date", "")
+    pv = daily_report.get("portfolio_value", 0)
+    mv = daily_report.get("total_market_value", 0)
+    pnl = daily_report.get("total_pnl", 0)
+    pnl_pct = daily_report.get("total_pnl_pct", 0)
+    cash = daily_report.get("cash_value", 0)
+    cash_pct = daily_report.get("cash_pct", 100)
+    buy_sigs = daily_report.get("buy_signals", [])
+    sell_sigs = daily_report.get("sell_signals", [])
+    recs = daily_report.get("recommendations", [])
+    market_is_open = daily_report.get("market_is_open", True)
+
+    market_str = "✅ 交易日" if market_is_open else "⛔ 非交易日"
+    pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+
+    # ── 构建 Markdown 内容 ──────────────────────────────────────
+    lines = [
+        f"## 📊 每日量化操作建议  {run_date}",
+        "",
+        f"市场状态: {market_str}",
+        "",
+        "### 💼 投资组合概况",
+        "",
+        f"| 总资产 | 持仓市值 | 可用现金 | 持仓盈亏 |",
+        f"|--------|---------|---------|---------|",
+        f"| {pv:,.0f} | {mv:,.2f} | {cash:,.2f}({cash_pct:.1f}%) | {pnl_emoji}{pnl:+,.2f}({pnl_pct:+.2f}%) |",
+        "",
+    ]
+
+    if buy_sigs:
+        lines.append(f"🟢 **今日买入信号**: {', '.join(buy_sigs)}")
+    if sell_sigs:
+        lines.append(f"🔴 **今日卖出信号**: {', '.join(sell_sigs)}")
+    if buy_sigs or sell_sigs:
+        lines.append("")
+
+    lines.extend([
+        "### 📋 操作建议明细",
+        "",
+        "| 标的 | 建议 | 收盘价 | 持仓 | 盈亏 | 止损 | 置信 |",
+        "|------|------|--------|------|------|------|------|",
+    ])
+
+    for r in recs:
+        pos_str = f"{r['shares']}股@{r['avg_cost']:.2f}" if r["has_position"] else "空仓"
+        pnl_str = f"{r['profit_pct']:+.1f}%" if r["has_position"] else "—"
+        stop_str = f"{r['stop_price']:.2f}" if r["stop_price"] > 0 else "—"
+        conf_str = f"{r['confidence_label']}({r['confidence_pct']:.0%})"
+        lines.append(
+            f"| {r['ticker']} "
+            f"| {r['action_emoji']} {r['action']} "
+            f"| {r['last_close']:.2f} "
+            f"| {pos_str} "
+            f"| {pnl_str} "
+            f"| {stop_str} "
+            f"| {conf_str} |"
+        )
+
+    lines.append("")
+    lines.append("---")
+    lines.append("⚠️ 以上建议由量化模型自动生成，仅供参考，不构成投资建议。")
+
+    # 逐条详细推送（只推送有操作信号的股票，减少消息长度）
+    action_recs = [r for r in recs if r["action"] not in ("观望",)]
+    if action_recs:
+        lines.extend(["", "### 🎯 今日操作详情", ""])
+        for r in action_recs:
+            cb_str = f"⚠️ 熔断触发" if r["circuit_breaker"] else ""
+            kelly_str = (
+                f"建议仓位 {r['kelly_shares']} 股（≈{r['kelly_amount']:.0f}港元）"
+                if r["kelly_shares"] > 0 else ""
+            )
+            lines.extend([
+                f"**{r['action_emoji']} {r['ticker']}  {r['action']}**",
+                f"- 收盘价: {r['last_close']:.2f}  止损: {r['stop_price']:.2f if r['stop_price'] > 0 else '—'}",
+                f"- 原因: {r['reason']}",
+            ])
+            if kelly_str:
+                lines.append(f"- {kelly_str}")
+            if cb_str:
+                lines.append(f"- {cb_str}")
+            if r["risk_flags"]:
+                for flag in r["risk_flags"]:
+                    lines.append(f"- ⚠️ {flag}")
+            lines.append("")
+
+    message = "\n".join(lines)
+
+    # 发送（超过 4096 字时拆分为两条）
+    MAX_LEN = 4000
+    if len(message) <= MAX_LEN:
+        return send_feishu_message(webhook_url, message, msg_type="markdown")
+    else:
+        # 分两段发送：摘要 + 详情
+        summary_end = message.find("### 🎯 今日操作详情")
+        if summary_end == -1:
+            summary_end = MAX_LEN
+        ok1 = send_feishu_message(webhook_url, message[:summary_end], msg_type="markdown")
+        ok2 = send_feishu_message(webhook_url, message[summary_end:], msg_type="markdown")
+        return ok1 and ok2
 
 
 if __name__ == "__main__":

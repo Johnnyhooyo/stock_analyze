@@ -30,32 +30,10 @@ MACD 计算:
 """
 
 import pandas as pd
-import numpy as np
+
+from strategies.indicators import macd, rsi
 
 NAME = "macd_rsi_combo"
-
-
-def _ema(series: pd.Series, period: int) -> pd.Series:
-    """计算指数移动平均线。"""
-    return series.ewm(span=period, adjust=False).mean()
-
-
-def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
-    """返回 (macd_line, signal_line, histogram)。"""
-    ema_fast = _ema(close, fast)
-    ema_slow = _ema(close, slow)
-    macd_line = ema_fast - ema_slow
-    signal_line = _ema(macd_line, signal)
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
-
-
-def _rsi(series: pd.Series, period: int) -> pd.Series:
-    delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
 
 
 def run(data: pd.DataFrame, config: dict):
@@ -69,12 +47,12 @@ def run(data: pd.DataFrame, config: dict):
     df = data.copy()
 
     # 计算 MACD
-    df["macd_line"], df["signal_line"], df["histogram"] = _macd(
+    df["macd_line"], df["signal_line"], df["histogram"] = macd(
         df["Close"], macd_fast, macd_slow, macd_signal
     )
 
     # 计算 RSI
-    df["rsi"] = _rsi(df["Close"], rsi_period)
+    df["rsi"] = rsi(df["Close"], rsi_period)
 
     # 标记 MACD 金叉/死叉
     df["histogram_prev"] = df["histogram"].shift(1)

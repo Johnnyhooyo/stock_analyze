@@ -4,19 +4,11 @@
 超参: rsi_period / rsi_oversold / rsi_overbought, 可在 config 覆盖
 """
 import pandas as pd
-import numpy as np
 
+from strategies.indicators import rsi
 
 NAME = "rsi_reversion"
 MIN_BARS = 30   # RSI 需要至少 period+几个预热 K 线
-
-
-def _rsi(series: pd.Series, period: int) -> pd.Series:
-    delta = series.diff()
-    gain  = delta.clip(lower=0).rolling(period).mean()
-    loss  = (-delta.clip(upper=0)).rolling(period).mean()
-    rs    = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
 
 
 def run(data: pd.DataFrame, config: dict):
@@ -25,7 +17,7 @@ def run(data: pd.DataFrame, config: dict):
     overbought = float(config.get("rsi_overbought", 70))
 
     df = data.copy()
-    df["rsi"] = _rsi(df["Close"], period)
+    df["rsi"] = rsi(df["Close"], period)
     df = df.dropna(subset=["rsi"])
 
     # 持仓逻辑：RSI < oversold 进场，RSI > overbought 离场，中间维持上一状态

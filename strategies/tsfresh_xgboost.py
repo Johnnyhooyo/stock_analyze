@@ -19,6 +19,9 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple
+from log_config import get_logger
+
+logger = get_logger(__name__)
 
 NAME = "tsfresh_xgboost"
 
@@ -88,11 +91,11 @@ def prepare_data(
         if not tsfresh_features.empty:
             # 对齐索引
             tsfresh_features = tsfresh_features.reindex(df_feat.index)
-            print(f"  [tsfresh_xgboost] tsfresh 特征数: {len(tsfresh_cols)}")
+            logger.info("tsfresh特征提取成功", extra={"tsfresh_feature_count": len(tsfresh_cols)})
 
     # 如果 tsfresh 不可用或失败，使用简化版特征
     if tsfresh_features.empty and extract_simple_ts_features is not None:
-        print(f"  [tsfresh_xgboost] 使用简化版时间序列特征")
+        logger.info("使用简化版时间序列特征")
         tsfresh_features = extract_simple_ts_features(df, windows=[5, 10, 20])
         if not tsfresh_features.empty:
             tsfresh_features = tsfresh_features.reindex(df_feat.index)
@@ -186,7 +189,7 @@ def run(data: pd.DataFrame, config: dict):
     # 分别为训练集和测试集提取特征（tsfresh 特征选择仅用训练集标签）
     X_train, y_train, feat_cols = prepare_data(train_data_raw, config)
     if X_train.empty:
-        print(f"  [tsfresh_xgboost] 特征提取失败，返回零信号")
+        logger.warning("tsfresh_xgboost特征提取失败，返回零信号")
         signal = pd.Series(0, index=data.index)
         meta = {
             'name': NAME, 'params': {'test_days': test_days, 'label_period': label_period},
@@ -223,9 +226,13 @@ def run(data: pd.DataFrame, config: dict):
                     combined_test[c] = 0.0
             X_test = combined_test[feat_cols].dropna()
         except Exception as e:
-            print(f"  [tsfresh_xgboost] 测试集特征提取失败: {e}")
+            logger.warning("tsfresh_xgboost测试集特征提取失败", extra={"error": str(e)})
 
-    print(f"  [tsfresh_xgboost] 特征数: {len(feat_cols)}, 训练样本: {len(X_train)}, 测试样本: {len(X_test)}")
+    logger.info("tsfresh_xgboost数据集准备完成", extra={
+        "feature_count": len(feat_cols),
+        "train_samples": len(X_train),
+        "test_samples": len(X_test)
+    })
 
     # 训练模型
     model = None
@@ -296,9 +303,9 @@ def run(data: pd.DataFrame, config: dict):
     if hasattr(model, 'feature_importances_'):
         importance = dict(zip(feat_cols, model.feature_importances_.round(4)))
         top_features = sorted(importance.items(), key=lambda x: -x[1])[:10]
-        print(f"  [tsfresh_xgboost] Top 10 特征:")
-        for fname, fimp in top_features:
-            print(f"      {fname}: {fimp:.4f}")
+        logger.info("tsfresh_xgboost Top10特征重要性", extra={
+            "top_features": {fname: fimp for fname, fimp in top_features}
+        })
     else:
         importance = {}
 

@@ -26,7 +26,7 @@ class DataConfig:
     ticker: str = ""
     period: str = "1y"
     data_sources: List[str] = field(
-        default_factory=lambda: ["yahooquery", "yfinance", "pandas_datareader", "akshare", "alpha_vantage"]
+        default_factory=lambda: ["tickflow", "yahooquery", "yfinance", "pandas_datareader", "akshare", "alpha_vantage"]
     )
 
     # API keys
@@ -71,7 +71,7 @@ class DataConfig:
             with open(keys_path, encoding="utf-8") as f:
                 keys = yaml.safe_load(f) or {}
 
-        default_sources = ["yahooquery", "yfinance", "pandas_datareader", "akshare", "alpha_vantage"]
+        default_sources = ["tickflow", "yahooquery", "yfinance", "pandas_datareader", "akshare", "alpha_vantage"]
         return cls(
             ticker=str(raw.get("ticker", "")),
             period=str(raw.get("period", "1y")),

@@ -26,26 +26,10 @@
 """
 
 import pandas as pd
-import numpy as np
+
+from strategies.indicators import bollinger_bands, rsi
 
 NAME = "bollinger_breakout"
-
-
-def _bollinger_bands(close: pd.Series, period: int = 20, num_std: float = 2.0):
-    """返回 (upper, middle, lower) 三条布林带。"""
-    middle = close.rolling(period).mean()
-    std = close.rolling(period).std()
-    upper = middle + num_std * std
-    lower = middle - num_std * std
-    return upper, middle, lower
-
-
-def _rsi(series: pd.Series, period: int) -> pd.Series:
-    delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
 
 
 def run(data: pd.DataFrame, config: dict):
@@ -58,12 +42,12 @@ def run(data: pd.DataFrame, config: dict):
     df = data.copy()
 
     # 计算布林带
-    df["bb_upper"], df["bb_middle"], df["bb_lower"] = _bollinger_bands(
+    df["bb_upper"], df["bb_middle"], df["bb_lower"] = bollinger_bands(
         df["Close"], period, num_std
     )
 
     # 计算 RSI
-    df["rsi"] = _rsi(df["Close"], rsi_period)
+    df["rsi"] = rsi(df["Close"], rsi_period)
 
     # 标记位置
     df["at_lower"] = (df["Close"] <= df["bb_lower"]).astype(int)

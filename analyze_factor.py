@@ -4,15 +4,14 @@ import pandas as pd
 import numpy as np
 import yaml
 import shutil
-import logging
 from scipy import stats as _scipy_stats
 from sklearn.metrics import accuracy_score, roc_auc_score, log_loss
 from pathlib import Path
+from config_loader import load_config
+from log_config import get_logger
 from visualize import plot_strategy_result
 
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+logger = get_logger(__name__)
 
 # Vectorbt 引擎（可选）
 try:
@@ -58,22 +57,6 @@ def clear_multi_stock_cache():
 #  工具函数
 # ══════════════════════════════════════════════════════════════════
 
-def _load_config() -> dict:
-    # 加载主配置
-    config_path = Path(__file__).parent / 'config.yaml'
-    with open(config_path, encoding='utf-8') as f:
-        config = yaml.safe_load(f) or {}
-
-    # 加载密钥配置（如果存在）
-    keys_path = Path(__file__).parent / 'keys.yaml'
-    if keys_path.exists():
-        with open(keys_path, encoding='utf-8') as f:
-            keys = yaml.safe_load(f) or {}
-            config.update(keys)
-
-    return config
-
-
 def _save_config(cfg: dict) -> None:
     config_path = Path(__file__).parent / 'config.yaml'
     tmp = config_path.with_suffix('.yaml.tmp')
@@ -93,7 +76,7 @@ def _discover_strategies(strategy_type: str = None) -> list:
             - None: 返回所有策略
     """
     # 从配置文件的 strategy_training 读取策略列表
-    config = _load_config()
+    config = load_config()
     train_config = config.get('strategy_training', {})
 
     # 合并 single, multi, custom 中的所有策略
@@ -378,7 +361,6 @@ def _check_meets_threshold(bt: dict, min_return: float, min_sharpe: float,
     if not passed:
         failed = [k for k, v in checks.items() if not v]
         logger.debug(f"[验证失败] {' '.join(failed)}")
-        print(f"    [验证失败] {' '.join(failed)}")  # 保留控制台输出便于实时监控
 
     return passed
 
@@ -709,10 +691,13 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict,
             if len(train_df) > _label_period:
                 train_df = train_df.iloc[:-_label_period]
 
-            print(f"    [多股票训练] 使用多股票数据 ({len(train_df)} 条记录, "
-                  f"到 {train_end.date()})")
+            logger.info("使用多股票数据训练", extra={
+                "records": len(train_df),
+                "train_end": str(train_end.date()),
+                "train_type": "multi"
+            })
         else:
-            print(f"    [多股票] 多股票数据加载失败，回退到单股票")
+            logger.warning("多股票数据加载失败，回退到单股票训练")
             train_type = 'single'
 
     if train_type != 'multi':
@@ -734,7 +719,7 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict,
     try:
         train_signal, model, meta = strategy_mod.run(train_df, config)
     except Exception as e:
-        print(f"    [{strategy_mod.NAME}] 训练异常: {e}")
+        logger.warning("策略训练异常", extra={"strategy": strategy_mod.NAME, "error": str(e)})
         return None
 
     # ── 验证集：用同一模型在 val_df 上生成信号 ──
@@ -753,7 +738,7 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict,
             val_config['no_internal_split'] = True
             val_signal, _, val_meta = strategy_mod.run(val_df, val_config)
     except Exception as e:
-        print(f"    [{meta['name']}] 验证集推理异常: {e}")
+        logger.warning("验证集推理异常", extra={"strategy": meta.get("name"), "error": str(e)})
         return None
 
     # val_meta 的 indicators 与 val_df 索引对齐，用于绘图；
@@ -970,9 +955,7 @@ def _select_best_with_holdout(
     for r in candidates:
         r['_strategy_mod'] = name_to_mod.get(r['strategy_name'])
 
-    print(f"\n  {'═'*56}")
-    print(f"  Hold-Out 验证（对前 {len(candidates)} 名候选）")
-    print(f"  {'═'*56}")
+    logger.info("开始Hold-Out验证", extra={"candidate_count": len(candidates)})
 
     best_double   = None
     best_val_only = None
@@ -992,7 +975,11 @@ def _select_best_with_holdout(
         )
         holdout_str = (f"收益={holdout['cum_return']:.2%}" if holdout.get('success')
                        else holdout.get('message', '失败'))
-        print(f"  {name:<22}  Hold-Out: {holdout_str}  {'✅' if holdout_ok else '❌'}", end='')
+        logger.info("Hold-Out验证候选", extra={
+            "strategy_name": name,
+            "holdout_ok": holdout_ok,
+            "holdout_str": holdout_str,
+        })
 
         # ── Walk-Forward ──
         # WF 必须在全量历史数据上跑，才能覆盖足够多的滚动窗口。
@@ -1012,15 +999,22 @@ def _select_best_with_holdout(
                     if wf_result.get('success'):
                         wwin = wf_result['summary'].get('window_win_rate', 0)
                         wf_ok = wwin >= wf_min
-                        print(f"  WF 窗口胜率={wwin:.0%} {'✅' if wf_ok else '❌'}")
+                        logger.debug("WF窗口验证", extra={
+                            "strategy_name": name,
+                            "window_win_rate": f"{wwin:.0%}",
+                            "wf_ok": wf_ok
+                        })
                     else:
-                        print(f"  WF: {wf_result.get('message','失败')}")
+                        logger.debug("WF跳过", extra={
+                            "strategy_name": name,
+                            "reason": wf_result.get('message', '失败')
+                        })
                 else:
-                    print(f"  WF: 跳过（全量数据未提供）")
+                    logger.debug("WF跳过", extra={"strategy_name": name, "reason": "全量数据未提供"})
             except Exception as e:
-                print(f"  WF 异常: {e}")
+                logger.warning("WF异常", extra={"strategy_name": name, "error": str(e)})
         else:
-            print(f"  WF: 跳过（未找到策略模块）")
+            logger.debug("WF跳过", extra={"strategy_name": name, "reason": "未找到策略模块"})
 
         r['holdout']    = holdout
         r['wf_result']  = wf_result
@@ -1053,11 +1047,15 @@ def _select_best_with_holdout(
 
     badge = {'double': '🏅 双验证通过', 'double_no_wf': '🥈 双验证（WF不足）',
              'val_only': '⚠️  仅验证集达标'}.get(chosen.get('validated', ''), '❓')
-    print(f"\n  ✨ 选定策略: {chosen['strategy_name']}  {badge}")
-    print(f"     Val 收益={chosen['cum_return']:.2%}  夏普={chosen.get('sharpe_ratio', float('nan')):.4f}")
-    if chosen.get('holdout', {}).get('success'):
-        h = chosen['holdout']
-        print(f"     Hold-Out 收益={h['cum_return']:.2%}  期间={h.get('period','?')}")
+    logger.info("选定策略", extra={
+        "strategy_name": chosen['strategy_name'],
+        "badge": badge,
+        "val_cum_return": f"{chosen['cum_return']:.2%}",
+        "sharpe_ratio": chosen.get('sharpe_ratio', float('nan')),
+        "holdout_success": chosen.get('holdout', {}).get('success', False),
+        "holdout_cum_return": f"{chosen.get('holdout', {}).get('cum_return', 0):.2%}",
+        "holdout_period": chosen.get('holdout', {}).get('period', '?'),
+    })
 
     return chosen
 
@@ -1067,7 +1065,7 @@ def test_factor(data: pd.DataFrame):
     兼容旧接口：使用默认配置跑所有策略一次，返回最佳结果。
     返回 (data, factor_path, total_return)
     """
-    config = _load_config()
+    config = load_config()
     strategy_mods = _discover_strategies()
     best = None
 
@@ -1081,28 +1079,35 @@ def test_factor(data: pd.DataFrame):
     if best is None:
         return data, None, 0.0
 
-    _print_result(best)
+    _log_result(best)
     return data, best['factor_path'], best['cum_return']
 
 
-def _print_result(r: dict) -> None:
-    print(f"\n  策略: {r['strategy_name']}  参数: {r['params']}")
-    print(f"  训练集: {r['train_rows']} 条  验证集: {r['val_rows']} 条")
-    # 修复项1：显示分类指标（val_acc/train_acc/roc_auc），原 r2/mae/direction_acc 已移除
-    _val_acc   = r.get('val_acc', float('nan'))
+def _log_result(r: dict) -> None:
+    """记录策略试验结果到日志。"""
+    extra = {
+        "strategy_name": r['strategy_name'],
+        "params": r['params'],
+        "train_rows": r['train_rows'],
+        "val_rows": r['val_rows'],
+        "cum_return": f"{r['cum_return']:.2%}",
+        "annualized_return": f"{r['annualized_return']:.2%}",
+        "sharpe_ratio": r.get('sharpe_ratio', float('nan')),
+        "buy_cnt": r['buy_cnt'],
+        "sell_cnt": r['sell_cnt'],
+        "factor_saved": bool(r['factor_path']),
+    }
+    _val_acc = r.get('val_acc', float('nan'))
     _train_acc = r.get('train_acc', float('nan'))
-    _roc_auc   = r.get('roc_auc', float('nan'))
+    _roc_auc = r.get('roc_auc', float('nan'))
     if not np.isnan(_val_acc):
-        _gap_str = f"  过拟合差={_train_acc - _val_acc:.2%}" if not np.isnan(_train_acc) else ""
-        _auc_str = f"  AUC={_roc_auc:.4f}" if not np.isnan(_roc_auc) else ""
-        print(f"  训练准确率={_train_acc:.2%}  验证准确率={_val_acc:.2%}{_gap_str}{_auc_str}")
-    sharpe_str = f"{r['sharpe_ratio']:.4f}" if not np.isnan(r.get('sharpe_ratio', float('nan'))) else "N/A"
-    print(f"  累计收益: {r['cum_return']:.2%}  年化(估算): {r['annualized_return']:.2%}  夏普率: {sharpe_str}")
-    print(f"  买入: {r['buy_cnt']} 次  卖出: {r['sell_cnt']} 次")
-    if r['factor_path']:
-        print(f"  ✅ 因子已保存: {r['factor_path']}")
-    else:
-        print(f"  ❌ 未达到保存阈值")
+        extra["val_acc"] = f"{_val_acc:.2%}"
+        extra["train_acc"] = f"{_train_acc:.2%}"
+        if not np.isnan(_train_acc):
+            extra["overfit_gap"] = f"{_train_acc - _val_acc:.2%}"
+        if not np.isnan(_roc_auc):
+            extra["roc_auc"] = f"{_roc_auc:.4f}"
+    logger.info("策略试验结果", extra=extra)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1145,21 +1150,6 @@ def _sample_hyperparams(rng: np.random.Generator, base_cfg: dict) -> dict:
     return trial_cfg
 
 
-def _print_trial_header(trial: int, max_tries: int, cfg: dict) -> None:
-    """打印单次 trial 的超参摘要行（不含换行，调用方补充结尾）。"""
-    print(
-        f"  [{trial:>3}/{max_tries}]"
-        f"  days={cfg['test_days']}"
-        f"  rsi=({cfg['rsi_period']},{cfg['rsi_oversold']:.0f}/{cfg['rsi_overbought']:.0f})"
-        f"  kdj=({cfg['kdj_period']},{cfg['kdj_oversold']:.0f}/{cfg['kdj_overbought']:.0f})"
-        f"  obv_ma={cfg['obv_ma_period']}  pvt_ma={cfg['pvt_ma_period']}"
-        f"  fib={cfg['fib_period']}"
-        f"  dd={cfg['drawdown_pct']:.1%}"
-        f"  ma=({cfg['ma_fast']}/{cfg['ma_slow']})",
-        end='  ',
-    )
-
-
 # ══════════════════════════════════════════════════════════════════
 #  核心搜索入口（供 __main__ 和 main.step2_train 共同调用）
 # ══════════════════════════════════════════════════════════════════
@@ -1185,7 +1175,7 @@ def run_search(
     test_df        : 封存的 Hold-Out 测试段（由 _select_best_with_holdout 使用）
     """
     if cfg is None:
-        cfg = _load_config()
+        cfg = load_config()
 
     base_cfg  = cfg.copy()
     min_ret   = float(cfg.get('min_return', 0.03))
@@ -1206,32 +1196,39 @@ def run_search(
     min_search_months = int(cfg.get('lookback_months', 3)) + 6
     actual_months = (search_data.index.max() - search_data.index.min()).days // 30 if not search_data.empty else 0
     if search_data.empty or actual_months < min_search_months:
-        print(f"  ⚠️  可搜索数据不足（{actual_months}个月 < {min_search_months}个月），"
-              f"降级为两段切割（不使用 test_start 约束）")
+        logger.warning("可搜索数据不足，降级为两段切割", extra={
+            "actual_months": actual_months,
+            "min_search_months": min_search_months
+        })
         search_data = df_sorted
         test_start  = None
         test_df     = pd.DataFrame()
     else:
-        print(f"  📅 三段切割：搜索段到 {test_start.date()}，"
-              f"封存 Hold-Out 段 {test_start.date()} ~ {data_end.date()} "
-              f"({len(test_df)} 条)")
+        logger.info("三段切割完成", extra={
+            "search_end": str(test_start.date()),
+            "holdout_start": str(test_start.date()),
+            "holdout_end": str(data_end.date()),
+            "holdout_records": len(test_df)
+        })
 
     strategy_mods = _discover_strategies()
     if not strategy_mods:
-        print("  ❌ 未发现任何策略模块，请检查 strategies/ 目录")
+        logger.critical("未发现任何策略模块，请检查 strategies/ 目录")
         _save_config(base_cfg)
         return None, [], test_df
 
-    print(f"  发现 {len(strategy_mods)} 个策略: {[m.NAME for m in strategy_mods]}")
-    print(f"  搜索上限: 每策略最多 {max_tries} 次  目标收益 > {min_ret:.2%}")
+    logger.info("策略搜索开始", extra={
+        "strategy_count": len(strategy_mods),
+        "strategy_names": [m.NAME for m in strategy_mods],
+        "max_trials_per_strategy": max_tries,
+        "min_return_threshold": f"{min_ret:.2%}"
+    })
 
     all_results = []
     found_any   = False
 
     for mod in strategy_mods:
-        print(f"\n  {'━'*56}")
-        print(f"  策略模块: {mod.NAME}")
-        print(f"  {'━'*56}")
+        logger.info("开始搜索策略模块", extra={"strategy_module": mod.NAME})
 
         best_of_strategy = None
         mod_seed_base    = abs(hash(mod.NAME)) % (2**31)
@@ -1240,15 +1237,32 @@ def run_search(
             rng       = np.random.default_rng(seed=mod_seed_base + trial)
             trial_cfg = _sample_hyperparams(rng, cfg)
 
-            _print_trial_header(trial, max_tries, trial_cfg)
+            logger.debug("试验超参", extra={
+                "trial": trial,
+                "max_trials": max_tries,
+                "params": {
+                    "days": trial_cfg['test_days'],
+                    "rsi": f"({trial_cfg['rsi_period']},{trial_cfg['rsi_oversold']:.0f}/{trial_cfg['rsi_overbought']:.0f})",
+                    "kdj": f"({trial_cfg['kdj_period']},{trial_cfg['kdj_oversold']:.0f}/{trial_cfg['kdj_overbought']:.0f})",
+                    "obv_ma": trial_cfg['obv_ma_period'],
+                    "pvt_ma": trial_cfg['pvt_ma_period'],
+                    "fib": trial_cfg['fib_period'],
+                    "dd": f"{trial_cfg['drawdown_pct']:.1%}",
+                    "ma": f"({trial_cfg['ma_fast']}/{trial_cfg['ma_slow']})",
+                }
+            })
 
             result = run_trial(mod, search_data.copy(), trial_cfg,
                                trial_num=trial, test_start=test_start)
             if result is None:
-                print("跳过（数据不足或早停）")
+                logger.debug("试验跳过", extra={"trial": trial, "reason": "数据不足或早停"})
                 continue
 
-            print(f"收益={result['cum_return']:.2%}", end='')
+            logger.debug("试验结果", extra={
+                "trial": trial,
+                "strategy_name": result['strategy_name'],
+                "cum_return": f"{result['cum_return']:.2%}"
+            })
 
             if best_of_strategy is None or result['cum_return'] > best_of_strategy['cum_return']:
                 best_of_strategy = result
@@ -1256,43 +1270,56 @@ def run_search(
             all_results.append(result)
 
             if result['meets_threshold']:
-                print("  ✅ 满足条件！")
-                _print_result(result)
+                logger.info("策略满足阈值", extra={
+                    "strategy_name": result['strategy_name'],
+                    "cum_return": f"{result['cum_return']:.2%}"
+                })
+                _log_result(result)
                 if on_result is not None:
                     try:
                         on_result(result)
                     except Exception as e:
-                        print(f"  ⚠️  on_result 回调异常: {e}")
+                        logger.warning("on_result回调异常", extra={"error": str(e)})
                 found_any = True
                 # 不退出，继续训练所有参数组合
-            else:
-                print()
 
         if best_of_strategy:
-            print(f"\n  [{mod.NAME}] 本策略最佳: 收益={best_of_strategy['cum_return']:.2%}")
+            logger.info("策略模块搜索完成", extra={
+                "strategy_module": mod.NAME,
+                "best_cum_return": f"{best_of_strategy['cum_return']:.2%}"
+            })
 
     # ── 恢复原始配置 ──
     _save_config(base_cfg)
 
     # ── 排行榜 ──
     sorted_results = sorted(all_results, key=lambda r: r['cum_return'], reverse=True)
-    print(f"\n  {'═'*56}")
-    print("  所有试验排行榜 Top 10（按验证集累计收益）")
-    print(f"  {'═'*56}")
+    logger.info("策略搜索完成，排行榜Top10", extra={
+        "total_trials": len(all_results),
+        "min_return_threshold": f"{min_ret:.2%}",
+    })
     for rank, r in enumerate(sorted_results[:10], 1):
-        flag = "✅" if r['meets_threshold'] else "  "
-        sharpe_str = f"{r['sharpe_ratio']:.2f}" if not np.isnan(r.get('sharpe_ratio', float('nan'))) else " N/A"
-        print(f"  {rank:>2}. {flag} {r['strategy_name']:<22}"
-              f"  收益={r['cum_return']:>7.2%}  夏普={sharpe_str:>6}  参数={r['params']}")
+        logger.info("排行榜", extra={
+            "rank": rank,
+            "strategy_name": r['strategy_name'],
+            "meets_threshold": r['meets_threshold'],
+            "cum_return": f"{r['cum_return']:>7.2%}",
+            "sharpe_ratio": r.get('sharpe_ratio', float('nan')),
+            "params": r['params']
+        })
 
     if not found_any:
-        print(f"\n  ❌ 所有策略均未达到 {min_ret:.2%} 阈值")
-        if sorted_results:
-            b = sorted_results[0]
-            print(f"     历史最佳: {b['strategy_name']} 收益={b['cum_return']:.2%}  参数={b['params']}")
+        logger.warning("所有策略均未达到阈值", extra={
+            "min_return_threshold": f"{min_ret:.2%}",
+            "best_strategy": sorted_results[0]['strategy_name'] if sorted_results else None,
+            "best_cum_return": f"{sorted_results[0]['cum_return']:.2%}" if sorted_results else None,
+        })
     else:
         hit_cnt = sum(1 for r in sorted_results if r['meets_threshold'])
-        print(f"\n  🎉 共有 {hit_cnt} 个策略满足阈值，最终因子由调用方统一保存")
+        logger.info("搜索完成", extra={
+            "hit_count": hit_cnt,
+            "total_trials": len(all_results)
+        })
 
     # 优先返回满足阈值且收益最高的结果；无则取全局最佳
     threshold_results = [r for r in sorted_results if r['meets_threshold']]
@@ -1305,16 +1332,16 @@ def run_search(
 # ══════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    _cfg = _load_config()
+    _cfg = load_config()
 
     # 自动发现数据文件
     _hist_dir  = Path(__file__).parent / 'data' / 'historical'
     _csv_files = list(_hist_dir.glob('*.csv'))
     if not _csv_files:
-        print("❌ data/historical/ 下没有 CSV 文件，请先下载数据")
+        logger.critical("data/historical/ 下没有 CSV 文件，请先下载数据")
         raise SystemExit(1)
     _data_file = max(_csv_files, key=lambda p: p.stat().st_mtime)
-    print(f"使用数据文件: {_data_file}")
+    logger.info("使用数据文件", extra={"data_file": str(_data_file)})
     _raw_data = pd.read_csv(_data_file, index_col=0, parse_dates=True)
 
     def _on_result_plot(result):
@@ -1331,11 +1358,14 @@ if __name__ == "__main__":
 
     # ── 绘制最优解结果图（确保最终选定的最优解一定有图） ──
     if _best is not None:
-        print(f"\n  📊 绘制最优解结果图 ({_best['strategy_name']}  收益={_best['cum_return']:.2%})…")
+        logger.info("绘制最优解结果图", extra={
+            "strategy_name": _best['strategy_name'],
+            "cum_return": f"{_best['cum_return']:.2%}"
+        })
         try:
             plot_strategy_result(_best['detail'], _best['meta'], _best['config'])
         except Exception as e:
-            print(f"  ⚠️  绘图失败: {e}")
+            logger.warning("绘图失败", extra={"error": str(e)})
 
     # ── 统一保存一个带编号的因子文件（复用 main._save_factor 避免重复逻辑）──
     if _best is not None:
@@ -1343,11 +1373,14 @@ if __name__ == "__main__":
             from main import _save_factor, _next_factor_run_id
             _factors_dir = Path(__file__).parent / 'data' / 'factors'
             _factor_path = _save_factor(_best, _factors_dir)
-            print(f"\n  💾 因子已保存: {Path(_factor_path).name}"
-                  f"  (策略={_best['strategy_name']}  收益={_best['cum_return']:.2%}"
-                  f"  夏普={_best.get('sharpe_ratio', float('nan')):.4f}"
-                  f"  验证={_best.get('validated','?')})")
+            logger.info("因子已保存", extra={
+                "factor_path": Path(_factor_path).name,
+                "strategy_name": _best['strategy_name'],
+                "cum_return": f"{_best['cum_return']:.2%}",
+                "sharpe_ratio": _best.get('sharpe_ratio', float('nan')),
+                "validated": _best.get('validated', '?')
+            })
         except Exception as _e:
-            print(f"  ⚠️  因子保存失败: {_e}")
+            logger.warning("因子保存失败", extra={"error": str(_e)})
 
 

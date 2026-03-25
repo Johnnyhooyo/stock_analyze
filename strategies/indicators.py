@@ -222,3 +222,69 @@ def add_ta_features_fallback(df: pd.DataFrame) -> pd.DataFrame:
         df[f'momentum_{period}'] = df['Close'] / df['Close'].shift(period) - 1
 
     return df
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  公共指标函数（纯 pandas，不依赖 ta 库）
+#  供各规则策略统一使用，消除重复实现
+# ═══════════════════════════════════════════════════════════════════════════
+
+def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """RSI（相对强弱指标）。"""
+    delta = series.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs = gain / loss.replace(0, np.nan)
+    return 100 - 100 / (1 + rs)
+
+
+def bollinger_bands(close: pd.Series, period: int = 20, num_std: float = 2.0):
+    """布林带：返回 (upper, middle, lower)。"""
+    middle = close.rolling(period).mean()
+    std = close.rolling(period).std()
+    upper = middle + num_std * std
+    lower = middle - num_std * std
+    return upper, middle, lower
+
+
+def ema(series: pd.Series, period: int) -> pd.Series:
+    """指数移动平均线。"""
+    return series.ewm(span=period, adjust=False).mean()
+
+
+def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
+    """MACD：返回 (macd_line, signal_line, histogram)。"""
+    ema_fast = ema(close, fast)
+    ema_slow = ema(close, slow)
+    macd_line = ema_fast - ema_slow
+    signal_line = ema(macd_line, signal)
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+
+def kdj(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 9):
+    """KDJ：返回 (K, D, J)。"""
+    lowest_low = low.rolling(period).min()
+    highest_high = high.rolling(period).max()
+    denom = (highest_high - lowest_low).replace(0, np.nan)
+    rsv = (close - lowest_low) / denom * 100
+    K = rsv.ewm(alpha=1/3, adjust=False).mean()
+    D = K.ewm(alpha=1/3, adjust=False).mean()
+    J = 3 * K - 2 * D
+    return K, D, J
+
+
+def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """OBV（能量潮）。"""
+    direction = np.sign(close.diff()).fillna(0)
+    return (direction * volume).cumsum()
+
+
+def fibonacci(high: pd.Series, low: pd.Series, period: int = 60):
+    """斐波那契回撤：返回 (fib_0618_support, fib_0382_resistance)。"""
+    swing_high = high.rolling(period).max()
+    swing_low = low.rolling(period).min()
+    diff = swing_high - swing_low
+    fib_0618 = swing_high - 0.618 * diff  # 支撑位
+    fib_0382 = swing_high - 0.382 * diff  # 阻力位
+    return fib_0618, fib_0382

@@ -61,7 +61,20 @@
       "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -E \"\\(策略|xgboost_enhanced.*Trial|优化完成|样本外|Walk-Forward|汇总|窗口|结论\\)\" | head -50)",
       "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -E \"\\(优化策略|优化完成|xgboost_enhanced.*Trial|样本外测试|Walk-Forward|结论|分析流程\\)\" | head -50)",
       "Bash(python3 main.py --use-optuna --optuna-trials 5 2>&1 | grep -A 30 \"Walk-Forward\")",
-      "mcp__feishu__docx_builtin_search"
+      "mcp__feishu__docx_builtin_search",
+      "mcp__MiniMax__web_search",
+      "WebFetch(domain:tickflow.org)",
+      "Bash(python3 -c \"import analyze_factor; print\\('analyze_factor OK'\\)\" 2>&1 | head -5)",
+      "Bash(python3 daily_run.py --tickers 0700.HK --skip-notify --dry-run 2>&1 | tail -20)",
+      "Bash(python3 smoke_test.py 2>&1 | tail -30)",
+      "Bash(python3 -m pytest tests/ -v --tb=short 2>&1 | head -120)",
+      "Bash(pip3 install:*)",
+      "Bash(python3 -m pytest tests/ -v --tb=short 2>&1 | head -200)",
+      "Bash(python3 -m pytest tests/ -v --tb=short 2>&1 | tail -30)",
+      "Bash(python3 smoke_test.py 2>&1)",
+      "Bash(pip3 show:*)",
+      "Bash(pip3 index:*)",
+      "Bash(pip3 list:*)"
     ]
   }
 }

@@ -1,0 +1,28 @@
+# portfolio.yaml — 每日推荐引擎持仓状态文件
+#
+# 使用说明：
+#   1. 在 positions 下添加你的持仓股票（或观察列表）
+#   2. shares=0 表示空仓（但仍会生成信号供参考）
+#   3. peak_price=0 表示使用入场价作为 ATR 止损基准
+#   4. consecutive_loss_days / trailing_peak 由系统自动维护，勿手动修改
+#
+# 运行命令：
+#   python3 daily_run.py                      # 分析此文件中的所有标的
+#   python3 daily_run.py --tickers 0700.HK    # 临时指定标的（不修改此文件）
+#   python3 daily_run.py --watchlist hsi      # 分析 HSI 全部成分股
+#
+# 常见 HSI 成分股代码参考：
+#   腾讯控股 0700.HK  汇丰控股 0005.HK  友邦保险 1299.HK
+#   阿里巴巴 9988.HK  美团    3690.HK  中国建设银行 0939.HK
+
+portfolio_value: 200000.0    # 总资产（港元），用于 Kelly 仓位计算
+
+positions:
+  0700_HK:
+    ticker: "0700.HK"          # 腾讯控股
+    shares: 0                  # 持股数量（0 = 空仓）
+    avg_cost: 0.0              # 平均持仓成本（港元/股）
+    peak_price: 0.0            # 持仓期间最高价（0 = 用入场价代替）
+    consecutive_loss_days: 0   # 连续亏损天数（系统自动更新）
+    trailing_peak: null        # ATR 移动止损峰值（系统自动更新）
+

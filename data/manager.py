@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 def _build_vendor_registry(cfg: DataConfig) -> Dict[str, DataVendor]:
     """延迟导入并构建 vendor 实例。"""
+    from data.vendors.tickflow_vendor import TickFlowVendor
     from data.vendors.yfinance_vendor import YFinanceVendor
     from data.vendors.yahooquery_vendor import YahooQueryVendor
     from data.vendors.pandas_datareader_vendor import PandasDataReaderVendor
@@ -41,6 +42,7 @@ def _build_vendor_registry(cfg: DataConfig) -> Dict[str, DataVendor]:
     from data.vendors.alpha_vantage_vendor import AlphaVantageVendor
 
     return {
+        "tickflow": TickFlowVendor(),
         "yfinance": YFinanceVendor(),
         "yahooquery": YahooQueryVendor(),
         "pandas_datareader": PandasDataReaderVendor(),

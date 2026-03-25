@@ -20,6 +20,9 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple
+from log_config import get_logger
+
+logger = get_logger(__name__)
 
 NAME = "lightgbm_enhanced"
 
@@ -148,22 +151,25 @@ def run(data: pd.DataFrame, config: dict):
             if not tsfresh_features.empty:
                 tsfresh_features = tsfresh_features.reindex(df.index)
                 tsfresh_feat_count = len(selected_tsfresh_cols)
-                print(f"  [lightgbm_enhanced] tsfresh 特征数: {tsfresh_feat_count} (已修复前视偏差)")
+                logger.info("lightgbm_enhanced tsfresh特征提取成功", extra={
+                    "tsfresh_feature_count": tsfresh_feat_count,
+                    "note": "已修复前视偏差"
+                })
                 df = pd.concat([df, tsfresh_features], axis=1)
         elif extract_simple_ts_features is not None:
-            print(f"  [lightgbm_enhanced] 使用简化版时间序列特征")
+            logger.info("lightgbm_enhanced使用简化版时间序列特征")
             simple_features = extract_simple_ts_features(data, windows=[5, 10, 20])
             if not simple_features.empty:
                 simple_features = simple_features.reindex(df.index)
                 df = pd.concat([df, simple_features], axis=1)
                 tsfresh_feat_count = len(simple_features.columns)
-                print(f"  [lightgbm_enhanced] 简化版特征数: {tsfresh_feat_count}")
+                logger.info("lightgbm_enhanced简化版特征数", extra={"simplified_feature_count": tsfresh_feat_count})
 
     # 准备数据
     X, y, feat_cols = prepare_data(df, test_days, label_period)
 
     if tsfresh_feat_count > 0:
-        print(f"  [lightgbm_enhanced] 总特征数: {len(feat_cols)} (技术指标 + tsfresh)")
+        logger.info("lightgbm_enhanced总特征数", extra={"total_features": len(feat_cols)})
 
     # 分割训练/测试（80% 训练，20% 测试）
     split_idx = len(X)  # 默认值，no_split 时使用全部数据
@@ -243,7 +249,7 @@ def run(data: pd.DataFrame, config: dict):
     except Exception as gpu_err:
         _msg = str(gpu_err).lower()
         if 'gpu' in _msg or 'cuda' in _msg or 'opencl' in _msg or 'device' in _msg:
-            print(f"  [lightgbm_enhanced] GPU 不可用，回退 CPU ({gpu_err})")
+            logger.warning("lightgbm GPU不可用，回退CPU", extra={"gpu_error": str(gpu_err)})
             try:
                 import lightgbm as lgb
                 model = lgb.LGBMClassifier(**_lgbm_kwargs)

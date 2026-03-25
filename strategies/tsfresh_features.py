@@ -24,6 +24,9 @@ import pandas as pd
 from typing import Optional, List, Tuple
 from functools import lru_cache
 import warnings
+from log_config import get_logger
+
+logger = get_logger(__name__)
 
 # 忽略 tsfresh 内部的 FutureWarning
 warnings.filterwarnings('ignore', category=FutureWarning, module='tsfresh')
@@ -327,7 +330,7 @@ class TSFreshFeatureExtractor:
 
         except Exception as e:
             # 如果特征选择失败，返回所有特征
-            print(f"  [tsfresh] 特征选择失败: {e}")
+            logger.warning("tsfresh特征选择失败", extra={"error": str(e)})
             return features_aligned, list(features_aligned.columns)
 
 
@@ -352,14 +355,14 @@ def extract_tsfresh_features(
         (features_df, feature_names)
     """
     if not TSFRESH_AVAILABLE:
-        print("  [tsfresh] tsfresh 未安装，跳过特征提取")
+        logger.warning("tsfresh未安装，跳过特征提取")
         return pd.DataFrame(), []
 
     all_features = []
     feature_names = []
 
     for window in window_sizes:
-        print(f"  [tsfresh] 提取窗口={window} 的特征...")
+        logger.info("提取tsfresh特征", extra={"window_size": window})
         extractor = TSFreshFeatureExtractor(
             extraction_level=extraction_level,
             feature_selection=False,  # 先不选择，合并后再选
@@ -382,7 +385,7 @@ def extract_tsfresh_features(
     # 去除全 NaN 列
     combined = combined.dropna(axis=1, how='all')
 
-    print(f"  [tsfresh] 共提取 {combined.shape[1]} 个原始特征")
+    logger.info("tsfresh特征提取完成", extra={"feature_count": combined.shape[1]})
 
     # 如果有标签且需要进行特征选择
     if with_selection and y is not None and not combined.empty:
@@ -419,15 +422,15 @@ def extract_tsfresh_features(
                     # 恢复原始索引
                     selected.index = common_idx
                     combined = features_aligned[selected.columns]
-                    print(f"  [tsfresh] 特征选择后保留 {len(selected.columns)} 个特征")
+                    logger.info("tsfresh特征选择完成", extra={"selected_count": len(selected.columns)})
                 else:
-                    print(f"  [tsfresh] 无显著特征，选择前 100 个")
+                    logger.info("tsfresh无显著特征，选择前100个")
                     combined = features_aligned.iloc[:, :100]
                     # fix #13: 确保空选择分支索引与 common_idx 对齐
                     if not combined.index.equals(common_idx):
                         combined.index = common_idx
         except Exception as e:
-            print(f"  [tsfresh] 特征选择异常: {e}")
+            logger.warning("tsfresh特征选择异常", extra={"error": str(e)})
 
     return combined, list(combined.columns)
 

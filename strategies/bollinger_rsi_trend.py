@@ -16,28 +16,11 @@
 """
 
 import pandas as pd
-import numpy as np
+
+from strategies.indicators import bollinger_bands, rsi
 
 NAME = "bollinger_rsi_trend"
 MIN_BARS = 50   # 布林带需要足够的 K 线
-
-
-def _bollinger_bands(close: pd.Series, period: int = 20, num_std: float = 2.0):
-    """布林带计算"""
-    middle = close.rolling(period).mean()
-    std = close.rolling(period).std()
-    upper = middle + num_std * std
-    lower = middle - num_std * std
-    return upper, middle, lower
-
-
-def _rsi(series: pd.Series, period: int) -> pd.Series:
-    """RSI计算"""
-    delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
 
 
 def run(data: pd.DataFrame, config: dict):
@@ -64,12 +47,12 @@ def run(data: pd.DataFrame, config: dict):
         pass
 
     # 布林带
-    df["bb_upper"], df["bb_middle"], df["bb_lower"] = _bollinger_bands(
+    df["bb_upper"], df["bb_middle"], df["bb_lower"] = bollinger_bands(
         df["Close"], period, num_std
     )
 
     # RSI
-    df["rsi"] = _rsi(df["Close"], rsi_period)
+    df["rsi"] = rsi(df["Close"], rsi_period)
 
     # 热度均线
     if "trend" in df.columns:

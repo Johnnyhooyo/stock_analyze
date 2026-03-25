@@ -10,17 +10,10 @@
 """
 
 import pandas as pd
-import numpy as np
+
+from strategies.indicators import rsi
 
 NAME = "rsi_drawdown_0225"
-
-
-def _rsi(series: pd.Series, period: int) -> pd.Series:
-    delta = series.diff()
-    gain  = delta.clip(lower=0).rolling(period).mean()
-    loss  = (-delta.clip(upper=0)).rolling(period).mean()
-    rs    = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
 
 
 def run(data: pd.DataFrame, config: dict):
@@ -30,7 +23,7 @@ def run(data: pd.DataFrame, config: dict):
     drawdown_pct = float(config.get("drawdown_pct", 0.02))  # 默认 2% 回撤止损
 
     df = data.copy()
-    df["rsi"] = _rsi(df["Close"], period)
+    df["rsi"] = rsi(df["Close"], period)
     df = df.dropna(subset=["rsi"])
 
     positions  = []

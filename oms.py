@@ -21,7 +21,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from log_config import get_logger
+
+logger = get_logger(__name__)
 
 _ORDERS_FILE = Path(__file__).parent / 'data' / 'logs' / 'orders.jsonl'
 _ORDERS_FILE.parent.mkdir(parents=True, exist_ok=True)

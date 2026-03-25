@@ -23,14 +23,16 @@ from datetime import datetime, timedelta
 # ──────────────────────────────────────────────────────────────────
 #  本地模块
 # ──────────────────────────────────────────────────────────────────
+from log_config import get_logger
 from data.manager import DataManager
 from data.calendar import prev_trading_day as _prev_hk_trading_day, is_trading_day as _is_hk_trading_day
 from analyze_factor import (
-    _load_config, _discover_strategies,
+    _discover_strategies,
     run_search, backtest,
     _select_best_with_holdout,
     run_factor_analysis,
 )
+from config_loader import load_config
 try:
     from backtest_vectorbt import backtest_vectorbt as backtest_vbt
 except ImportError:
@@ -47,6 +49,8 @@ except ImportError:
     OPTUNA_AVAILABLE = False
     optimize_strategy = None
     optimize_all_strategies = None
+
+logger = get_logger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -199,22 +203,6 @@ def _latest_factor_path(factors_dir: Path) -> str | None:
     return str(max(candidates, key=lambda p: int(p.stem.split('_')[1])))
 
 
-def _load_config_full() -> dict:
-    # 加载主配置
-    config_path = Path(__file__).parent / 'config.yaml'
-    with open(config_path, encoding='utf-8') as f:
-        config = yaml.safe_load(f) or {}
-
-    # 加载密钥配置（如果存在）
-    keys_path = Path(__file__).parent / 'keys.yaml'
-    if keys_path.exists():
-        with open(keys_path, encoding='utf-8') as f:
-            keys = yaml.safe_load(f) or {}
-            config.update(keys)
-
-    return config
-
-
 # ══════════════════════════════════════════════════════════════════
 #  步骤 1 : 数据就绪检查
 # ══════════════════════════════════════════════════════════════════
@@ -228,11 +216,9 @@ def step1_ensure_data(sources_override=None):
     hist_data : pd.DataFrame   历史日线（Close 等标准列）
     hist_path : str            历史文件路径
     """
-    print("\n" + "="*60)
-    print("  步骤 1 / 3 : 数据就绪检查")
-    print("="*60)
+    logger.info("步骤1/3: 数据就绪检查开始")
 
-    cfg = _load_config_full()
+    cfg = load_config()
     ticker = cfg.get('ticker', '0700.hk')
 
     # ── 1a. 历史日线 ────────────────────────────────────────────
@@ -258,7 +244,11 @@ def step1_ensure_data(sources_override=None):
         hist_path = str(hist_files[0])
         hist_data = pd.read_csv(hist_path, index_col=0, parse_dates=True)
         latest_date = hist_data.index.max()
-        print(f"  ✅ 历史日线数据已是最新: {hist_path}  ({len(hist_data)} 条, 最新 {latest_date:%Y-%m-%d})")
+        logger.info("历史日线数据已是最新", extra={
+            "hist_path": hist_path,
+            "records": len(hist_data),
+            "latest_date": str(latest_date.date())
+        })
     else:
         if hist_files:
             # 显示数据内容的最新日期，而不是文件修改时间
@@ -275,36 +265,49 @@ def step1_ensure_data(sources_override=None):
             else:
                 target = today if _is_hk_trading_day(today) else _prev_hk_trading_day(today)
             hint = str(target)
-            print(f"  ⚠️  历史日线数据已过期（最新 {latest_date:%Y-%m-%d}  < 需要 {hint}），正在更新…")
+            logger.warning("历史日线数据已过期，正在更新", extra={
+                "latest_date": str(latest_date.date()),
+                "target_date": hint
+            })
         else:
-            print("  ⚠️  本地无历史日线数据，正在下载…")
+            logger.warning("本地无历史日线数据，正在下载")
         hist_data, hist_path = mgr.download_from_config(sources_override=sources_override)
         if hist_data is None or hist_data.empty:
             # 下载失败时降级使用旧文件（如果存在）
             if hist_files:
                 hist_path = str(hist_files[0])
                 hist_data = pd.read_csv(hist_path, index_col=0, parse_dates=True)
-                print(f"  ⚠️  更新失败，继续使用旧数据: {hist_path}  ({len(hist_data)} 条)")
+                logger.warning("数据更新失败，继续使用旧数据", extra={
+                    "hist_path": hist_path,
+                    "records": len(hist_data)
+                })
             else:
-                print("  ❌ 历史数据下载失败，流程终止")
+                logger.critical("历史数据下载失败，流程终止")
                 sys.exit(1)
         else:
-            print(f"  ✅ 历史数据已更新: {hist_path}  ({len(hist_data)} 条)")
+            logger.info("历史数据已更新", extra={
+                "hist_path": hist_path,
+                "records": len(hist_data)
+            })
 
     # ── 1b. HSI 成分股增量更新 ──────────────────────────────────
     hsi_period = cfg.get('hsi_period', '3y')   # 可在 config.yaml 里配置
-    print(f"\n  📥 正在增量更新 HSI 成分股数据（period={hsi_period}）…")
+    logger.info("开始增量更新HSI成分股数据", extra={"period": hsi_period})
     try:
         hsi_result = mgr.download_hsi_incremental(period=hsi_period)
         total   = hsi_result['total']
         skipped = hsi_result['skipped']
         updated = hsi_result['updated']
         failed  = hsi_result['failed']
-        status  = f"跳过 {skipped}，更新 {updated}，失败 {len(failed)}" + \
-                  (f"  ❌ 失败: {failed}" if failed else "")
-        print(f"  ✅ HSI 成分股更新完成（共 {total} 只：{status}）")
+        logger.info("HSI成分股更新完成", extra={
+            "total": total,
+            "skipped": skipped,
+            "updated": updated,
+            "failed_count": len(failed),
+            "failed_tickers": failed
+        })
     except Exception as e:
-        print(f"  ⚠️  HSI 成分股更新失败（不影响主流程）: {e}")
+        logger.warning("HSI成分股更新失败", extra={"error": str(e)})
 
     return hist_data, hist_path
 
@@ -335,18 +338,15 @@ def step2_train_native(hist_data: pd.DataFrame):
     """
     对每个策略执行随机超参搜索（原生方法）。
     """
-    print("\n" + "="*60)
-    print("  步骤 2 / 3 : 多策略超参搜索（每策略最多 max_tries 次）")
-    print("  搜索方式: 随机搜索 (Random Search)")
-    print("="*60)
+    logger.info("步骤2/3: 多策略超参搜索开始", extra={"search_method": "random_search"})
 
-    cfg = _load_config()
+    cfg = load_config()
 
     def _on_result(result):
         try:
             plot_strategy_result(result['detail'], result['meta'], result['config'])
         except Exception as e:
-            print(f"  ⚠️  绘图失败: {e}")
+            logger.warning("绘图失败", extra={"error": str(e)})
 
     # on_result 仅在搜索中途满足阈值时触发（用于实时预览）
     # 最终最优解的图统一在 run_search 返回后绘制，确保一定有图输出
@@ -361,11 +361,14 @@ def step2_train_native(hist_data: pd.DataFrame):
 
     # ── 绘制最优解结果图 ─────────────────────────────────────────
     if best_result is not None:
-        print(f"\n  📊 绘制最优解结果图 ({best_result['strategy_name']}  收益={best_result['cum_return']:.2%})…")
+        logger.info("绘制最优解结果图", extra={
+            "strategy_name": best_result['strategy_name'],
+            "cum_return": f"{best_result['cum_return']:.2%}"
+        })
         try:
             plot_strategy_result(best_result['detail'], best_result['meta'], best_result['config'])
         except Exception as e:
-            print(f"  ⚠️  绘图失败: {e}")
+            logger.warning("绘图失败", extra={"error": str(e)})
 
     # ── 统一保存一个因子文件 ────────────────────────────────────
     factor_path   = None
@@ -375,16 +378,18 @@ def step2_train_native(hist_data: pd.DataFrame):
         try:
             factor_path = _save_factor(best_result, factors_dir)
             best_result['factor_path'] = factor_path
-            sharpe_str = f"{best_result['sharpe_ratio']:.4f}" if not np.isnan(best_result.get('sharpe_ratio', float('nan'))) else "N/A"
             badge = {'double': '🏅 双验证通过', 'double_no_wf': '🥈 双验证（WF不足）',
                      'val_only': '⚠️  仅验证集达标'}.get(best_result.get('validated', ''), '❓')
-            print(f"\n  💾 因子已保存: {Path(factor_path).name}"
-                  f"  (策略={best_result['strategy_name']}"
-                  f"  收益={best_result['cum_return']:.2%}"
-                  f"  夏普={sharpe_str}"
-                  f"  {badge})")
+            logger.info("因子已保存", extra={
+                "factor_file": Path(factor_path).name,
+                "strategy_name": best_result['strategy_name'],
+                "cum_return": f"{best_result['cum_return']:.2%}",
+                "sharpe_ratio": best_result.get('sharpe_ratio', float('nan')),
+                "validated": best_result.get('validated', '?'),
+                "badge": badge
+            })
         except Exception as e:
-            print(f"  ⚠️  因子保存失败: {e}")
+            logger.warning("因子保存失败", extra={"error": str(e)})
 
     return factor_path, best_result, sorted_results
 
@@ -393,26 +398,27 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
     """
     使用 Optuna 贝叶斯优化进行超参搜索。
     """
-    print("\n" + "="*60)
-    print("  步骤 2 / 3 : 多策略超参搜索")
-    print("  搜索方式: Optuna 贝叶斯优化")
-    print(f"  搜索次数: 每策略 {n_trials} 次")
-    if strategy_type:
-        print(f"  策略类型: {strategy_type}")
-    print("="*60)
+    logger.info("步骤2/3: 多策略超参搜索开始", extra={
+        "search_method": "optuna",
+        "n_trials_per_strategy": n_trials,
+        "strategy_type_filter": strategy_type
+    })
 
     if not OPTUNA_AVAILABLE:
-        print("  ⚠️  Optuna 未安装，回退到随机搜索")
+        logger.warning("Optuna未安装，回退到随机搜索")
         return step2_train_native(hist_data)
 
-    cfg = _load_config_full()
+    cfg = load_config()
     strategy_mods = _discover_strategies(strategy_type=strategy_type)
 
     if not strategy_mods:
-        print("  ❌ 未发现任何策略模块")
+        logger.critical("未发现任何策略模块")
         return None, None, []
 
-    print(f"  发现 {len(strategy_mods)} 个策略: {[m.NAME for m in strategy_mods]}")
+    logger.info("发现策略模块", extra={
+        "count": len(strategy_mods),
+        "names": [m.NAME for m in strategy_mods]
+    })
 
     # 准备回测配置
     backtest_config = {
@@ -458,8 +464,10 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
         _search_data_opt = _df_sorted
         _test_df_opt = _pd.DataFrame()
     else:
-        print(f"  📅 三段切割：Optuna 搜索段到 {_test_start_opt.date()}，"
-              f"封存 Hold-Out 段 {len(_test_df_opt)} 条")
+        logger.info("三段切割完成", extra={
+            "search_end": str(_test_start_opt.date()),
+            "holdout_records": len(_test_df_opt)
+        })
     optuna_data = _search_data_opt   # Optuna 只见这部分数据
 
     # 优化每个策略
@@ -468,9 +476,7 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
     best_value = float('-inf')
 
     for mod in strategy_mods:
-        print(f"\n  {'━'*56}")
-        print(f"  优化策略: {mod.NAME}")
-        print(f"  {'━'*56}")
+        logger.info("开始优化策略", extra={"strategy_module": mod.NAME})
 
         result = optimize_strategy(
             data=optuna_data,
@@ -498,7 +504,10 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
 
     # ── 绘制最优解结果图 ─────────────────────────────────────────
     if best_of_all and best_of_all.get('best_params'):
-        print(f"\n  📊 绘制最优解结果图 ({best_of_all['strategy_name']}  夏普={best_of_all['best_value']:.4f})…")
+        logger.info("绘制最优解结果图", extra={
+            "strategy_name": best_of_all['strategy_name'],
+            "sharpe": best_of_all['best_value']
+        })
         try:
             trial_cfg = backtest_config.copy()
             trial_cfg.update(best_of_all['best_params'])
@@ -520,7 +529,7 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
             if isinstance(detail_df, _pd.DataFrame) and not detail_df.empty:
                 plot_strategy_result(detail_df, meta, trial_cfg)
         except Exception as e:
-            print(f"  ⚠️  绘图失败: {e}")
+            logger.warning("绘图失败", extra={"error": str(e)})
 
     # ── Hold-Out + Walk-Forward 选优（统一入口） ──────────────────
     factor_path = None
@@ -567,21 +576,26 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
             best_result['factor_path'] = factor_path
             badge = {'double': '🏅', 'double_no_wf': '🥈', 'val_only': '⚠️'}.get(
                 best_result.get('validated', ''), '❓')
-            print(f"\n  💾 因子已保存: {Path(factor_path).name}"
-                  f"  (策略={best_result['strategy_name']}"
-                  f"  夏普={best_result.get('sharpe_ratio', float('nan')):.4f}"
-                  f"  {badge} {best_result.get('validated','?')})")
+            logger.info("因子已保存", extra={
+                "factor_file": Path(factor_path).name,
+                "strategy_name": best_result['strategy_name'],
+                "sharpe_ratio": best_result.get('sharpe_ratio', float('nan')),
+                "badge": badge,
+                "validated": best_result.get('validated', '?')
+            })
         except Exception as e:
-            print(f"  ⚠️  因子保存失败: {e}")
+            logger.warning("因子保存失败", extra={"error": str(e)})
 
     # 打印排行榜
     if sorted_results:
-        print(f"\n  {'═'*56}")
-        print("  优化结果排行榜 Top 10")
-        print(f"  {'═'*56}")
+        logger.info("优化结果排行榜Top10", extra={"total_results": len(sorted_results)})
         for i, r in enumerate(sorted_results[:10], 1):
-            sharpe = r.get('value', 0)
-            print(f"  {i:>2}. {r.get('strategy_name', 'unknown'):<22} 夏普={sharpe:.4f}  参数={r.get('params', {})}")
+            logger.info("排名", extra={
+                "rank": i,
+                "strategy_name": r.get('strategy_name', 'unknown'),
+                "sharpe": r.get('value', 0),
+                "params": r.get('params', {})
+            })
 
     return factor_path, best_result, sorted_results
 
@@ -599,7 +613,7 @@ def _resolve_artifact(factor_path: str) -> dict:
     try:
         art = joblib.load(factor_path)
     except Exception as e:
-        print(f"  ⚠️  加载因子失败: {e}")
+        logger.warning("加载因子失败", extra={"error": str(e), "factor_path": factor_path})
         return {}
 
     strategy_name = art.get('meta', {}).get('name', '')
@@ -705,13 +719,14 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     不输出：单调外推的"预测价格"序列。
     返回 markdown 格式的报告内容。
     """
-    print(f"\n  {'─'*50}")
-    print(f"  信号报告：未来 {n_days} 个交易日（日线）")
-    print(f"  {'─'*50}")
+    logger.info("生成信号报告", extra={
+        "n_days": n_days,
+        "factor_path": factor_path
+    })
 
     artifact     = _resolve_artifact(factor_path)
     if not artifact:
-        print("  ❌ 无法加载因子文件，跳过信号报告")
+        logger.warning("无法加载因子文件，跳过信号报告")
         return ""
 
     model        = artifact.get('model')
@@ -728,9 +743,16 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     # 置信度
     confidence_label, confidence_emoji = _signal_confidence(artifact, is_ml)
 
-    print(f"  策略: {strategy}  类型: {'ML' if is_ml else '规则'}  参数: {params}")
-    print(f"  夏普率: {sharpe_str}  累计收益: {artifact.get('cum_return', float('nan')):.2%}")
-    print(f"  信号置信度: {confidence_emoji} {confidence_label}  (验证等级={artifact.get('validated','unknown')})")
+    logger.info("信号报告", extra={
+        "strategy": strategy,
+        "type": 'ML' if is_ml else '规则',
+        "params": params,
+        "sharpe": sharpe_str,
+        "cum_return": f"{artifact.get('cum_return', float('nan')):.2%}",
+        "confidence_label": confidence_label,
+        "confidence_emoji": confidence_emoji,
+        "validated": artifact.get('validated', 'unknown')
+    })
 
     df = data.copy().sort_index()
     if not pd.api.types.is_datetime64_any_dtype(df.index):
@@ -741,20 +763,26 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     returns    = df['Close'].pct_change().dropna()
     daily_vol  = float(returns.tail(60).std())
 
-    print(f"  最后交易日: {last_date.date()}  收盘价: {last_close:.2f}")
-    print(f"  近60日波动率: {daily_vol:.2%}")
+    logger.info("市场状态", extra={
+        "last_date": str(last_date.date()),
+        "last_close": last_close,
+        "daily_volatility_60d": f"{daily_vol:.2%}"
+    })
 
     # ── 情感分析 ──────────────────────────────────────────────────
-    print(f"  正在分析市场情感...")
+    logger.info("开始情感分析")
     sentiment_result = analyze_stock_sentiment(config.get('ticker', '0700.HK'))
     sentiment_signal = get_sentiment_signal(sentiment_result)
     sentiment_emoji  = ("🟢" if sentiment_result['sentiment'] == "positive"
                         else "🔴" if sentiment_result['sentiment'] == "negative" else "⚪")
-    print(f"  情感分析: {sentiment_emoji} {sentiment_result['sentiment']} "
-          f"(分数: {sentiment_result['polarity']:.3f})")
-    print(f"  新闻统计: 正面 {sentiment_result['positive_count']} "
-          f"| 负面 {sentiment_result['negative_count']} "
-          f"| 中性 {sentiment_result['neutral_count']}")
+    logger.info("情感分析完成", extra={
+        "sentiment": sentiment_result['sentiment'],
+        "polarity": sentiment_result['polarity'],
+        "positive_count": sentiment_result['positive_count'],
+        "negative_count": sentiment_result['negative_count'],
+        "neutral_count": sentiment_result['neutral_count'],
+        "sentiment_emoji": sentiment_emoji
+    })
 
     # ── 未来交易日（跳过周末）──────────────────────────────────────
     future_dates = []
@@ -774,12 +802,15 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     latest_feats       = None
     pred_signal_series = None
     if is_ml:
-        print(f"\n  模型: {type(model).__name__}  特征: {len(feat_cols)} 个")
+        logger.info("ML模型推断", extra={
+            "model_type": type(model).__name__,
+            "feature_count": len(feat_cols)
+        })
         if strategy_mod is not None and hasattr(strategy_mod, 'predict'):
             try:
                 pred_signal_series = strategy_mod.predict(model, df, config, meta)
             except Exception as e:
-                print(f"  ⚠️  predict() 接口失败，回退 ret_i 特征: {e}")
+                logger.warning("predict()接口失败", extra={"error": str(e)})
 
         if pred_signal_series is None:
             test_days = len(feat_cols)
@@ -790,7 +821,7 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
             if not df_clean.empty and all(c in df_clean.columns for c in feat_cols):
                 latest_feats = list(df_clean[feat_cols].iloc[-1].values)
     else:
-        print(f"\n  规则信号驱动，方向=最新信号，区间=历史统计分布")
+        logger.info("规则信号驱动")
 
     # ── 规则策略：取当前信号 ───────────────────────────────────────
     rule_direction = 1
@@ -801,9 +832,12 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
                 sig, _, _ = strategy_mod.run(data.copy(), config)
                 rule_direction = _signal_to_direction(sig)
             except Exception as e:
-                print(f"  ⚠️  规则策略信号生成失败: {e}")
+                logger.warning("规则策略信号生成失败", extra={"error": str(e)})
         current_signal = "做多" if rule_direction == 1 else "空仓"
-        print(f"  当前信号: {'做多 📈' if rule_direction == 1 else '空仓 📉'}")
+        logger.info("当前信号", extra={
+            "signal": current_signal,
+            "direction": rule_direction
+        })
 
     # ML 当前方向
     ml_direction = 1
@@ -820,8 +854,10 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
             ml_pred_ret_raw = 0.0   # predict() 路径只有方向，幅度用 0
 
     # ── 预测循环 ──────────────────────────────────────────────────
-    print(f"\n  {'日期':<14} {'信号':<12} {'模型输出':>10} {'统计区间 (P10~P90)':>24} {'置信度':>8}")
-    print(f"  {'-'*76}")
+    logger.info("未来交易日预测", extra={
+        "is_ml": is_ml,
+        "n_days": n_days
+    })
 
     predictions = []
     for i, fd in enumerate(future_dates):
@@ -830,13 +866,13 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
         if is_ml:
             pred_ret = ml_pred_ret_raw if ml_pred_ret_raw is not None else 0.0
             signal_val  = 1 if pred_ret > 0 else 0
-            signal_str  = "做多 📈" if pred_ret > 0 else "空仓 📉"
+            signal_str  = "做多" if pred_ret > 0 else "空仓"
             pred_display = f"{pred_ret:+.4f}"
         else:
             # 规则策略：pred_ret = 0.0，方向只体现在 signal_str，不偏移价格区间基准
             pred_ret     = 0.0
             signal_val   = rule_direction
-            signal_str   = "做多 📈" if rule_direction == 1 else "空仓 📉"
+            signal_str   = "做多" if rule_direction == 1 else "空仓"
             pred_display = "—"
 
         predictions.append({
@@ -849,12 +885,21 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
             'confidence':   f"{confidence_emoji} {confidence_label}",
         })
 
-        print(f"  {str(fd.date()):<14} {signal_str:<12} {pred_display:>10}"
-              f"  [{price_lo:>8.2f}, {price_hi:>8.2f}]"
-              f"  {confidence_emoji} {confidence_label}")
+        logger.info("预测", extra={
+            "date": str(fd.date()),
+            "signal": signal_str,
+            "pred_ret_raw": pred_display,
+            "price_lo": price_lo,
+            "price_hi": price_hi,
+            "confidence_label": confidence_label
+        })
 
-    print(f"\n  ⚠️  统计区间基于历史滚动收益率分布（P10/P90），非价格预测，不代表未来走势。")
-    print(f"  ⚠️  多日信号基于当前最新数据推算，未来市况变化可能导致信号翻转。")
+    logger.warning("统计区间说明", extra={
+        "note": "统计区间基于历史滚动收益率分布（P10/P90），非价格预测，不代表未来走势"
+    })
+    logger.warning("多日信号说明", extra={
+        "note": "多日信号基于当前最新数据推算，未来市况变化可能导致信号翻转"
+    })
 
     # ── 完整指标 ──────────────────────────────────────────────────
     ann_return        = artifact.get('annualized_return', float('nan'))
@@ -987,7 +1032,7 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
 """
 
     # ── 持仓管理与建议（含统一风控层） ──────────────────────────────
-    current_config = _load_config_full()
+    current_config = load_config()
     risk_cfg       = current_config.get('risk_management', {})
     portfolio_val  = float(risk_cfg.get('portfolio_value', 100_000.0))
 
@@ -1036,15 +1081,21 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
         rec.setdefault('profit',        position.profit)
         rec.setdefault('profit_pct',    position.profit_pct)
 
-        print(f"\n  {'─'*50}")
-        print(f"  持仓状态与建议")
-        print(f"  {'─'*50}")
-        print(f"  持股数量: {rec['shares']} 股  平均成本: {rec['avg_cost']:.2f}")
-        print(f"  当前价格: {rec['current_price']:.2f}  盈亏: {rec['profit']:+.2f} ({rec['profit_pct']:+.2f}%)")
-        print(f"  ATR({atr_period}): {current_atr:.4f}  止损位: {rec['stop_price']:.2f}  峰值: {peak_price:.2f}")
-        print(f"  Kelly 建议股数: {rec['kelly_shares']}  熔断: {'⚠️ 已触发' if rec['circuit_breaker'] else '✅ 正常'}")
-        print(f"\n  交易建议: {rec['action']}  原因: {rec['reason']}")
-        print(f"  信号: {'持仓 🟢' if rec['signal'] == 1 else '空仓 🔴'}")
+        logger.info("持仓状态与建议", extra={
+            "shares": rec['shares'],
+            "avg_cost": rec['avg_cost'],
+            "current_price": rec['current_price'],
+            "profit": rec['profit'],
+            "profit_pct": f"{rec['profit_pct']:+.2f}%",
+            "atr": current_atr,
+            "stop_price": rec['stop_price'],
+            "peak_price": peak_price,
+            "kelly_shares": rec['kelly_shares'],
+            "circuit_breaker": rec['circuit_breaker'],
+            "action": rec['action'],
+            "reason": rec['reason'],
+            "signal": rec['signal'],
+        })
 
         feishu_webhook = current_config.get('feishu_webhook')
         if feishu_webhook:
@@ -1085,7 +1136,7 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
                 'validation':     {},
             }
             send_full_report_to_feishu(feishu_webhook, report_data)
-            print(f"  📱 已发送到飞书群聊")
+            logger.info("飞书报告已发送")
 
         stop_str   = f"{rec['stop_price']:.2f}" if rec.get('stop_price', 0) > 0 else "—"
         kelly_str  = f"{rec['kelly_shares']} 股（≈ {rec['kelly_amount']:.0f} 元）" if rec.get('kelly_shares', 0) > 0 else "—"
@@ -1188,7 +1239,7 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
             fa_result = run_factor_analysis(df, _fa_signal, config)
             md_content += fa_result.get('summary_md', '')
     except Exception as _fa_e:
-        print(f"  ⚠️  因子分析失败（不影响主报告）: {_fa_e}")
+        logger.warning("因子分析失败", extra={"error": str(_fa_e)})
 
     md_content += """
 ## 风险提示
@@ -1203,7 +1254,7 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
     report_path.write_text(md_content, encoding='utf-8')
-    print(f"\n  📄 Markdown 报告已保存: {report_path}")
+    logger.info("Markdown报告已保存", extra={"report_path": str(report_path)})
 
     return md_content
 
@@ -1242,15 +1293,13 @@ def main():
     args = parser.parse_args()
 
     # 加载配置
-    config = _load_config_full()
+    config = load_config()
 
     sources_override = None
     if args.sources:
         sources_override = [s.strip() for s in args.sources.split(',') if s.strip()]
 
-    print("=" * 60)
-    print("  腾讯股票分析流程  （自动化三步版）")
-    print("=" * 60)
+    logger.info("腾讯股票分析流程启动")
 
     # ── 步骤 1 ────────────────────────────────────────────────────
     hist_data, hist_path = step1_ensure_data(sources_override)
@@ -1262,9 +1311,9 @@ def main():
     if args.skip_train:
         factor_path = _latest_factor_path(factors_dir)
         if factor_path:
-            print(f"\n  [跳过训练] 使用现有因子: {Path(factor_path).name}")
+            logger.info("跳过训练，使用现有因子", extra={"factor_file": Path(factor_path).name})
         else:
-            print("\n  ⚠️  --skip-train 指定但 data/factors/ 中无因子文件，执行正常训练")
+            logger.warning("--skip-train指定但无因子文件，执行正常训练")
             args.skip_train = False
 
     if not args.skip_train:
@@ -1275,24 +1324,20 @@ def main():
             # 保存失败时兜底取最新已有文件
             factor_path = _latest_factor_path(factors_dir)
             if factor_path:
-                print(f"  ℹ️  使用已有最新因子: {Path(factor_path).name}")
+                logger.info("使用已有最新因子", extra={"factor_file": Path(factor_path).name})
 
     # ── 步骤 3 ────────────────────────────────────────────────────
-    print("\n" + "="*60)
-    print("  步骤 3 / 3 : 信号报告（交易方向 + 统计参考区间）")
-    print("="*60)
+    logger.info("步骤3/3: 信号报告开始")
 
     if factor_path is None:
-        print("  ❌ 没有可用的因子/模型，无法进行预测")
+        logger.critical("没有可用的因子/模型，无法进行预测")
         return
 
     # 3a. 信号报告（日线）
     generate_signal_report(hist_data, factor_path, n_days=args.n_days)
 
     # 3b. 生成策略验证报告（样本外测试 + Walk-Forward 分析）
-    print(f"\n  {'─'*50}")
-    print(f"  策略验证报告")
-    print(f"  {'─'*50}")
+    logger.info("生成策略验证报告")
 
     artifact = _resolve_artifact(factor_path)
     validation_data = {}
@@ -1350,8 +1395,7 @@ def main():
 """
         validation_md = three_stage_table + validation_md
 
-        print(f"  📊 验证报告已保存: {Path(report_path).name if report_path else '(未保存)'}")
-        print(f"\n{validation_md}")
+        logger.info("验证报告已保存", extra={"report_file": Path(report_path).name if report_path else '(未保存)'})
 
         # 发送到飞书（带验证数据）
         feishu_webhook = config.get('feishu_webhook')
@@ -1380,14 +1424,12 @@ def main():
                 'validation': validation_data,
             }
             send_full_report_to_feishu(feishu_webhook, report_data)
-            print(f"  📱 验证报告已发送到飞书群聊")
+            logger.info("验证报告已发送到飞书")
     else:
-        print("  ⚠️ 无法加载策略模块，跳过验证报告")
+        logger.warning("无法加载策略模块，跳过验证报告")
 
 
-    print("\n" + "="*60)
-    print("  🎉 分析流程完成！")
-    print("="*60)
+    logger.info("分析流程完成")
 
 
 if __name__ == "__main__":

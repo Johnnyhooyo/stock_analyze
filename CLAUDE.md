@@ -4,16 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-港股智能分析系统 — 自动化多策略回测、超参数优化、信号预测与持仓管理。默认标的腾讯控股 (0700.HK)，支持 HSI 全部成分股。
+**核心目标：一个专业的量化软件，每日运行，基于持仓给出下一个交易日的操作建议。**
+
+港股智能分析系统 — 每日自动运行，扫描持仓与观察列表，聚合多策略共识信号，结合 ATR 止损/Kelly 仓位/熔断等风控规则，基于持仓详情给出明日操作建议（买入 / 持有 / 卖出 / 观望 / 止损卖出），并通过飞书推送报告。支持 HSI 全部成分股，默认标的腾讯控股 (0700.HK)。
+
+- **每日入口**：`daily_run.py` — 轻量推断，不重新训练，秒级出结果
+- **每日训练**：`main.py` — 完整超参数搜索 + 验证，更新 `data/factors/` 因子库
+- **持仓管理**：`data/portfolio.yaml` — 手动维护持仓，系统自动更新止损峰值与连续亏损天数
 
 ## Running the Project
 
 ```bash
-python3 main.py                    # Full analysis with random search
-python3 main.py --use-optuna       # Use Optuna Bayesian optimization
+# ── 每日运行（核心入口）────────────────────────────────────────
+python3 daily_run.py                          # 分析 portfolio.yaml 中的持仓
+python3 daily_run.py --tickers 0700.HK 0005.HK  # 指定股票
+python3 daily_run.py --watchlist hsi          # 分析 HSI 全部成分股
+python3 daily_run.py --skip-notify            # 不发送飞书通知
+python3 daily_run.py --skip-sentiment         # 跳过情感分析（更快）
+python3 daily_run.py --dry-run                # 打印建议但不保存状态
+bash daily_run.sh                             # Shell 封装（含日志、venv 激活）
+
+# ── 每日训练（更新因子库）──────────────────────────────────────
+python3 main.py --use-optuna                  # 完整超参数搜索 + 验证
 python3 main.py --use-optuna --optuna-trials 100
-python3 main.py --skip-train       # Skip training, use existing factors
-python3 main.py --n-days 5         # Prediction horizon
+python3 main.py --skip-train                  # 跳过训练，仅生成信号报告
+python3 main.py --n-days 5                    # 预测天数
 ```
 
 ## Architecture

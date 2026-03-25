@@ -10,6 +10,10 @@ from typing import Optional
 from datetime import datetime
 from pathlib import Path
 
+from log_config import get_logger
+
+logger = get_logger(__name__)
+
 # 情感数据目录
 DATA_DIR = Path(__file__).parent / 'data' / 'sentiment'
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -243,7 +247,7 @@ def fetch_stock_news(ticker: str = "0700.HK", max_results: int = 10) -> list:
         pass
 
     # 所有来源均失败
-    print(f"  ⚠️ 获取新闻失败: Yahoo Finance API 暂时不可用，情感分析将返回中性结果")
+        logger.warning("获取新闻失败: Yahoo Finance API 暂时不可用，情感分析将返回中性结果")
     return []
 
 

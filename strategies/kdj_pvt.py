@@ -35,35 +35,15 @@ PVT 计算:
 """
 
 import pandas as pd
-import numpy as np
+
+from strategies.indicators import fibonacci, kdj
 
 NAME = "kdj_pvt"
-
-
-def _kdj(high: pd.Series, low: pd.Series, close: pd.Series, period: int):
-    lowest_low    = low.rolling(period).min()
-    highest_high  = high.rolling(period).max()
-    denom         = (highest_high - lowest_low).replace(0, np.nan)
-    rsv           = (close - lowest_low) / denom * 100
-    K = rsv.ewm(alpha=1/3, adjust=False).mean()
-    D = K.ewm(alpha=1/3, adjust=False).mean()
-    J = 3 * K - 2 * D
-    return K, D, J
 
 
 def _pvt(close: pd.Series, volume: pd.Series) -> pd.Series:
     pct_change = close.diff() / close.shift(1)
     return (pct_change * volume).cumsum()
-
-
-def _fibonacci(high: pd.Series, low: pd.Series, period: int):
-    """返回 (fib_0618_support, fib_0382_resistance) 两条 Series。"""
-    swing_high = high.rolling(period).max()
-    swing_low  = low.rolling(period).min()
-    diff       = swing_high - swing_low
-    fib_0618   = swing_high - 0.618 * diff   # 支撑位
-    fib_0382   = swing_high - 0.382 * diff   # 阻力位
-    return fib_0618, fib_0382
 
 
 def run(data: pd.DataFrame, config: dict):
@@ -77,10 +57,10 @@ def run(data: pd.DataFrame, config: dict):
     fib_period    = int(config.get("fib_period", 60))
 
     df = data.copy()
-    df["K"], df["D"], df["J"] = _kdj(df["High"], df["Low"], df["Close"], kdj_period)
+    df["K"], df["D"], df["J"] = kdj(df["High"], df["Low"], df["Close"], kdj_period)
     df["pvt"]    = _pvt(df["Close"], df["Volume"])
     df["pvt_ma"] = df["pvt"].rolling(pvt_ma_period).mean()
-    df["fib_0618"], df["fib_0382"] = _fibonacci(df["High"], df["Low"], fib_period)
+    df["fib_0618"], df["fib_0382"] = fibonacci(df["High"], df["Low"], fib_period)
     df = df.dropna(subset=["K", "D", "J", "pvt_ma", "fib_0618", "fib_0382"])
 
     position  = 0

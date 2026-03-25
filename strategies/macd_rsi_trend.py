@@ -16,33 +16,10 @@
 """
 
 import pandas as pd
-import numpy as np
+
+from strategies.indicators import macd, rsi
 
 NAME = "macd_rsi_trend"
-
-
-def _ema(series: pd.Series, period: int) -> pd.Series:
-    """EMA计算"""
-    return series.ewm(span=period, adjust=False).mean()
-
-
-def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
-    """MACD计算"""
-    ema_fast = _ema(close, fast)
-    ema_slow = _ema(close, slow)
-    macd_line = ema_fast - ema_slow
-    signal_line = _ema(macd_line, signal)
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
-
-
-def _rsi(series: pd.Series, period: int) -> pd.Series:
-    """RSI计算"""
-    delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
 
 
 def run(data: pd.DataFrame, config: dict):
@@ -64,12 +41,12 @@ def run(data: pd.DataFrame, config: dict):
         pass
 
     # MACD
-    df["macd_line"], df["signal_line"], df["histogram"] = _macd(
+    df["macd_line"], df["signal_line"], df["histogram"] = macd(
         df["Close"], macd_fast, macd_slow, macd_signal
     )
 
     # RSI
-    df["rsi"] = _rsi(df["Close"], rsi_period)
+    df["rsi"] = rsi(df["Close"], rsi_period)
 
     # 热度均线
     if "trend" in df.columns:
