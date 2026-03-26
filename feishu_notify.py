@@ -67,184 +67,172 @@ def send_full_report_to_feishu(
     report_data: dict
 ) -> bool:
     """
-    发送完整分析报告到飞书
-
-    Args:
-        webhook_url: 飞书 Webhook
-        report_data: 包含所有报告数据的字典
-
-    Returns:
-        bool: 是否发送成功
+    发送完整分析报告到飞书（4阶段评估 + 持仓 + 信号 合并为一条消息）
     """
     if not webhook_url:
         logger.warning("飞书 Webhook 未配置，跳过通知")
         return False
 
-    # 提取数据
-    ticker = report_data.get('ticker', '0700.hk')
-    current_price = report_data.get('current_price', 0)
-    last_date = report_data.get('last_date', '')
-    strategy = report_data.get('strategy', '')
-    params = report_data.get('params', {})
-    is_ml = report_data.get('is_ml', False)
+    import math as _m
 
-    # 信号
-    signal = report_data.get('signal', '震荡')
-    signal_emoji = "🟢" if signal == "上涨" else "🔴"
+    def _f(v, fmt='.2%'):
+        if v is None or (isinstance(v, float) and _m.isnan(v)):
+            return '—'
+        try:
+            return f"{v:{fmt}}"
+        except Exception:
+            return '—'
 
-    # 收益指标
-    cum_return = report_data.get('cum_return', 0)
-    sharpe = report_data.get('sharpe', 0)
-    ann_return = report_data.get('annualized_return', 0)
-    max_dd = report_data.get('max_drawdown', 0)
-    volatility = report_data.get('volatility', 0)
+    def _badge(ok):
+        return '✅' if ok else '❌'
 
-    # 交易统计
-    total_trades = report_data.get('total_trades', 0)
-    win_rate = report_data.get('win_rate', 0)
-    calmar = report_data.get('calmar_ratio', 0)
+    # ── 基本信息 ──────────────────────────────────────────────────
+    ticker       = report_data.get('ticker', '0700.HK').upper()
+    price        = report_data.get('current_price', 0)
+    last_date    = report_data.get('last_date', '')
+    strategy     = report_data.get('strategy', '')
+    is_ml        = report_data.get('is_ml', False)
+    signal       = report_data.get('signal', '空仓')
+    conf_label   = report_data.get('confidence_label', '')
+    conf_emoji   = report_data.get('confidence_emoji', '⚪')
+    signal_emoji = '🟢' if signal == '做多' else '🔴'
 
-    # 预测
-    predictions = report_data.get('predictions', [])
-    avg_volatility = report_data.get('avg_volatility', 0)
+    # ── 阶段2 验证窗口指标（来自因子文件）─────────────────────────
+    train_period = report_data.get('train_period', '—')
+    val_period   = report_data.get('val_period', '—')
+    val_ret      = report_data.get('cum_return', float('nan'))
+    val_sharpe   = report_data.get('sharpe', float('nan'))
+    val_dd       = report_data.get('max_drawdown', float('nan'))
+    val_trades   = report_data.get('total_trades', 0)
+    val_wr       = report_data.get('win_rate', float('nan'))
+    ann_ret      = report_data.get('annualized_return', float('nan'))
+    calmar       = report_data.get('calmar_ratio', float('nan'))
+    volatility   = report_data.get('volatility', float('nan'))
+    daily_vol    = report_data.get('avg_volatility', float('nan'))
+    val_meets    = report_data.get('meets_threshold', None)
 
-    # 持仓
-    position = report_data.get('position', {})
-    recommendation = report_data.get('recommendation', {})
 
-    # 验证结果
-    validation = report_data.get('validation', {})
+    # ── 持仓 & 操作建议 ───────────────────────────────────────────
+    pos          = report_data.get('position', {})
+    rec          = report_data.get('recommendation', {})
+    shares       = pos.get('shares', 0)
+    avg_cost     = pos.get('avg_cost', 0)
+    cur_price    = pos.get('current_price', price)
+    profit       = pos.get('profit', 0)
+    profit_pct   = pos.get('profit_pct', 0)
+    stop_price   = pos.get('stop_price', 0) or rec.get('stop_price', 0)
+    kelly_shares = pos.get('kelly_shares', 0) or rec.get('kelly_shares', 0)
+    kelly_amount = pos.get('kelly_amount', 0) or rec.get('kelly_amount', 0)
+    cb           = pos.get('circuit_breaker', False) or rec.get('circuit_breaker', False)
+    action       = rec.get('action', '观望')
+    reason       = rec.get('reason', '')
 
-    # 情感分析
-    sentiment = report_data.get('sentiment', {})
+    # ── 情感 & 预测 ───────────────────────────────────────────────
+    sentiment    = report_data.get('sentiment', {})
+    sent_emoji   = ('🟢' if sentiment.get('sentiment') == 'positive'
+                    else '🔴' if sentiment.get('sentiment') == 'negative' else '⚪')
+    predictions  = report_data.get('predictions', [])
 
-    # 构建消息
+    # ══════════════════════════════════════════════════════════════
+    # 构建飞书 Markdown 消息
+    # ══════════════════════════════════════════════════════════════
     lines = []
 
-    # 标题
-    lines.append(f"## 📊 {ticker} 股票分析报告")
-    lines.append("")
+    # ── 标题栏 ────────────────────────────────────────────────────
+    action_emoji = '🟢' if action in ('买入', '加仓') else '🔴' if action in ('卖出', '减仓') else '⚪'
+    lines += [
+        f"## 📊 {ticker}  {last_date}  {price:.2f} HKD",
+        "",
+        f"**策略** {strategy} {'(ML)' if is_ml else '(规则)'}　"
+        f"**信号** {signal_emoji} {signal}　"
+        f"**置信** {conf_emoji} {conf_label}",
+        "",
+    ]
 
-    # 基本信息
-    lines.append("### 📈 基本信息")
-    lines.append(f"- **分析日期**: {last_date}")
-    lines.append(f"- **当前价格**: {current_price:.2f} HKD")
-    lines.append(f"- **策略**: {strategy}")
-    lines.append(f"- **策略类型**: {'ML模型' if is_ml else '规则策略'}")
-    lines.append(f"- **信号**: {signal_emoji} {signal}")
-    lines.append("")
+    # ── 持仓状态 & 操作建议 ────────────────────────────────────────
+    if shares > 0:
+        pnl_emoji = '🟢' if profit >= 0 else '🔴'
+        stop_str  = f"{stop_price:.2f}" if stop_price > 0 else "—"
+        kelly_str = f"{kelly_shares}股 ≈{kelly_amount:.0f}元" if kelly_shares > 0 else "—"
+        cb_str    = "⚠️ 熔断触发" if cb else "✅ 正常"
+        lines += [
+            "### 💼 持仓状态",
+            "",
+            "| 持股 | 成本 | 现价 | 盈亏 | 止损 | Kelly | 熔断 |",
+            "|------|------|------|------|------|-------|------|",
+            f"| {shares}股 | {avg_cost:.2f} | {cur_price:.2f} "
+            f"| {pnl_emoji}{profit:+.0f}({profit_pct:+.1f}%) "
+            f"| {stop_str} | {kelly_str} | {cb_str} |",
+            "",
+            f"### {action_emoji} 操作建议：{action}",
+            f"> {reason}",
+            "",
+        ]
+    elif rec:
+        lines += [
+            f"### {action_emoji} 操作建议：{action}",
+            f"> {reason}",
+            "",
+        ]
 
-    # 情感分析
-    if sentiment:
-        sent_emoji = "🟢" if sentiment.get('sentiment') == 'positive' else "🔴" if sentiment.get('sentiment') == 'negative' else "⚪"
-        lines.append("### 📰 情感分析")
-        lines.append(f"- **情感倾向**: {sent_emoji} {sentiment.get('sentiment', 'neutral')}")
-        lines.append(f"- **情感分数**: {sentiment.get('polarity', 0):.3f}")
-        lines.append(f"- **正面新闻**: {sentiment.get('positive_count', 0)} 篇")
-        lines.append(f"- **负面新闻**: {sentiment.get('negative_count', 0)} 篇")
-        lines.append(f"- **中性新闻**: {sentiment.get('neutral_count', 0)} 篇")
-        if sentiment.get('latest_news'):
-            lines.append("**最新新闻:**")
-            for n in sentiment['latest_news'][:3]:
-                n_emoji = "🟢" if n.get('sentiment') == 'positive' else "🔴" if n.get('sentiment') == 'negative' else "⚪"
-                lines.append(f"- {n_emoji} {n.get('title', '')}")
-        lines.append("")
+    # ── 策略评估表 ────────────────────────────────────────────────
+    lines += [
+        "### 📋 策略评估",
+        "",
+        "| 阶段 | 时间范围 | 累计收益 | 夏普 | 最大回撤 | 交易次 | 胜率 | 达标 |",
+        "|------|---------|---------|------|---------|-------|------|------|",
+        f"| 🔵 ①训练 | {train_period} | — | — | — | — | — | — |",
+        f"| 🟡 ②验证 | {val_period} | {_f(val_ret)} | {_f(val_sharpe,'.2f')} "
+        f"| {_f(val_dd)} | {val_trades} | {_f(val_wr)} "
+        f"| {_badge(val_meets) if val_meets is not None else '—'} |",
+        "",
+        f"**补充** 年化 {_f(ann_ret)} | 波动率 {_f(volatility)} | 近60日波动 {_f(daily_vol)} | 卡玛 {_f(calmar,'.2f')}",
+        "",
+    ]
 
-    # 收益指标
-    import math as _math
-    _ann_return_str = f"{ann_return:+.2%}" if (ann_return is not None and _math.isfinite(ann_return)) else "N/A"
-    lines.append("### 💰 收益指标")
-    lines.append(f"- **累计收益**: {cum_return:+.2%}")
-    lines.append(f"- **年化收益**: {_ann_return_str}")
-    lines.append(f"- **夏普比率**: {sharpe:.2f}")
-    lines.append(f"- **卡玛比率**: {calmar:.2f}")
-    lines.append("")
-
-    # 风险指标
-    lines.append("### ⚠️ 风险指标")
-    lines.append(f"- **最大回撤**: {max_dd:.2%}")
-    lines.append(f"- **年化波动率**: {volatility:.2%}")
-    lines.append(f"- **近60日波动率**: {avg_volatility:.2%}")
-    lines.append("")
-
-    # 交易统计
-    lines.append("### 📊 交易统计")
-    lines.append(f"- **交易次数**: {total_trades}")
-    lines.append(f"- **胜率**: {win_rate:.2%}")
-    lines.append("")
-
-    # 预测结果
+    # ── 未来信号预测 ──────────────────────────────────────────────
     if predictions:
-        lines.append("### 🔮 预测结果")
+        lines += ["### 🔮 未来信号", ""]
         for p in predictions:
-            # Support both old-style keys and new-style keys
-            if 'direction' in p:
-                emoji = "🟢" if p['direction'] == "上涨" else "🔴"
-                price_str = f"{p['price']:.2f} " if 'price' in p else ""
-                ret_str = f"{p['return']:+.2%} " if 'return' in p else ""
-                range_str = f"(区间: [{p['low']:.2f}, {p['high']:.2f}])" if 'low' in p else ""
-                lines.append(f"- {p['date']}: {price_str}{emoji} {ret_str}{range_str}")
-            else:
-                signal_str = p.get('signal_str', '—')
-                emoji = "🟢" if p.get('signal', 0) == 1 else "🔴"
-                pred_ret = p.get('pred_ret_raw', '—')
-                lo = p.get('price_lo', 0)
-                hi = p.get('price_hi', 0)
-                confidence = p.get('confidence', '')
-                lines.append(f"- {p['date']}: {signal_str} {emoji} 模型输出: {pred_ret}  区间: [{lo:.2f}, {hi:.2f}]  {confidence}")
+            s_emoji = '🟢' if p.get('signal', 0) == 1 else '🔴'
+            lo, hi = p.get('price_lo', 0), p.get('price_hi', 0)
+            lines.append(
+                f"- **{p['date']}** {s_emoji} {p.get('signal_str','—')}  "
+                f"区间 [{lo:.2f}, {hi:.2f}]  {p.get('confidence','')}"
+            )
         lines.append("")
 
-    # 持仓状态
-    if position and position.get('shares', 0) > 0:
-        lines.append("### 💼 持仓状态")
-        lines.append(f"- **持股数量**: {position.get('shares', 0)} 股")
-        lines.append(f"- **平均成本**: {position.get('avg_cost', 0):.2f} HKD")
-        lines.append(f"- **当前价格**: {position.get('current_price', 0):.2f} HKD")
-        lines.append(f"- **盈亏金额**: {position.get('profit', 0):+.2f} HKD")
-        lines.append(f"- **盈亏比例**: {position.get('profit_pct', 0):+.2%}")
+    # ── 情感分析（精简）──────────────────────────────────────────
+    if sentiment:
+        news_items = sentiment.get('latest_news', [])[:2]
+        news_str = "  ".join(
+            f"{'🟢' if n.get('sentiment')=='positive' else '🔴' if n.get('sentiment')=='negative' else '⚪'} {n.get('title','')[:20]}…"
+            for n in news_items
+        )
+        lines += [
+            f"### 📰 市场情感 {sent_emoji} {sentiment.get('sentiment','neutral')} "
+            f"(极性 {sentiment.get('polarity', 0):.3f} | "
+            f"正{sentiment.get('positive_count',0)} 负{sentiment.get('negative_count',0)} 中{sentiment.get('neutral_count',0)})",
+        ]
+        if news_str:
+            lines.append(news_str)
         lines.append("")
 
-    # 交易建议
-    if recommendation:
-        action = recommendation.get('action', 'N/A')
-        reason = recommendation.get('reason', '')
-        lines.append("### 🎯 交易建议")
-        lines.append(f"- **操作**: {action}")
-        lines.append(f"- **原因**: {reason}")
-        lines.append(f"- **预测收益率**: {recommendation.get('predicted_return', 0):+.2%}")
-        lines.append("")
-
-    # 验证结果
-    if validation:
-        oos = validation.get('out_of_sample', {})
-        wf = validation.get('walk_forward', {})
-
-        lines.append("### ✅ 策略验证")
-
-        if oos:
-            lines.append("**样本外测试**:")
-            lines.append(f"- 策略收益: {oos.get('cum_return', 0):+.2%}")
-            lines.append(f"- 买入持有: {oos.get('bh_return', 0):+.2%}")
-            lines.append(f"- 超额收益: {oos.get('excess_return', 0):+.2%}")
-            lines.append(f"- 夏普比率: {oos.get('sharpe', 0):.2f}")
-            lines.append(f"- 最大回撤: {oos.get('max_drawdown', 0):.2%}")
-            lines.append("")
-
-        if wf:
-            lines.append("**Walk-Forward 分析**:")
-            lines.append(f"- 窗口胜率: {wf.get('window_win_rate', 0):.2%}")
-            lines.append(f"- 交易胜率: {wf.get('trade_win_rate', 0):.2%}")
-            lines.append(f"- 平均收益: {wf.get('avg_return', 0):.2%}")
-            lines.append(f"- 平均夏普: {wf.get('avg_sharpe', 0):.2f}")
-            lines.append("")
-
-    # 风险提示
-    lines.append("---")
-    lines.append("⚠️ 以上仅供参考，不构成投资建议")
+    lines += ["---", "⚠️ 量化模型自动生成，仅供参考，不构成投资建议"]
 
     message = "\n".join(lines)
 
-    return send_feishu_message(webhook_url, message, msg_type="markdown")
+    # 超长时拆分（4000字限制）
+    MAX_LEN = 4000
+    if len(message) <= MAX_LEN:
+        return send_feishu_message(webhook_url, message, msg_type="markdown")
+    split_marker = "### 🔮 未来信号"
+    split_pos = message.find(split_marker)
+    if split_pos == -1:
+        split_pos = MAX_LEN
+    ok1 = send_feishu_message(webhook_url, message[:split_pos].rstrip(), msg_type="markdown")
+    ok2 = send_feishu_message(webhook_url, message[split_pos:], msg_type="markdown")
+    return ok1 and ok2
 
 
 def send_simple_report_to_feishu(

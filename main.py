@@ -40,8 +40,7 @@ except ImportError:
 from position_manager import PositionManager, load_position_from_config, calc_atr
 from feishu_notify import send_full_report_to_feishu
 from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
-from validate_strategy import generate_test_report, out_of_sample_test, walk_forward_analysis
-from visualize import plot_strategy_result, plot_yearly_trades
+
 try:
     from optimize_with_optuna import optimize_strategy, optimize_all_strategies
     OPTUNA_AVAILABLE = True
@@ -342,15 +341,8 @@ def step2_train_native(hist_data: pd.DataFrame):
 
     cfg = load_config()
 
-    def _on_result(result):
-        try:
-            plot_strategy_result(result['detail'], result['meta'], result['config'])
-        except Exception as e:
-            logger.warning("绘图失败", extra={"error": str(e)})
-
     # on_result 仅在搜索中途满足阈值时触发（用于实时预览）
-    # 最终最优解的图统一在 run_search 返回后绘制，确保一定有图输出
-    best_result, sorted_results, test_df = run_search(hist_data, cfg, on_result=_on_result)
+    best_result, sorted_results, test_df = run_search(hist_data, cfg)
 
     # ── Hold-Out + Walk-Forward 选优（统一入口） ──────────────────
     strategy_mods = _discover_strategies()
@@ -359,16 +351,6 @@ def step2_train_native(hist_data: pd.DataFrame):
             sorted_results, test_df, cfg, strategy_mods, full_data=hist_data
         )
 
-    # ── 绘制最优解结果图 ─────────────────────────────────────────
-    if best_result is not None:
-        logger.info("绘制最优解结果图", extra={
-            "strategy_name": best_result['strategy_name'],
-            "cum_return": f"{best_result['cum_return']:.2%}"
-        })
-        try:
-            plot_strategy_result(best_result['detail'], best_result['meta'], best_result['config'])
-        except Exception as e:
-            logger.warning("绘图失败", extra={"error": str(e)})
 
     # ── 统一保存一个因子文件 ────────────────────────────────────
     factor_path   = None
@@ -526,10 +508,9 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
                 detail = backtest(hist_data, signal, trial_cfg)
 
             detail_df = detail.get('detail') if isinstance(detail, dict) else detail
-            if isinstance(detail_df, _pd.DataFrame) and not detail_df.empty:
-                plot_strategy_result(detail_df, meta, trial_cfg)
+
         except Exception as e:
-            logger.warning("绘图失败", extra={"error": str(e)})
+            logger.warning("回测失败", extra={"error": str(e)})
 
     # ── Hold-Out + Walk-Forward 选优（统一入口） ──────────────────
     factor_path = None
@@ -700,6 +681,60 @@ def _signal_confidence(artifact: dict, is_ml: bool) -> tuple[str, str]:
     }
     key = ('ml' if is_ml else 'rule', validated)
     return level_map.get(key, ('未知', '⚪'))
+
+
+def _build_eval_table(
+    train_period: str, val_period: str,
+    val_cum_return: float, val_sharpe: float, val_max_dd: float,
+    val_trades: int, val_win_rate: float,
+    ann_return: float, calmar: float, sortino: float,
+    volatility: float, daily_vol: float,
+    artifact: dict,
+) -> str:
+    """生成训练/验证两阶段评估 Markdown 表格"""
+    import math as _m
+
+    def _f(v, fmt='.2%'):
+        if v is None or (isinstance(v, float) and _m.isnan(v)):
+            return '—'
+        return f"{v:{fmt}}"
+
+    def _badge(ok: bool) -> str:
+        return '✅' if ok else '❌'
+
+    # 判断补充指标是否有有效值（验证窗口交易次数过少时往往为 NaN）
+    has_ann      = not (ann_return  is None or (isinstance(ann_return,  float) and _m.isnan(ann_return)))
+    has_vol      = not (volatility  is None or (isinstance(volatility,  float) and _m.isnan(volatility)))
+    has_calmar   = not (calmar      is None or (isinstance(calmar,      float) and _m.isnan(calmar)))
+    has_sortino  = not (sortino     is None or (isinstance(sortino,     float) and _m.isnan(sortino)))
+
+    ann_str      = _f(ann_return)     if has_ann     else "—（交易次数不足）"
+    vol_str      = _f(volatility)     if has_vol     else "—（数据不足）"
+    calmar_str   = _f(calmar, '.4f')  if has_calmar  else "—（需回撤>0）"
+    sortino_str  = _f(sortino, '.4f') if has_sortino else "—（需负收益样本）"
+
+    lines = [
+        "| 阶段 | 时间范围 | 累计收益 | 夏普率¹ | 最大回撤² | 交易次数 | 胜率 | 达标 |",
+        "|------|---------|---------|--------|---------|---------|------|------|",
+        f"| 🔵 阶段1 训练 | {train_period} | — | — | — | — | — | —（仅拟合期，不评估指标） |",
+        f"| 🟡 阶段2 验证 | {val_period} | {_f(val_cum_return)} | {_f(val_sharpe, '.4f')} "
+        f"| {_f(val_max_dd)} | {val_trades} | {_f(val_win_rate)} "
+        f"| {_badge(artifact.get('meets_threshold', False))} |",
+        "",
+        f"> ¹ **夏普率**：超额收益与波动率之比，衡量每单位风险所获得的收益，>1 为合格，>2 为优秀。  ",
+        f"> ² **最大回撤**：持仓期间净值从最高点到最低点的最大跌幅，体现策略最坏情形下的亏损幅度。",
+        "",
+        f"**补充指标**  年化³ {ann_str} | 波动率⁴ {vol_str} | "
+        f"近60日波动 {daily_vol:.2%} | 卡玛⁵ {calmar_str} | 索提诺⁶ {sortino_str}",
+        "",
+        f"> ³ **年化收益**：将验证期累计收益折算为1年的等效收益率（复利）。  ",
+        f"> ⁴ **年化波动率**：日收益率标准差×√252，衡量收益的不稳定程度，越低越稳。  ",
+        f"> ⁵ **卡玛比率（Calmar）**：年化收益率 ÷ 最大回撤绝对值，衡量承受回撤所换来的收益，>0.5 为合格。  ",
+        f"> ⁶ **索提诺比率（Sortino）**：类似夏普率，但分母只计算下行（亏损）波动，对策略更友好，>1 为合格。",
+        "",
+    ]
+
+    return "\n".join(lines)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -901,7 +936,7 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
         "note": "多日信号基于当前最新数据推算，未来市况变化可能导致信号翻转"
     })
 
-    # ── 完整指标 ──────────────────────────────────────────────────
+    # ── 完整指标（来自因子文件 - 验证窗口） ──────────────────────
     ann_return        = artifact.get('annualized_return', float('nan'))
     max_drawdown      = artifact.get('max_drawdown', float('nan'))
     volatility        = artifact.get('volatility', float('nan'))
@@ -910,6 +945,9 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     calmar_ratio      = artifact.get('calmar_ratio', float('nan'))
     sortino_ratio     = artifact.get('sortino_ratio', float('nan'))
     total_trades      = artifact.get('total_trades', 0)
+    val_period        = artifact.get('val_period', '—')
+    val_cum_return    = artifact.get('cum_return', float('nan'))
+    val_sharpe        = artifact.get('sharpe_ratio', float('nan'))
 
     ann_return_str = f"{ann_return:.2%}" if not np.isnan(ann_return) else "N/A"
     max_dd_str     = f"{max_drawdown:.2%}" if not np.isnan(max_drawdown) else "N/A"
@@ -918,6 +956,18 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     sortino_str    = f"{sortino_ratio:.4f}" if not np.isnan(sortino_ratio) else "N/A"
     win_rate_str   = f"{win_rate:.2%}" if win_rate > 0 else "N/A"
     pl_ratio_str   = f"{profit_loss_ratio:.2f}" if profit_loss_ratio > 0 else "N/A"
+
+    # ── 推算训练窗口时间范围 ───────────────────────────────────────
+    lookback_months = int(config.get('lookback_months', 3))
+    train_years     = int(config.get('train_years', 2))
+    try:
+        _val_end   = pd.to_datetime(val_period.split('~')[-1].strip()) if '~' in val_period else df.index.max()
+        _val_start = pd.to_datetime(val_period.split('~')[0].strip()) if '~' in val_period else (_val_end - pd.DateOffset(months=lookback_months))
+        _train_end   = _val_start - pd.Timedelta(days=1)
+        _train_start = _val_start - pd.DateOffset(years=train_years)
+        train_period_str = f"{_train_start.date()} ~ {_train_end.date()}"
+    except Exception:
+        train_period_str = '—'
 
     # ── BS 点（买卖点）────────────────────────────────────────────
     bs_points = []
@@ -977,45 +1027,19 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
 | 当前信号 | {current_signal} |
 | 信号置信度 | {confidence_emoji} {confidence_label} ({artifact.get('validated','unknown')}) |
 
-## 收益指标
+> **信号置信度** = 综合夏普率、验证达标状态和验证等级评出的信号可信程度：🟢 高置信 / 🟡 中置信 / 🔴 低置信。  
+> **验证等级**：`double` = Hold-Out + Walk-Forward 双重验证通过（最可靠）；`double_no_wf` = Hold-Out 通过但 WF 窗口不足；`val_only` = 仅验证集达标（需谨慎参考）。
 
-| 指标 | 值 |
-|------|-----|
-| 累计收益率 | {artifact.get('cum_return', float('nan')):.2%} |
-| 年化收益率 | {ann_return_str} |
-| 夏普比率 | {sharpe_str} |
-| 索提诺比率 | {sortino_str} |
-| 卡玛比率 | {calmar_str} |
+## 策略回测评估
 
-## 风险指标
+> **训练** = 策略拟合期，**验证** = 超参筛选期（因子文件指标来源）
 
-| 指标 | 值 |
-|------|-----|
-| 最大回撤 | {max_dd_str} |
-| 年化波动率 | {vol_str} |
-| 近60日波动率 | {daily_vol:.2%} |
+{_build_eval_table(
+    train_period_str, val_period, val_cum_return, val_sharpe, max_drawdown, total_trades, win_rate,
+    ann_return, calmar_ratio, sortino_ratio, volatility, daily_vol,
+    artifact
+)}
 
-## 交易统计
-
-| 指标 | 值 |
-|------|-----|
-| 总交易次数 | {total_trades} |
-| 胜率 | {win_rate_str} |
-| 盈亏比 | {pl_ratio_str} |
-
-## 交易信号 (BS点)
-
-| 日期 | 价格 | 操作 | 账户净值 |
-|------|------|------|----------|
-"""
-    if bs_points:
-        for bs in bs_points:
-            emoji = "🟢" if bs['action'] == "买入" else "🔴"
-            md_content += f"| {bs['date']} | {bs['price']:.2f} | {emoji} {bs['action']} | {bs['pv']:.2f} |\n"
-    else:
-        md_content += "| - | - | 无交易信号 | - |\n"
-
-    md_content += f"""
 ## 信号与参考区间（非价格预测）
 
 | 日期 | 信号 | 模型输出 | 统计区间 (P10~P90) | 置信度 |
@@ -1027,7 +1051,8 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
                        f"| {p['confidence']} |\n")
 
     md_content += f"""
-> ⚠️ 价格区间为历史滚动收益率统计分布（P10~P90），**非价格预测**，不代表未来走势。  
+> ⚠️ **P10~P90 统计区间**：基于过去相同持仓时长的历史日收益率分布，取第10、90百分位价格区间，**非价格预测**，不代表未来走势。  
+> ⚠️ **模型输出**：ML策略输出预测收益率（单步），规则策略显示 "—"。  
 > ⚠️ 多日信号基于当前最新数据推算，未来市况变化可能导致信号翻转。
 """
 
@@ -1035,6 +1060,10 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     current_config = load_config()
     risk_cfg       = current_config.get('risk_management', {})
     portfolio_val  = float(risk_cfg.get('portfolio_value', 100_000.0))
+
+    # 默认值（无持仓时也保持定义）
+    signal_for_rec = rule_direction if not is_ml else (1 if (ml_pred_ret_raw or 0) > 0 else 0)
+    rec: dict = {}
 
     pm       = PositionManager(portfolio_value=portfolio_val, risk_config=risk_cfg)
     position = load_position_from_config(current_config)
@@ -1059,7 +1088,6 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
         else:
             today_pnl_pct   = 0.0
 
-        signal_for_rec   = rule_direction if not is_ml else (1 if (ml_pred_ret_raw or 0) > 0 else 0)
         trade_date_str   = str(last_date.date())
 
         rec = pm.apply_risk_controls(
@@ -1098,45 +1126,7 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
         })
 
         feishu_webhook = current_config.get('feishu_webhook')
-        if feishu_webhook:
-            signal_text = "做多" if (signal_for_rec == 1) else "空仓"
-            report_data = {
-                'ticker':             current_config.get('ticker', '0700.hk'),
-                'current_price':      last_close,
-                'last_date':          str(last_date.date()),
-                'strategy':           strategy,
-                'params':             params,
-                'is_ml':              is_ml,
-                'signal':             signal_text,
-                'cum_return':         artifact.get('cum_return', 0),
-                'sharpe':             sharpe,
-                'annualized_return':  artifact.get('annualized_return', 0),
-                'max_drawdown':       artifact.get('max_drawdown', 0),
-                'volatility':         artifact.get('volatility', 0),
-                'total_trades':       total_trades,
-                'win_rate':           win_rate,
-                'calmar_ratio':       artifact.get('calmar_ratio', 0),
-                'avg_volatility':     daily_vol,
-                'predictions':        predictions,
-                'sentiment':          sentiment_result,
-                'sentiment_signal':   sentiment_signal,
-                'position': {
-                    'shares':                rec.get('shares', 0),
-                    'avg_cost':              rec.get('avg_cost', 0),
-                    'current_price':         rec.get('current_price', 0),
-                    'profit':                rec.get('profit', 0),
-                    'profit_pct':            rec.get('profit_pct', 0),
-                    'stop_price':            rec.get('stop_price', 0),
-                    'kelly_shares':          rec.get('kelly_shares', 0),
-                    'kelly_amount':          rec.get('kelly_amount', 0),
-                    'circuit_breaker':       rec.get('circuit_breaker', False),
-                    'consecutive_loss_days': rec.get('consecutive_loss_days', 0),
-                },
-                'recommendation': rec,
-                'validation':     {},
-            }
-            send_full_report_to_feishu(feishu_webhook, report_data)
-            logger.info("飞书报告已发送")
+        # 注意：飞书推送已移至下方统一发送（含 4 阶段验证数据），此处不重复发送
 
         stop_str   = f"{rec['stop_price']:.2f}" if rec.get('stop_price', 0) > 0 else "—"
         kelly_str  = f"{rec['kelly_shares']} 股（≈ {rec['kelly_amount']:.0f} 元）" if rec.get('kelly_shares', 0) > 0 else "—"
@@ -1158,10 +1148,15 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
 
 | 项目 | 值 |
 |------|-----|
-| ATR({atr_period}) | {current_atr:.4f} |
-| 建议止损价 | {stop_str} |
-| Kelly 建议股数 | {kelly_str} |
-| 熔断状态 | {cb_str} |
+| ATR({atr_period})⁷ | {current_atr:.4f} |
+| 建议止损价⁸ | {stop_str} |
+| Kelly 建议股数⁹ | {kelly_str} |
+| 熔断状态¹⁰ | {cb_str} |
+
+> ⁷ **ATR（Average True Range）**：平均真实波幅，衡量近{atr_period}日价格波动范围，用于动态设置止损距离。  
+> ⁸ **建议止损价**：基于 ATR 动态计算的止损位（当前价 - N×ATR），触及时建议离场控制亏损。  
+> ⁹ **Kelly 建议股数**：凯利公式根据策略胜率与盈亏比计算的最优仓位，可最大化长期几何增长率。  
+> ¹⁰ **熔断**：连续亏损保护机制，连续亏损达到阈值后自动暂停交易信号，直至市况改善。
 
 ### 交易建议
 
@@ -1171,60 +1166,51 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
 
 """
 
-    # ── 验证报告内容 ───────────────────────────────────────────────
-    if artifact and artifact.get('strategy_mod'):
-        strategy_mod = artifact['strategy_mod']
-        params  = artifact.get('meta', {}).get('params', {})
-        config  = artifact.get('config', {})
 
-        oos_result = out_of_sample_test(
-            data, strategy_mod, params, config,
-            train_months=12, test_months=3
-        )
-        wf_result = walk_forward_analysis(
-            data, strategy_mod, config,
-            train_months=12, test_months=3, step_months=3
-        )
-
-        if oos_result.get('success'):
-            oos = oos_result
-            md_content += f"""
-## 策略验证（样本外测试）
-
-| 指标 | 值 |
-|------|-----|
-| 训练期 | {oos['train_period']} |
-| 测试期 | {oos['test_period']} |
-| 策略收益 | {oos['cum_return']:.2%} |
-| 买入持有收益 | {oos['buy_hold_return']:.2%} |
-| 超额收益 | {oos['excess_return']:+.2%} |
-| 夏普比率 | {oos['sharpe_ratio']:.4f} |
-| 最大回撤 | {oos['max_drawdown']:.2%} |
-| 交易次数 | {oos['total_trades']} |
-"""
-
-        if wf_result.get('success'):
-            wf = wf_result
-            md_content += f"""
-## Walk-Forward 分析
-
-| 指标 | 值 |
-|------|-----|
-| 总窗口数 | {wf.get('total_windows', 0)} |
-| 盈利窗口数 | {wf.get('profitable_windows', 0)} |
-| 窗口胜率 | {wf.get('win_rate', 0):.2%} |
-| 平均收益 | {wf.get('avg_return', 0):.2%} |
-| 平均夏普率 | {wf.get('avg_sharpe', 0):.4f} |
-"""
-
-        yearly_plot_path = plot_yearly_trades(data, strategy_mod, config)
-        if yearly_plot_path:
-            md_content += f"""
-## 过去一年交易记录
-
-![年度交易图]({yearly_plot_path})
-
-"""
+    # ── 发送飞书 ──────────────────────────────────────────────────
+    feishu_webhook = config.get('feishu_webhook')
+    if feishu_webhook:
+        signal_text = "做多" if (signal_for_rec == 1) else "空仓"
+        _rec = rec
+        feishu_report_data = {
+            'ticker':           config.get('ticker', '0700.hk'),
+            'current_price':    last_close,
+            'last_date':        str(last_date.date()),
+            'strategy':         strategy,
+            'params':           params,
+            'is_ml':            is_ml,
+            'signal':           signal_text,
+            'confidence_label': confidence_label,
+            'confidence_emoji': confidence_emoji,
+            'train_period':     train_period_str,
+            'val_period':       val_period,
+            'cum_return':       val_cum_return,
+            'sharpe':           val_sharpe,
+            'annualized_return': ann_return,
+            'max_drawdown':     max_drawdown,
+            'volatility':       volatility,
+            'total_trades':     total_trades,
+            'win_rate':         win_rate,
+            'calmar_ratio':     calmar_ratio,
+            'sortino_ratio':    sortino_ratio,
+            'avg_volatility':   daily_vol,
+            'predictions':      predictions,
+            'sentiment':        sentiment_result,
+            'position': {
+                'shares':          _rec.get('shares', 0),
+                'avg_cost':        _rec.get('avg_cost', 0),
+                'current_price':   _rec.get('current_price', last_close),
+                'profit':          _rec.get('profit', 0),
+                'profit_pct':      _rec.get('profit_pct', 0),
+                'stop_price':      _rec.get('stop_price', 0),
+                'kelly_shares':    _rec.get('kelly_shares', 0),
+                'kelly_amount':    _rec.get('kelly_amount', 0),
+                'circuit_breaker': _rec.get('circuit_breaker', False),
+            },
+            'recommendation': _rec,
+        }
+        send_full_report_to_feishu(feishu_webhook, feishu_report_data)
+        logger.info("飞书报告已发送")
 
     # ── 因子有效性分析（Issue 7）──────────────────────────────────
     try:
@@ -1336,97 +1322,6 @@ def main():
     # 3a. 信号报告（日线）
     generate_signal_report(hist_data, factor_path, n_days=args.n_days)
 
-    # 3b. 生成策略验证报告（样本外测试 + Walk-Forward 分析）
-    logger.info("生成策略验证报告")
-
-    artifact = _resolve_artifact(factor_path)
-    validation_data = {}
-    if artifact and artifact.get('strategy_mod'):
-        strategy_mod = artifact['strategy_mod']
-        params = artifact.get('meta', {}).get('params', {})
-        config = artifact.get('config', {})
-
-        validation_md, report_path, validation_data = generate_test_report(
-            hist_data, strategy_mod, params, config
-        )
-
-        # ── 三段评估对比表（注入到报告头部）──────────────────────
-        validated   = artifact.get('validated', 'unknown')
-        holdout     = artifact.get('holdout', {})
-        wf_summary  = artifact.get('wf_summary', {})
-        val_period  = artifact.get('val_period', '—')
-        badge_map   = {'double': '🏅 双验证通过', 'double_no_wf': '🥈 双验证（WF不足）',
-                       'val_only': '⚠️  仅验证集达标', 'unknown': '❓ 未知'}
-        badge       = badge_map.get(validated, '❓')
-
-        val_ret     = artifact.get('cum_return', float('nan'))
-        val_sharpe  = artifact.get('sharpe_ratio', float('nan'))
-        val_dd      = artifact.get('max_drawdown', float('nan'))
-        val_trades  = artifact.get('total_trades', 0)
-
-        hld_ok      = holdout.get('success', False)
-        hld_ret     = holdout.get('cum_return', float('nan'))
-        hld_sharpe  = holdout.get('sharpe_ratio', float('nan'))
-        hld_dd      = holdout.get('max_drawdown', float('nan'))
-        hld_trades  = holdout.get('total_trades', 0)
-        hld_period  = holdout.get('period', '—')
-
-        wf_ok       = bool(wf_summary)
-        wf_wins     = wf_summary.get('profitable_windows', 0)
-        wf_total    = wf_summary.get('total_windows', 0)
-        wf_winrate  = wf_summary.get('window_win_rate', float('nan'))
-        wf_avg_ret  = wf_summary.get('avg_return', float('nan'))
-        wf_sharpe   = wf_summary.get('avg_sharpe', float('nan'))
-
-        def _fmt(v, fmt='.2%'):
-            return f"{v:{fmt}}" if isinstance(v, float) and not np.isnan(v) else '—'
-
-        three_stage_table = f"""
-## 验证等级：{badge}
-
-## 三段时间评估对比
-
-| 阶段 | 时间范围 | 累计收益 | 夏普率 | 最大回撤 | 交易次数 | 是否达标 |
-|------|---------|---------|------|---------|---------|---------|
-| 搜索验证集 (Val) | {val_period} | {_fmt(val_ret)} | {_fmt(val_sharpe, '.4f')} | {_fmt(val_dd)} | {val_trades} | {'✅' if artifact.get('meets_threshold') else '—'} |
-| Hold-Out 测试 | {hld_period} | {_fmt(hld_ret) if hld_ok else '失败'} | {_fmt(hld_sharpe, '.4f') if hld_ok else '—'} | {_fmt(hld_dd) if hld_ok else '—'} | {hld_trades if hld_ok else '—'} | {'✅' if hld_ok and not np.isnan(hld_ret) and hld_ret > 0 else '❌'} |
-| Walk-Forward | 滚动{wf_total}窗口 | 均值 {_fmt(wf_avg_ret)} | {_fmt(wf_sharpe, '.4f')} | — | — | {'✅' if wf_ok and not np.isnan(wf_winrate) and wf_winrate >= 0.5 else ('❌' if wf_ok else '—')} {f'{wf_wins}/{wf_total}窗口盈利' if wf_ok else ''} |
-
-"""
-        validation_md = three_stage_table + validation_md
-
-        logger.info("验证报告已保存", extra={"report_file": Path(report_path).name if report_path else '(未保存)'})
-
-        # 发送到飞书（带验证数据）
-        feishu_webhook = config.get('feishu_webhook')
-        if feishu_webhook:
-            # 构建报告数据
-            report_data = {
-                'ticker': config.get('ticker', '0700.hk'),
-                'current_price': float(hist_data['Close'].iloc[-1]),
-                'last_date': str(hist_data.index.max().date()),
-                'strategy': artifact.get('meta', {}).get('name', ''),
-                'params': params,
-                'is_ml': False,
-                'signal': "震荡",
-                'cum_return': artifact.get('cum_return', 0),
-                'sharpe': artifact.get('sharpe_ratio', 0),
-                'annualized_return': artifact.get('annualized_return', 0),
-                'max_drawdown': artifact.get('max_drawdown', 0),
-                'volatility': artifact.get('volatility', 0),
-                'total_trades': artifact.get('total_trades', 0),
-                'win_rate': artifact.get('win_rate', 0),
-                'calmar_ratio': artifact.get('calmar_ratio', 0),
-                'avg_volatility': 0,
-                'predictions': [],
-                'position': {},
-                'recommendation': {},
-                'validation': validation_data,
-            }
-            send_full_report_to_feishu(feishu_webhook, report_data)
-            logger.info("验证报告已发送到飞书")
-    else:
-        logger.warning("无法加载策略模块，跳过验证报告")
 
 
     logger.info("分析流程完成")

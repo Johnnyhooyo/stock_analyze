@@ -29,6 +29,10 @@ python3 main.py --use-optuna                  # 完整超参数搜索 + 验证
 python3 main.py --use-optuna --optuna-trials 100
 python3 main.py --skip-train                  # 跳过训练，仅生成信号报告
 python3 main.py --n-days 5                    # 预测天数
+
+# ── 测试 ─────────────────────────────────────────────────────────
+pytest tests/ -v                              # 100 单元测试（全离线）
+python3 smoke_test.py                         # 快速冒烟测试
 ```
 
 ## Architecture
@@ -48,8 +52,8 @@ python3 main.py --n-days 5                    # 预测天数
 | `analyze_factor.py` | Core backtesting engine, strategy discovery, hyperparam search |
 | `validate_strategy.py` | Out-of-sample and Walk-Forward validation |
 | `backtest_vectorbt.py` | Optional Vectorbt-based backtesting |
-| `fetch_data.py` | **Backward-compatible shim** → delegates to `data/` package |
-| `fetch_hsi_stocks.py` | **Backward-compatible shim** → delegates to `data/` package |
+| `config_loader.py` | **唯一配置加载入口** — `load_config(include_keys=True)` |
+| `log_config.py` | **唯一日志初始化入口** — `get_logger(__name__)` |
 | `position_manager.py` | Position state, ATR stop-loss, trade suggestions |
 | `sentiment_analysis.py` | News sentiment scoring with caching |
 | `google_trends.py` | Google Trends 热度数据 with caching |
@@ -60,6 +64,25 @@ python3 main.py --n-days 5                    # 预测天数
 | `visualize.py` | Strategy plotting and chart generation |
 | `easy_quptation.py` | 实时行情工具 (easyquotation wrapper, standalone) |
 | `time_kline.py` | 港股分时 K 线获取 (standalone) |
+
+### Engine Package (`engine/`)
+
+每日推荐引擎核心包，Phase 1 已完整实现：
+
+```
+engine/
+├── __init__.py          # 导出 PortfolioState, PortfolioPosition, load_portfolio,
+│                        #        SignalAggregator, AggregatedSignal,
+│                        #        PositionAnalyzer, RecommendationResult
+├── portfolio_state.py   # 多持仓状态加载 / 保存（data/portfolio.yaml）
+├── signal_aggregator.py # 多策略共识信号聚合（Sharpe 加权投票）
+└── position_analyzer.py # 单只股票推荐生成（信号 + 风控 + 建议）
+```
+
+**`PortfolioState` / `PortfolioPosition`**：
+- `PortfolioPosition` — 持仓快照，含 `has_position`、`to_position_manager_position()` 桥接、`to_dict()` 序列化
+- `PortfolioState` — 全持仓管理，含 `get_position()` / `all_tickers()` / `held_tickers()` / `summary()` / `save()` 原子写回
+- `load_portfolio()` — 从 `data/portfolio.yaml` 加载，文件不存在或解析失败时优雅降级
 
 ### Data Package (`data/`)
 
@@ -95,11 +118,6 @@ df, path = mgr.download("0700.HK", period="3y")
 
 # 纯读取（不触发网络请求）
 df = mgr.load("0700.HK", period="3y")
-
-```python
-from data import DataManager
-mgr = DataManager()
-df, path = mgr.download("0700.HK", period="3y")
 ```
 
 **关键特性**：
@@ -115,6 +133,22 @@ df, path = mgr.download("0700.HK", period="3y")
 - **原子写入**：tempfile → os.replace，防止中断损坏文件
 - **元数据追踪**：每个数据文件附带 `.meta.json` (来源/时间戳/SHA-256/last_bar_date)
 - **高效缓存判断**：`_is_stale()` 优先读 `.meta.json`，避免全量解析 CSV
+
+### Logging
+
+全项目统一使用 `log_config.py` 中的 `get_logger(__name__)`，**禁止在核心管线中使用 `print()`**：
+
+```python
+from log_config import get_logger
+logger = get_logger(__name__)
+logger.info("消息", extra={"ticker": "0700.HK", "elapsed_ms": 120})
+```
+
+- **控制台**：彩色文本（INFO=蓝, WARNING=黄, ERROR=红）
+- **文件**：JSON Lines → `data/logs/app.log`，10MB 滚动，保留 5 份
+- **级别控制**：`LOG_LEVEL=DEBUG python3 daily_run.py`
+
+> `easy_quptation.py`、`time_kline.py`、`oms.py` 等 standalone 脚本可保留 `print()`，不影响核心管线。
 
 ### Strategy Interface
 
@@ -133,6 +167,16 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series
 **Rule strategies must not use `ffill()` signal smoothing** — use explicit state machines (enter/hold/exit logic) to avoid inflated holding periods and win rates.
 
 **Strategy parameter search**: `run()` receives a `config` dict with strategy-specific params sampled by Optuna/random search. `meta["params"]` stores the final selected params.
+
+### Common Indicators (`strategies/indicators.py`)
+
+所有规则策略共享公共指标库，**禁止在策略文件中重复实现指标函数**：
+
+```python
+from strategies.indicators import rsi, bollinger_bands, ema, macd, kdj, obv, fibonacci
+```
+
+已提供的公共指标：`rsi`, `bollinger_bands`, `ema`, `macd`, `kdj`, `obv`, `fibonacci`
 
 ### Strategy Discovery
 
@@ -155,7 +199,7 @@ Strategies are auto-discovered via `_discover_strategies()` in `analyze_factor.p
 
 ### Look-Ahead Bias Prevention
 
-All backtesting is designed to be free of look-ahead bias:
+All backtesting is designed to be free of look-ahead bias：
 
 1. **Signal execution delay**: Both `analyze_factor.backtest()` and `backtest_vectorbt()` apply `signal.shift(1)` internally — signals generated on day T execute on day T+1. Do not shift signals before passing them in.
 2. **Train/val split**: `run_trial()` trains on `[train_start, val_start)` and validates on `[val_start, end]`. The validation set is **never** used during training.
@@ -172,7 +216,7 @@ All backtesting is designed to be free of look-ahead bias:
 
 ### Standalone Modules
 
-`train_multi_stock.py` is a **standalone script** — it is not called by `main.py` at runtime. Its `load_all_hsi_data()` is used indirectly via `analyze_factor._load_multi_stock_data()`. Run it directly for multi-stock dataset exploration:
+`train_multi_stock.py` is a **standalone script** — it is not called by `main.py` at runtime. Its `load_all_hsi_data()` is used indirectly via `analyze_factor._load_multi_stock_data()`. Run it directly for multi-stock dataset exploration：
 ```bash
 python3 train_multi_stock.py   # optimize params with Optuna (standalone)
 ```
@@ -285,7 +329,7 @@ data/
 ├── trends/              # Google Trends 数据
 ├── sentiment/           # 情感分析缓存
 ├── cache/               # joblib.Memory 多股票数据缓存
-├── logs/                # 运行日志 (fetch.log, fetch_hsi.log)
+├── logs/                # 运行日志 (app.log JSON Lines, fetch.log, fetch_hsi.log)
 │   └── quality_report.json  # 数据质量报告 (自动追加)
 ├── timekline/           # 分时 K 线缓存
 └── plots/               # 图表输出
@@ -294,10 +338,54 @@ data/
 ## Testing
 
 ```bash
-python3 smoke_test.py   # Offline smoke test — no network required, uses synthetic data
+pytest tests/ -v          # 100 单元测试（全离线，3.5 秒）
+python3 smoke_test.py     # 离线冒烟测试，无需网络，使用合成数据
 ```
 
-Covers: all major rule strategies, `analyze_factor.backtest()`, and the `predict()` interface.
+### 测试文件结构
+
+| 文件 | 测试数 | 覆盖内容 |
+|------|--------|----------|
+| `tests/conftest.py` | — | Fixtures: `synthetic_ohlcv`, `atr_plunge_ohlcv`, `default_config`, `minimal_config` |
+| `tests/test_schemas.py` | 13 | 列名归一化（中英文/MultiIndex）、OHLCV 校验 |
+| `tests/test_oms.py` | 9 | PaperOMS 买卖/拒绝/round-trip，`create_oms()` 工厂 |
+| `tests/test_portfolio_state.py` | 11 | `PortfolioPosition` 属性、`PortfolioState` 持久化、ticker 转换 |
+| `tests/test_position_manager.py` | 12 | Kelly 边界、熔断触发、ATR 止损、冷却期 |
+| `tests/test_backtest.py` | 5 | 必填字段、全持/全空信号、ATR 止损、前视偏差修复 |
+| `tests/test_strategies.py` | 35 | 全部 16 个规则策略 `run()` + `predict()`、ML 信号边界 |
+| `tests/test_data_manager.py` | 5 | schemas 集成、原子 CSV 写入 |
+| `tests/test_signal_aggregator.py` | 7 | 空目录降级、置信度边界、`AggregatedSignal` 属性 |
+| `tests/test_integration.py` | 3 | 策略→回测全流程、`PortfolioPosition` round-trip、`get_recommendation` |
+
+> **全程离线**，无任何网络请求。核心路径覆盖率：`position_manager` ~60%，`xgboost_enhanced` ~64%，规则策略 90-100%。
+
+## Phase 1 完成状态（截至 2026-03-25）
+
+所有 Phase 1 基础债务清理任务已全部完成：
+
+| # | 任务 | 状态 | 关键变更 |
+|---|------|------|---------|
+| 1 | 补全 `engine/portfolio_state.py` | ✅ 完成 | `PortfolioState` / `PortfolioPosition` / `load_portfolio()` 完整实现 |
+| 2 | 统一配置加载 | ✅ 完成 | 新建 `config_loader.py`，全项目唯一入口 `load_config()` |
+| 3 | 公共指标库整合 | ✅ 完成 | `strategies/indicators.py` 提供 7 个公共函数，10 个策略文件已迁移 |
+| 4 | 测试框架搭建 | ✅ 完成 | `pytest tests/` → 100 passed，核心路径覆盖率 > 60% |
+| 5 | 依赖版本升级 | ✅ 完成 | 全库钉死版本；`pip-audit` → No known vulnerabilities |
+| 6 | 结构化日志 | ✅ 完成 | `log_config.py` + `get_logger()`，核心管线零 `print()` |
+
+**Phase 2（策略与风控增强）现已可启动**，详见 `docs/upgrade_plan.md`。
+
+## Phase 2 待办（策略与风控增强）
+
+> 参见 `docs/upgrade_plan.md` 获取完整设计方案。
+
+| # | 任务 | 优先级 | 工作量 | 关键影响文件 |
+|---|------|--------|--------|------------|
+| 1 | Ensemble / Stacking 策略 | P1 | L | `engine/signal_aggregator.py`，新建 `strategies/ensemble_stacking.py` |
+| 2 | Portfolio-Level 风控 | P1 | L | 新建 `engine/portfolio_risk.py`，修改 `daily_run.py` |
+| 3 | 因子生命周期管理 | P1 | M | 新建 `data/factor_registry.py`，修改 `engine/signal_aggregator.py` |
+| 4 | PnL 历史追踪 | P1 | M | 新建 `data/pnl_tracker.py`，修改 `daily_run.py` |
+| 5 | OMS 实盘对接（Futu） | P1 | L | `oms.py`，新建 `oms_futu.py` |
+| 6 | 深度学习策略（可选） | P1 | XL | 新建 `strategies/lstm_trend.py` |
 
 ## ML Strategies
 
@@ -323,24 +411,25 @@ Each ML strategy inherits config from `config.yaml → ml_strategies.<strategy_n
 ## Dependencies
 
 Core:
-- `yfinance`, `yahooquery`, `akshare` — market data vendors
-- `pandas`, `numpy`, `scikit-learn` — data processing
+- `yfinance>=1.2.0`, `yahooquery`, `akshare` — market data vendors
+- `pandas>=2.3`, `numpy>=1.26`, `scikit-learn>=1.8` — data processing
 - `pyarrow` — Parquet storage backend
 - `tenacity` — retry with exponential backoff (data downloads)
-- `exchange_calendars` — HK trading calendar (XHKG, required dependency)
+- `exchange_calendars>=4.13` — HK trading calendar (XHKG, required dependency)
 - `PyYAML` — config loading
 
 ML:
-- `xgboost`, `lightgbm` — ML strategies
+- `xgboost>=3.2`, `lightgbm>=4.6` — ML strategies
 - `tsfresh`, `pyts` — automatic time series feature extraction
 - `ta` — technical analysis library (200+ indicators)
 
 Backtesting:
 - `vectorbt` — optional backtesting engine
-- `optuna` — Bayesian optimization
+- `optuna>=4.8` — Bayesian optimization
 
 Other:
 - `pytrends` — Google Trends
 - `textblob`, `snownlp` — sentiment analysis
 - `matplotlib` — visualization
 - `requests` — HTTP client
+- `pip-audit` — dependency vulnerability scanning (`pip-audit -r requirements.txt`)

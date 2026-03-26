@@ -1,8 +1,8 @@
 {
   "ticker": "2319.HK",
   "source": "yahooquery",
-  "download_ts": "2026-03-25T12:36:48.449004",
+  "download_ts": "2026-03-25T19:11:55.613855",
   "rows": 742,
-  "sha256": "8667b4cd8c1d18ab3be8293887ad7dbc6191c246b3ab2c2e5755ea2eeba75b85",
+  "sha256": "bb8eac255cf8c2c940f98eacf351220fa16aa3f1ec6d1e7bc35321f13e6b31da",
   "last_bar_date": "2026-03-24"
 }

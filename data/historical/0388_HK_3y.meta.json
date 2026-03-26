@@ -1,8 +1,8 @@
 {
   "ticker": "0388.HK",
   "source": "yahooquery",
-  "download_ts": "2026-03-25T12:35:53.351251",
+  "download_ts": "2026-03-25T19:10:57.084836",
   "rows": 742,
-  "sha256": "f92e4b8cc16e62414b9de9207c2f01d3b40ee3fa3d4925fc21a561939b0cffa5",
+  "sha256": "98d3a92d09d8b64b4cd0f1290ea4c0783c80a60ef9ba7047a2afdb6b237844d3",
   "last_bar_date": "2026-03-24"
 }

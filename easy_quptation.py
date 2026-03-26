@@ -28,7 +28,6 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Union
 import datetime as dt
-import matplotlib.pyplot as plt
 
 # Prefer local HK timekline implementation when asked for HK tickers
 try:
@@ -36,14 +35,11 @@ try:
 except Exception:
     get_hk_timekline = None
 
-# Module provides utility wrappers around easyquotation for realtime and day k-line data,
-# plus a helper to plot a date range using visualize.plot_trades.
+# Module provides utility wrappers around easyquotation for realtime and day k-line data.
 # Do not perform network calls at import time; call the functions below explicitly.
 
 DATA_DIR = Path(__file__).parent / 'data' / 'historical'
-PLOTS_DIR = Path(__file__).parent / 'data' / 'plots'
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_realtime(tickers: Union[List[str], str]):
@@ -298,118 +294,9 @@ def fetch_and_save_daykline(tickers: Union[List[str], str], file_prefix: Optiona
     return result_files
 
 
-def plot_range(ticker: str, start: Union[str, dt.date, dt.datetime], end: Union[str, dt.date, dt.datetime]):
-    """Load saved historical data for ticker, filter by date range, generate and return plot path.
-
-    If historical CSV for the ticker does not exist, this function will attempt to fetch it with
-    fetch_and_save_daykline.
-
-    Args:
-        ticker: ticker string used when saving (e.g. '00700').
-        start: start date (inclusive) as string 'YYYY-MM-DD' or date/datetime.
-        end: end date (inclusive) as string 'YYYY-MM-DD' or date/datetime.
-
-    Returns:
-        str path to generated plot image, or None if plotting failed.
-    """
-    # normalize dates
-    if isinstance(start, str):
-        start_dt = pd.to_datetime(start)
-    else:
-        start_dt = pd.to_datetime(start)
-    if isinstance(end, str):
-        end_dt = pd.to_datetime(end)
-    else:
-        end_dt = pd.to_datetime(end)
-
-    # find CSV for ticker
-    csv_path = DATA_DIR / f"{ticker}.csv"
-    if not csv_path.exists():
-        # try fetching
-        res = fetch_and_save_daykline(ticker)
-        saved = res.get(ticker)
-        if not saved:
-            raise FileNotFoundError(f"找不到历史数据，也无法从网络获取: {ticker}")
-        csv_path = Path(saved)
-
-    # Be permissive when reading CSVs produced by different sources/exports.
-    # First read without forcing an index, then detect which column is the date.
-    df = pd.read_csv(csv_path, header=0)
-
-    # If the index is already a datetime-like index saved as the CSV index, try reading it directly
-    # (some CSVs have the date as the first unnamed column which pandas reads as 'Unnamed: 0').
-    # We'll try to detect a date column among headers, else try the first two columns.
-    date_col = None
-    for c in df.columns:
-        if str(c).lower() in ('date', 'time', 'datetime', '交易日期', '日期'):
-            date_col = c
-            break
-
-    if date_col is None:
-        # Try first few columns for parseable dates
-        candidates = list(df.columns[:3])
-        for c in candidates:
-            try:
-                sample = df[c].dropna().astype(str).iloc[0]
-            except Exception:
-                continue
-            try:
-                _ = pd.to_datetime(sample)
-                date_col = c
-                break
-            except Exception:
-                continue
-
-    if date_col is None:
-        # As a last resort, maybe the file was saved with an unnamed first column as index (e.g., 'Unnamed: 0')
-        # Try converting the first column by position
-        try:
-            sample = df.iloc[:, 0].dropna().astype(str).iloc[0]
-            _ = pd.to_datetime(sample)
-            date_col = df.columns[0]
-        except Exception:
-            date_col = None
-
-    if date_col is None:
-        raise ValueError(f"无法在 CSV 中识别日期列: {csv_path}")
-
-    # Convert and set index
-    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-    df = df.dropna(subset=[date_col])
-    df = df.set_index(date_col).sort_index()
-
-    # filter
-    mask = (df.index >= start_dt) & (df.index <= end_dt)
-    sub = df.loc[mask]
-
-    # adapt to expected column names for visualize.plot_trades: need 'Close' at least
-    if 'Close' not in sub.columns:
-        # try common alternatives by name (case-sensitive variants in csv)
-        alt = None
-        for c in sub.columns:
-            if str(c).lower() in ('close', 'price', 'last', 'price_hkd', 'lastprice'):
-                alt = c
-                break
-        if alt is not None:
-            sub = sub.rename(columns={alt: 'Close'})
-        else:
-            # fallback: pick the first numeric column as Close so we can still visualize a price curve
-            nums = sub.select_dtypes(include=['number']).columns
-            if len(nums) > 0:
-                sub = sub.rename(columns={nums[0]: 'Close'})
-
-    # import the plotting utility lazily to avoid overhead at module import
-    try:
-        from visualize import plot_trades
-    except Exception:
-        # if visualize is in package, try relative import
-        try:
-            from .visualize import plot_trades  # type: ignore
-        except Exception as e:
-            raise RuntimeError(f"无法导入可视化模块: {e}")
-
-    out = plot_trades(sub)
-    return out
+def plot_range(ticker: str, start, end):
+    """已废弃：绘图功能已移除，此函数保留签名以兼容旧调用，直接返回 None。"""
+    return None
 
 
 def get_timekline(ticker: str, source: Optional[str] = None):
@@ -552,7 +439,7 @@ def get_timekline(ticker: str, source: Optional[str] = None):
 
 
 if __name__ == "__main__":
-    # Demo: fetch today's intraday (timekline) via get_timekline (HK custom fetcher handles latest)
+    # Demo: fetch today's intraday (timekline) via get_timekline
     ticker = '00700'
     print(f"Fetching timekline for {ticker}...")
     try:
@@ -564,25 +451,4 @@ if __name__ == "__main__":
     if tk is None or tk.empty:
         print(f"未获取到 {ticker} 的分时数据")
     else:
-        # derive date string from data index if possible
-        try:
-            date_str = tk.index[0].strftime('%Y-%m-%d')
-        except Exception:
-            date_str = (pd.Timestamp.today().normalize() - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-        PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = PLOTS_DIR / f"{ticker}_timekline_{date_str}.png"
-        try:
-            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(12, 6), gridspec_kw={'height_ratios': [3, 1]})
-            ax1.plot(tk.index, tk['price'], color='black', linewidth=1)
-            ax1.set_ylabel('Price')
-            ax1.grid(True, linestyle='--', alpha=0.4)
-            if 'volume' in tk.columns:
-                ax2.bar(tk.index, tk['volume'], width=0.0008, color='gray')
-            ax2.set_ylabel('Volume')
-            ax2.grid(True, linestyle='--', alpha=0.4)
-            plt.tight_layout()
-            plt.savefig(out_path, bbox_inches='tight')
-            plt.close(fig)
-            print('已保存分时图:', out_path)
-        except Exception as e:
-            print('保存分时图失败:', e)
+        print(tk.tail(10))

@@ -9,7 +9,6 @@ from sklearn.metrics import accuracy_score, roc_auc_score, log_loss
 from pathlib import Path
 from config_loader import load_config
 from log_config import get_logger
-from visualize import plot_strategy_result
 
 logger = get_logger(__name__)
 
@@ -287,21 +286,27 @@ def run_factor_analysis(
 
 | 指标 | 值 |
 |------|-----|
-| IC 均值（月度滚动） | {_fmt(ic_mean)} |
+| IC 均值（月度滚动）ᵃ | {_fmt(ic_mean)} |
 | IC 标准差 | {_fmt(ic_std)} |
-| ICIR | {_fmt(icir)} |
+| ICIRᵇ | {_fmt(icir)} |
 | IC t 检验 p 值 | {_fmt(ic_ttest_p)} {'✅ 显著(p<0.05)' if isinstance(ic_ttest_p, float) and ic_ttest_p < 0.05 else '❌ 不显著'} |
 
-### 分层收益（Q1=因子最小，Q{len(quintile_df) if not quintile_df.empty else 'N'}=最大）
+> ᵃ **IC（信息系数）**：策略信号与未来1日收益率的 Spearman 秩相关系数，反映信号对收益的预测能力；|IC| > 0.05 有参考价值，> 0.1 为较强信号。  
+> ᵇ **ICIR**：IC均值 ÷ IC标准差，衡量信号预测能力的稳定性；> 0.5 为较优，> 1.0 为优秀。
+
+### 分层收益ᶜ（Q1=信号最小，Q{len(quintile_df) if not quintile_df.empty else 'N'}=最大）
 
 | 分层 | 均值收益 | 标准差 | 样本数 | 夏普 |
 |------|---------|--------|--------|------|
 {md_rows if md_rows else '| — | — | — | — | — |\n'}
 
-### 因子衰减（前5天 Rank IC）
+> ᶜ **分层收益**：将因子值从小到大分5组，观察各组未来1日的平均收益，若呈单调递增说明因子有效。
+
+### 因子衰减ᵈ（前5天 Rank IC）
 
 {decay_top5}
 
+> ᵈ **因子衰减**：信号在未来1~5日的 IC，反映信号的持续有效期；衰减越慢说明信号持效越长。  
 > ⚠️ 以上因子分析基于策略信号作为代理因子，IC 为时序 Rank IC，非截面 IC。
 """
 
@@ -1344,10 +1349,7 @@ if __name__ == "__main__":
     logger.info("使用数据文件", extra={"data_file": str(_data_file)})
     _raw_data = pd.read_csv(_data_file, index_col=0, parse_dates=True)
 
-    def _on_result_plot(result):
-        plot_strategy_result(result['detail'], result['meta'], result['config'])
-
-    _best, _sorted, _test_df = run_search(_raw_data, _cfg, on_result=_on_result_plot)
+    _best, _sorted, _test_df = run_search(_raw_data, _cfg)
 
     # ── Hold-Out + Walk-Forward 选优 ──
     _strategy_mods = _discover_strategies()
@@ -1356,16 +1358,6 @@ if __name__ == "__main__":
             _sorted, _test_df, _cfg, _strategy_mods, full_data=_raw_data
         )
 
-    # ── 绘制最优解结果图（确保最终选定的最优解一定有图） ──
-    if _best is not None:
-        logger.info("绘制最优解结果图", extra={
-            "strategy_name": _best['strategy_name'],
-            "cum_return": f"{_best['cum_return']:.2%}"
-        })
-        try:
-            plot_strategy_result(_best['detail'], _best['meta'], _best['config'])
-        except Exception as e:
-            logger.warning("绘图失败", extra={"error": str(e)})
 
     # ── 统一保存一个带编号的因子文件（复用 main._save_factor 避免重复逻辑）──
     if _best is not None:

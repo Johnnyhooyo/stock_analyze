@@ -251,6 +251,10 @@ def _build_markdown_report(daily_report: dict) -> str:
     lines.extend([
         "## 各股操作建议",
         "",
+        "> **策略共识**：多个量化策略投票，看涨策略数 vs 看跌策略数；**置信度** = 看涨策略占总参与策略数的比例。  ",
+        "> **止损位**：基于 ATR（平均真实波幅）动态计算的建议离场价，触及时建议卖出控损。  ",
+        "> **Kelly 建议仓位**：凯利公式根据历史胜率与盈亏比推算的最优买入股数，以最大化长期收益。  ",
+        "",
         "| 标的 | 操作 | 收盘价 | 持仓 | 盈亏 | 止损位 | 策略共识 | 置信度 |",
         "|------|------|--------|------|------|--------|---------|--------|",
     ])
@@ -298,12 +302,13 @@ def _build_markdown_report(daily_report: dict) -> str:
         if r["kelly_shares"] > 0:
             lines.append(f"- **Kelly 建议仓位**: {r['kelly_shares']} 股（≈{r['kelly_amount']:.0f} 港元）")
         if r["circuit_breaker"]:
-            lines.append(f"- ⚠️ **熔断触发**: 连续亏损 {r['consecutive_loss_days']} 天")
+            lines.append(f"- ⚠️ **熔断触发**（连续亏损 {r['consecutive_loss_days']} 天，已暂停交易信号）")
 
         # 共识信号
         lines.extend([
             "",
             "**多策略共识**",
+            "> 看涨/看跌数量：多个量化策略同时运行的投票结果；置信度越高，共识越强。",
             "",
             f"| 看涨策略 | 看跌策略 | 总参与 | 置信度 |",
             f"|---------|---------|-------|--------|",
@@ -324,7 +329,7 @@ def _build_markdown_report(daily_report: dict) -> str:
             lines.append(
                 f"- **统计参考区间（P10~P90，1日）**: [{r['price_lo_1d']:.2f}, {r['price_hi_1d']:.2f}]"
             )
-            lines.append("> ⚠️ 参考区间为历史统计分布，非价格预测")
+            lines.append("> ⚠️ **P10~P90**：历史相同持仓期收益率分布的第10至90百分位对应价格区间，**非价格预测**，仅作参考。")
 
         # 情感分析
         sent = r.get("sentiment")
@@ -337,8 +342,9 @@ def _build_markdown_report(daily_report: dict) -> str:
             lines.extend([
                 "",
                 f"**情感分析**: {sent_emoji} {sent.get('sentiment', 'neutral')}  "
-                f"（分数 {sent.get('polarity', 0):.3f}，"
-                f"正{sent.get('positive_count', 0)}/负{sent.get('negative_count', 0)}/中{sent.get('neutral_count', 0)}）",
+                f"（极性分数 {sent.get('polarity', 0):.3f}，"
+                f"正面{sent.get('positive_count', 0)}/负面{sent.get('negative_count', 0)}/中性{sent.get('neutral_count', 0)} 条）",
+                "> 极性分数范围 -1（极负面）~ +1（极正面），基于新闻/社交媒体文本情绪分析。",
             ])
 
         # 风险标志

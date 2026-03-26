@@ -1,7 +1,7 @@
 {
   "ticker": "6611.HK",
   "source": "yahooquery",
-  "download_ts": "2026-03-25T12:36:54.588741",
+  "download_ts": "2026-03-25T19:12:05.925531",
   "rows": 736,
   "sha256": "d9d990e65ebbba6ad3abeb159ab32b6c4f8acd31d082c764aed685885ff1b8e6",
   "last_bar_date": "2026-03-23"

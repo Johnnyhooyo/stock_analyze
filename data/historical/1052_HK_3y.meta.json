@@ -1,8 +1,8 @@
 {
   "ticker": "1052.HK",
   "source": "yahooquery",
-  "download_ts": "2026-03-25T12:36:42.203039",
+  "download_ts": "2026-03-25T19:11:45.062323",
   "rows": 742,
-  "sha256": "e0776969d32d8a5648ce2b34e27dbb53e56f4fde64a10805ea38465dda9ec714",
+  "sha256": "a2183583747471595ea85f1ce3fa8e2bb38dd9a55cac10a6dc75d95f9e51aa6b",
   "last_bar_date": "2026-03-24"
 }
