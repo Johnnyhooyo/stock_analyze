@@ -1383,6 +1383,61 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
 #  主流程
 # ══════════════════════════════════════════════════════════════════
 
+def _print_portfolio_summary(results: list[dict], config: dict) -> None:
+    """打印组合训练汇总表，可选飞书通知。"""
+    import math as _m
+    ok     = [r for r in results if r['status'] == 'ok']
+    failed = [r for r in results if r['status'] != 'ok']
+    badge_map = {
+        'double':       '🏅 双验证',
+        'double_no_wf': '🥈 WF不足',
+        'val_only':     '⚠️  验证集',
+        'unknown':      '❓ 未知',
+    }
+    lines = [
+        "", "=" * 66, "  分层混合组合训练完成汇总", "=" * 66,
+        f"  成功: {len(ok)}  失败: {len(failed)}  共: {len(results)}",
+        "-" * 66,
+        f"  {'股票代码':<12s}  {'状态':<8s}  {'Sharpe':>8s}  {'验证等级':<14s}",
+        "-" * 66,
+    ]
+    for r in results:
+        if r['status'] == 'ok':
+            sh     = r.get('sharpe_ratio', float('nan'))
+            sh_str = f"{sh:8.4f}" if not _m.isnan(sh) else '     N/A'
+            badge  = badge_map.get(r.get('validated', 'unknown'), '❓')
+            lines.append(f"  {r['ticker']:<12s}  {'✅ OK':<8s}  {sh_str}  {badge}")
+        else:
+            err = str(r.get('error', ''))[:30]
+            lines.append(f"  {r['ticker']:<12s}  {'❌ FAIL':<8s}  {'':>8s}  {err}")
+    lines += ["=" * 66, ""]
+    print("\n".join(lines))
+    logger.info("组合训练汇总", extra={"ok": len(ok), "failed": len(failed)})
+
+    feishu_webhook = config.get('feishu_webhook')
+    if feishu_webhook and ok:
+        rows = []
+        for r in results:
+            sh = r.get('sharpe_ratio', float('nan'))
+            if r['status'] == 'ok':
+                rows.append(
+                    f"- {r['ticker']}  Sharpe={'N/A' if _m.isnan(sh) else f'{sh:.4f}'}"
+                    f"  {badge_map.get(r.get('validated','unknown'), '❓')}"
+                )
+            else:
+                rows.append(f"- {r['ticker']}  ❌ {r['status']}")
+        msg = (
+            f"**分层混合组合训练完成**  {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+            f"成功 {len(ok)} / 共 {len(results)}\n\n"
+            + "\n".join(rows)
+        )
+        try:
+            from feishu_notify import send_feishu_message
+            send_feishu_message(feishu_webhook, msg, msg_type="markdown")
+        except Exception as e:
+            logger.warning("飞书通知失败", extra={"error": str(e)})
+
+
 def main():
     parser = argparse.ArgumentParser(description='腾讯股票分析一体化流程')
     parser.add_argument(
@@ -1410,6 +1465,10 @@ def main():
         choices=['single', 'multi', 'custom'],
         help='只运行指定类型的策略 (single/multi/custom)'
     )
+    parser.add_argument(
+        '--portfolio', action='store_true',
+        help='分层混合模式：ML全局训练一次 + 对 portfolio.yaml 每只股票训练规则策略',
+    )
     args = parser.parse_args()
 
     # 加载配置
@@ -1418,6 +1477,28 @@ def main():
     sources_override = None
     if args.sources:
         sources_override = [s.strip() for s in args.sources.split(',') if s.strip()]
+
+    if args.portfolio:
+        from engine.portfolio_state import load_portfolio
+        portfolio_state = load_portfolio()
+        tickers = portfolio_state.all_tickers()
+        if not tickers:
+            default_ticker = config.get('ticker', '0700.HK').upper()
+            tickers = [default_ticker]
+            logger.warning("portfolio.yaml 无标的，降级使用 config.yaml ticker",
+                           extra={"ticker": default_ticker})
+        logger.info("分层混合组合训练启动",
+                    extra={"ticker_count": len(tickers), "tickers": tickers})
+        use_optuna = args.use_optuna or config.get('use_optuna', False)
+        results = train_portfolio_tickers(
+            tickers=tickers,
+            use_optuna=use_optuna,
+            optuna_trials=args.optuna_trials,
+            sources_override=sources_override,
+            n_days=args.n_days,
+        )
+        _print_portfolio_summary(results, config)
+        return
 
     logger.info("腾讯股票分析流程启动")
 
