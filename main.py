@@ -608,6 +608,114 @@ def step2_train_optuna(
 
 
 # ══════════════════════════════════════════════════════════════════
+#  分层混合组合训练入口
+# ══════════════════════════════════════════════════════════════════
+
+def train_portfolio_tickers(
+    tickers: list[str],
+    use_optuna: bool = False,
+    optuna_trials: int = 50,
+    sources_override: list[str] = None,
+    n_days: int = 3,
+) -> list[dict]:
+    """
+    分层混合训练：
+      1. ML 全局训练（strategy_type='multi'）运行一次 → data/factors/
+      2. 对每只 ticker 跑规则策略训练（strategy_type='single'）→ data/factors/{TICKER_SAFE}/
+      3. 生成每只 ticker 的信号报告
+    返回每只 ticker 的结果列表。
+    """
+    config = load_config()
+    _ensure_hsi_data(config)
+
+    base_factors_dir = Path(__file__).parent / 'data' / 'factors'
+    results: list[dict] = []
+
+    # ── 步骤 A：ML 全局训练（一次）────────────────────────────────
+    # ML 策略内部加载 HSI 全量数据，只需任意一只股票的历史数据作为验证集
+    ref_ticker = tickers[0] if tickers else config.get('ticker', '0700.HK')
+    logger.info("ML全局训练开始（使用 %s 作为验证参考）", ref_ticker)
+    try:
+        ref_hist, _ = step1_ensure_data(sources_override=sources_override, ticker=ref_ticker)
+        step2_train(
+            ref_hist,
+            use_optuna=use_optuna,
+            optuna_trials=optuna_trials,
+            strategy_type='multi',
+            factors_dir_override=None,   # 全局目录
+        )
+        logger.info("ML全局训练完成，因子已存入 %s", base_factors_dir)
+    except Exception as e:
+        logger.warning("ML全局训练失败（将继续进行规则策略训练）: %s", e)
+
+    # ── 步骤 B：每只 ticker 的规则策略训练 ────────────────────────
+    for ticker in tickers:
+        ticker_safe = ticker.replace('.', '_').upper()
+        ticker_factors_dir = base_factors_dir / ticker_safe
+
+        logger.info("规则策略训练: %s → %s", ticker, ticker_factors_dir,
+                    extra={"ticker": ticker})
+
+        # 下载数据
+        try:
+            hist_data, _ = step1_ensure_data(
+                sources_override=sources_override, ticker=ticker
+            )
+        except Exception as e:
+            logger.error("数据获取失败，跳过 %s: %s", ticker, e,
+                         extra={"ticker": ticker})
+            results.append({"ticker": ticker, "status": "data_failed",
+                             "factor_path": None, "error": str(e)})
+            continue
+
+        # 规则策略训练
+        try:
+            factor_path, best_result, _ = step2_train(
+                hist_data,
+                use_optuna=use_optuna,
+                optuna_trials=optuna_trials,
+                strategy_type='single',
+                factors_dir_override=ticker_factors_dir,
+            )
+        except Exception as e:
+            logger.error("规则训练失败，跳过 %s: %s", ticker, e,
+                         extra={"ticker": ticker})
+            results.append({"ticker": ticker, "status": "train_failed",
+                             "factor_path": None, "error": str(e)})
+            continue
+
+        if factor_path is None:
+            factor_path = _latest_factor_path(ticker_factors_dir)
+
+        # 信号报告
+        report_md = ""
+        if factor_path:
+            try:
+                report_md = generate_signal_report(hist_data, factor_path, n_days=n_days)
+            except Exception as e:
+                logger.warning("信号报告失败 %s: %s", ticker, e,
+                               extra={"ticker": ticker})
+
+        sharpe    = best_result.get('sharpe_ratio', float('nan')) if best_result else float('nan')
+        validated = best_result.get('validated', 'unknown') if best_result else 'unknown'
+
+        results.append({
+            "ticker":     ticker,
+            "status":     "ok",
+            "factor_path": factor_path,
+            "factors_dir": str(ticker_factors_dir),
+            "sharpe_ratio": sharpe,
+            "validated":   validated,
+            "report_md":   report_md,
+        })
+        logger.info("规则训练完成: %s",
+                    ticker,
+                    extra={"ticker": ticker, "sharpe_ratio": sharpe})
+
+    return results
+
+
+# ══════════════════════════════════════════════════════════════════
 #  辅助: 加载因子，附加策略模块引用（ML + 规则策略统一入口）
 # ══════════════════════════════════════════════════════════════════
 
