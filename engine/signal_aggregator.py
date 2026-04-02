@@ -100,13 +100,14 @@ class SignalAggregator:
 
     # ── 内部：加载因子列表 ────────────────────────────────────────
 
-    def _load_factors(self) -> list[dict]:
+    def _load_factors(self, factors_dir: Optional[Path] = None) -> list[dict]:
         """
-        加载 factors_dir 中所有 factor_*.pkl，返回已排序的列表（编号降序）。
-        只取最新的 max_factors 个因子。
+        加载指定目录中所有 factor_*.pkl。
+        factors_dir 为 None 时使用 self.factors_dir（向后兼容）。
         """
+        target = factors_dir or self.factors_dir
         candidates = sorted(
-            self.factors_dir.glob("factor_*.pkl"),
+            target.glob("factor_*.pkl"),
             key=lambda p: int(p.stem.split("_")[1]),
             reverse=True,
         )
@@ -184,7 +185,27 @@ class SignalAggregator:
         Returns:
             AggregatedSignal
         """
-        artifacts = self._load_factors()
+        # ── 混合加载：per-ticker 规则因子 + 全局 ML 因子 ─────────────────
+        ticker_safe = ticker.replace(".", "_").upper()
+        per_ticker_dir = self.factors_dir / ticker_safe
+
+        if per_ticker_dir.is_dir() and any(per_ticker_dir.glob("factor_*.pkl")):
+            per_ticker_arts = self._load_factors(per_ticker_dir)
+            global_arts_all = self._load_factors(self.factors_dir)
+            global_ml_arts = [
+                a for a in global_arts_all
+                if len(a.get("meta", {}).get("feat_cols", [])) > 0
+            ]
+            artifacts = per_ticker_arts + global_ml_arts
+            logger.debug(
+                "混合加载: per-ticker %d 个规则因子 + 全局 %d 个ML因子",
+                len(per_ticker_arts), len(global_ml_arts),
+                extra={"ticker": ticker},
+            )
+        else:
+            artifacts = self._load_factors(self.factors_dir)
+            logger.debug("全局因子加载（无per-ticker目录）: %d 个",
+                         len(artifacts), extra={"ticker": ticker})
 
         if not artifacts:
             logger.warning("%s: 无可用因子，返回默认空仓信号", ticker, extra={"ticker": ticker})
