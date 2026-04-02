@@ -206,7 +206,7 @@ def _latest_factor_path(factors_dir: Path) -> str | None:
 #  步骤 1 : 数据就绪检查
 # ══════════════════════════════════════════════════════════════════
 
-def step1_ensure_data(sources_override=None):
+def step1_ensure_data(sources_override=None, ticker: str = None):
     """
     确保历史日线数据已就绪。
 
@@ -218,7 +218,7 @@ def step1_ensure_data(sources_override=None):
     logger.info("步骤1/3: 数据就绪检查开始")
 
     cfg = load_config()
-    ticker = cfg.get('ticker', '0700.hk')
+    effective_ticker = ticker or cfg.get('ticker', '0700.hk')
 
     # ── 1a. 历史日线 ────────────────────────────────────────────
     hist_dir = Path(__file__).parent / 'data' / 'historical'
@@ -226,8 +226,8 @@ def step1_ensure_data(sources_override=None):
     # 只匹配目标 ticker 的文件，避免误读 HSI 其他成分股数据
     # 文件名格式：{ticker}_{period}.csv 或 {safe_name}_{period}.csv
     # 例如 0700.hk_5y.csv 或 0700_HK_3y.csv
-    _ticker_lower = ticker.lower()
-    _ticker_safe  = ticker.replace('.', '_').lower()
+    _ticker_lower = effective_ticker.lower()
+    _ticker_safe  = effective_ticker.replace('.', '_').lower()
     def _is_ticker_file(p: Path) -> bool:
         stem = p.stem.lower()
         return stem.startswith(_ticker_lower + '_') or stem.startswith(_ticker_safe + '_')
@@ -270,7 +270,11 @@ def step1_ensure_data(sources_override=None):
             })
         else:
             logger.warning("本地无历史日线数据，正在下载")
-        hist_data, hist_path = mgr.download_from_config(sources_override=sources_override)
+        hist_data, hist_path = mgr.download(
+            effective_ticker,
+            period=cfg.get('period', '3y'),
+            sources_override=sources_override,
+        )
         if hist_data is None or hist_data.empty:
             # 下载失败时降级使用旧文件（如果存在）
             if hist_files:
@@ -289,51 +293,59 @@ def step1_ensure_data(sources_override=None):
                 "records": len(hist_data)
             })
 
-    # ── 1b. HSI 成分股增量更新 ──────────────────────────────────
-    hsi_period = cfg.get('hsi_period', '3y')   # 可在 config.yaml 里配置
+    return hist_data, hist_path
+
+
+def _ensure_hsi_data(cfg: dict = None) -> None:
+    """HSI成分股增量更新 — 单独提取，供 main() 和 train_portfolio_tickers() 调用一次。"""
+    if cfg is None:
+        cfg = load_config()
+    hsi_period = cfg.get('hsi_period', '3y')
     logger.info("开始增量更新HSI成分股数据", extra={"period": hsi_period})
     try:
+        mgr = DataManager()
         hsi_result = mgr.download_hsi_incremental(period=hsi_period)
-        total   = hsi_result['total']
-        skipped = hsi_result['skipped']
-        updated = hsi_result['updated']
-        failed  = hsi_result['failed']
         logger.info("HSI成分股更新完成", extra={
-            "total": total,
-            "skipped": skipped,
-            "updated": updated,
-            "failed_count": len(failed),
-            "failed_tickers": failed
+            "total":          hsi_result['total'],
+            "skipped":        hsi_result['skipped'],
+            "updated":        hsi_result['updated'],
+            "failed_count":   len(hsi_result['failed']),
+            "failed_tickers": hsi_result['failed'],
         })
     except Exception as e:
         logger.warning("HSI成分股更新失败", extra={"error": str(e)})
-
-    return hist_data, hist_path
 
 
 # ══════════════════════════════════════════════════════════════════
 #  步骤 2 : 多策略 × 100 次超参搜索
 # ══════════════════════════════════════════════════════════════════
 
-def step2_train(hist_data: pd.DataFrame, use_optuna: bool = False, optuna_trials: int = 50, strategy_type: str = None):
-    """
-    对每个策略执行超参搜索。
-    搜索结束后将最佳结果统一保存为一个 factor_{run_id:04d}.pkl。
-    返回 (factor_path, best_result, sorted_results)。
-
-    Args:
-        hist_data: 历史数据
-        use_optuna: 是否使用 Optuna 贝叶斯优化
-        optuna_trials: Optuna 搜索次数
-        strategy_type: 可选，按类型过滤策略 (single/multi/custom)
-    """
+def step2_train(
+    hist_data: pd.DataFrame,
+    use_optuna: bool = False,
+    optuna_trials: int = 50,
+    strategy_type: str = None,
+    factors_dir_override: Path = None,
+):
     if use_optuna and OPTUNA_AVAILABLE:
-        return step2_train_optuna(hist_data, n_trials=optuna_trials, strategy_type=strategy_type)
+        return step2_train_optuna(
+            hist_data, n_trials=optuna_trials,
+            strategy_type=strategy_type,
+            factors_dir_override=factors_dir_override,
+        )
     else:
-        return step2_train_native(hist_data, strategy_type=strategy_type)
+        return step2_train_native(
+            hist_data,
+            strategy_type=strategy_type,
+            factors_dir_override=factors_dir_override,
+        )
 
 
-def step2_train_native(hist_data: pd.DataFrame, strategy_type: str = None):
+def step2_train_native(
+    hist_data: pd.DataFrame,
+    strategy_type: str = None,
+    factors_dir_override: Path = None,
+):
     """
     对每个策略执行随机超参搜索（原生方法）。
     """
@@ -352,9 +364,13 @@ def step2_train_native(hist_data: pd.DataFrame, strategy_type: str = None):
         )
 
 
-    # ── 统一保存一个因子文件 ────────────────────────────────────
+    # ── 确定保存目录 ──────────────────────────────────────────────
+    factors_dir = (
+        factors_dir_override
+        if factors_dir_override is not None
+        else Path(__file__).parent / 'data' / 'factors'
+    )
     factor_path   = None
-    factors_dir   = Path(__file__).parent / 'data' / 'factors'
 
     if best_result is not None:
         try:
@@ -376,7 +392,12 @@ def step2_train_native(hist_data: pd.DataFrame, strategy_type: str = None):
     return factor_path, best_result, sorted_results
 
 
-def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_type: str = None):
+def step2_train_optuna(
+    hist_data: pd.DataFrame,
+    n_trials: int = 50,
+    strategy_type: str = None,
+    factors_dir_override: Path = None,
+):
     """
     使用 Optuna 贝叶斯优化进行超参搜索。
     """
@@ -388,7 +409,8 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
 
     if not OPTUNA_AVAILABLE:
         logger.warning("Optuna未安装，回退到随机搜索")
-        return step2_train_native(hist_data)
+        return step2_train_native(hist_data, strategy_type=strategy_type,
+                                  factors_dir_override=factors_dir_override)
 
     cfg = load_config()
     strategy_mods = _discover_strategies(strategy_type=strategy_type)
@@ -514,7 +536,11 @@ def step2_train_optuna(hist_data: pd.DataFrame, n_trials: int = 50, strategy_typ
 
     # ── Hold-Out + Walk-Forward 选优（统一入口） ──────────────────
     factor_path = None
-    factors_dir = Path(__file__).parent / 'data' / 'factors'
+    factors_dir = (
+        factors_dir_override
+        if factors_dir_override is not None
+        else Path(__file__).parent / 'data' / 'factors'
+    )
 
     # 将 Optuna all_results 转换成与 run_search 兼容的格式
     compat_results = []
@@ -1289,6 +1315,8 @@ def main():
 
     # ── 步骤 1 ────────────────────────────────────────────────────
     hist_data, hist_path = step1_ensure_data(sources_override)
+
+    _ensure_hsi_data(config)
 
     # ── 步骤 2 ────────────────────────────────────────────────────
     factors_dir = Path(__file__).parent / 'data' / 'factors'
