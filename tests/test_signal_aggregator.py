@@ -59,3 +59,18 @@ class TestAggregatedSignalProperties:
     def test_confidence_label_low(self):
         s = AggregatedSignal(ticker="0700.HK", consensus_signal=1, confidence_pct=0.40)
         assert s.confidence_label == "低"
+
+
+def test_run_search_strategy_type_filters_strategies(synthetic_ohlcv, default_config):
+    """run_search(strategy_type='single') should not include multi-class ML strategies in results."""
+    from analyze_factor import run_search, _discover_strategies
+    cfg = default_config.copy()
+    cfg['max_tries'] = 1
+    cfg['min_return'] = -999.0
+    _, sorted_results, _ = run_search(synthetic_ohlcv, cfg, strategy_type='single')
+    ml_names = {'xgboost_enhanced', 'lightgbm_enhanced',
+                'xgboost_enhanced_tsfresh', 'lightgbm_enhanced_tsfresh'}
+    result_names = {r.get('strategy_name', '') for r in sorted_results}
+    assert result_names.isdisjoint(ml_names), (
+        f"strategy_type='single' 搜索结果中出现了 ML 策略: {result_names & ml_names}"
+    )

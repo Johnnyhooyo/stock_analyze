@@ -330,10 +330,10 @@ def step2_train(hist_data: pd.DataFrame, use_optuna: bool = False, optuna_trials
     if use_optuna and OPTUNA_AVAILABLE:
         return step2_train_optuna(hist_data, n_trials=optuna_trials, strategy_type=strategy_type)
     else:
-        return step2_train_native(hist_data)
+        return step2_train_native(hist_data, strategy_type=strategy_type)
 
 
-def step2_train_native(hist_data: pd.DataFrame):
+def step2_train_native(hist_data: pd.DataFrame, strategy_type: str = None):
     """
     对每个策略执行随机超参搜索（原生方法）。
     """
@@ -342,7 +342,7 @@ def step2_train_native(hist_data: pd.DataFrame):
     cfg = load_config()
 
     # on_result 仅在搜索中途满足阈值时触发（用于实时预览）
-    best_result, sorted_results, test_df = run_search(hist_data, cfg)
+    best_result, sorted_results, test_df = run_search(hist_data, cfg, strategy_type=strategy_type)
 
     # ── Hold-Out + Walk-Forward 选优（统一入口） ──────────────────
     strategy_mods = _discover_strategies()

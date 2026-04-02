@@ -79,6 +79,11 @@ def default_config() -> dict:
             "daily_loss_limit": 0.05,
             "max_consecutive_loss_days": 3,
         },
+        "strategy_training": {
+            "single": ["bollinger_rsi_trend", "macd_rsi_trend", "rsi_divergence"],
+            "multi": ["xgboost_enhanced", "lightgbm_enhanced"],
+            "custom": [],
+        },
     }
 
 

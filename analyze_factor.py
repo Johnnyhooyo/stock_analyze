@@ -64,7 +64,7 @@ def _save_config(cfg: dict) -> None:
     shutil.move(str(tmp), str(config_path))
 
 
-def _discover_strategies(strategy_type: str = None) -> list:
+def _discover_strategies(strategy_type: str = None, cfg: dict = None) -> list:
     """自动发现 strategies/ 包下的所有策略模块，返回模块列表。
 
     Args:
@@ -73,9 +73,9 @@ def _discover_strategies(strategy_type: str = None) -> list:
             - 'multi': 只返回多股票训练策略
             - 'custom': 只返回自定义训练策略
             - None: 返回所有策略
+        cfg: 可选，直接传入配置字典（避免重复加载）
     """
-    # 从配置文件的 strategy_training 读取策略列表
-    config = load_config()
+    config = cfg if cfg is not None else load_config()
     train_config = config.get('strategy_training', {})
 
     # 合并 single, multi, custom 中的所有策略
@@ -1163,6 +1163,7 @@ def run_search(
     data: pd.DataFrame,
     cfg: Optional[dict] = None,
     on_result=None,
+    strategy_type: str = None,
 ) -> tuple:
     """
     对所有已发现策略执行随机超参搜索。
@@ -1216,7 +1217,7 @@ def run_search(
             "holdout_records": len(test_df)
         })
 
-    strategy_mods = _discover_strategies()
+    strategy_mods = _discover_strategies(strategy_type=strategy_type, cfg=base_cfg)
     if not strategy_mods:
         logger.critical("未发现任何策略模块，请检查 strategies/ 目录")
         _save_config(base_cfg)
