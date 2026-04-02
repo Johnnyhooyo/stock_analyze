@@ -239,7 +239,7 @@ def run(data: pd.DataFrame, config: dict):
     model_name = None
     try:
         from xgboost import XGBClassifier
-        model = XGBClassifier(
+        _xgb_kwargs = dict(
             n_estimators=n_estimators,
             max_depth=max_depth,
             learning_rate=learning_rate,
@@ -247,7 +247,18 @@ def run(data: pd.DataFrame, config: dict):
             use_label_encoder=False,
             eval_metric='logloss',
             verbosity=0,
+            tree_method='hist',
         )
+        try:
+            model = XGBClassifier(**_xgb_kwargs, device='cuda')
+        except Exception as e:
+            _msg = str(e).lower()
+            if any(x in _msg for x in ('cuda', 'gpu', 'device', 'memory')):
+                import logging
+                logging.getLogger(__name__).warning(f"tsfresh_xgboost GPU不可用，回退CPU: {e}")
+                model = XGBClassifier(**_xgb_kwargs)
+            else:
+                raise
         model_name = 'XGBoost'
     except ImportError:
         try:

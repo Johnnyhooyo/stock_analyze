@@ -2,7 +2,10 @@ alpha_vantage_key: null
 backtest_engine: vectorbt
 data_sources:
   - tickflow
+  - yfinance
   - yahooquery
+  - akshare
+  - pandas_datareader
 fees_rate: 0.00088
 invest_fraction: 0.95   # 买入仓位比例，0.95 保留5%现金缓冲（两个回测引擎共用）
 slippage: 0.001          # 滑点（两个回测引擎统一）

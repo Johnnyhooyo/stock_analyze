@@ -208,14 +208,15 @@ def run(data: pd.DataFrame, config: dict):
             random_state=42,
             verbose=-1,
         )
-        # 尝试使用 GPU（不可用时在 fit() 阶段捕获并回退 CPU）
-        model = lgb.LGBMClassifier(**_lgbm_kwargs, device='gpu')
+        # LightGBM pip 版本未编译 CUDA，支持 OpenCL GPU（需额外驱动）
+        # CPU 已足够快，直接使用
+        model = lgb.LGBMClassifier(**_lgbm_kwargs)
         model_name = 'LightGBM'
     except ImportError:
         # 降级使用 XGBoost
         try:
             from xgboost import XGBClassifier
-            model = XGBClassifier(
+            _xgb_kwargs = dict(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
                 learning_rate=learning_rate,
@@ -223,7 +224,17 @@ def run(data: pd.DataFrame, config: dict):
                 use_label_encoder=False,
                 eval_metric='logloss',
                 verbosity=0,
+                tree_method='hist',
             )
+            try:
+                model = XGBClassifier(**_xgb_kwargs, device='cuda')
+            except Exception as e:
+                _msg = str(e).lower()
+                if any(x in _msg for x in ('cuda', 'gpu', 'device', 'memory')):
+                    logger.warning(f"lightgbm XGBoost GPU不可用，回退CPU: {e}")
+                    model = XGBClassifier(**_xgb_kwargs)
+                else:
+                    raise
             model_name = 'XGBoost'
         except ImportError:
             from sklearn.ensemble import GradientBoostingClassifier

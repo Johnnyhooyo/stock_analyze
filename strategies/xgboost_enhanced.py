@@ -456,9 +456,13 @@ def run(data: pd.DataFrame, config: dict):
         # 尝试使用 GPU
         try:
             model = XGBClassifier(**_xgb_kwargs, device='cuda')
-        except Exception:
-            # GPU 不可用，回退到 CPU
-            model = XGBClassifier(**_xgb_kwargs)
+        except Exception as e:
+            _msg = str(e).lower()
+            if any(x in _msg for x in ('cuda', 'gpu', 'device', 'memory')):
+                logger.warning(f"XGBoost GPU不可用，回退CPU: {e}")
+                model = XGBClassifier(**_xgb_kwargs)
+            else:
+                raise
     except ImportError:
         # 降级使用 sklearn
         from sklearn.ensemble import GradientBoostingClassifier
