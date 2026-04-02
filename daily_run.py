@@ -45,31 +45,49 @@ logger = get_logger(__name__)
 
 def _check_factor_freshness(factors_dir: Path, min_age_days: int = 7) -> bool:
     """
-    检查 factors_dir 中最新因子文件是否在 min_age_days 天内生成。
-    返回 True 表示因子新鲜（不需要重训），False 表示已过期（建议重训）。
+    检查 factors_dir 及其所有直接子目录中，最新因子是否在 min_age_days 天内。
+    只要有任一目录的因子还新鲜就返回 True。
     """
-    candidates = sorted(
-        factors_dir.glob("factor_*.pkl"),
-        key=lambda p: int(p.stem.split("_")[1]),
-        reverse=True,
-    )
-    if not candidates:
+    import joblib as _jl
+
+    def _newest_in(d: Path):
+        cands = sorted(
+            d.glob("factor_*.pkl"),
+            key=lambda p: int(p.stem.split("_")[1]),
+            reverse=True,
+        )
+        return cands[0] if cands else None
+
+    dirs = [factors_dir]
+    if factors_dir.is_dir():
+        dirs += [
+            sd for sd in factors_dir.iterdir()
+            if sd.is_dir() and not sd.name.startswith(".")
+        ]
+
+    newest = None
+    newest_id = -1
+    for d in dirs:
+        p = _newest_in(d)
+        if p is None:
+            continue
+        rid = int(p.stem.split("_")[1])
+        if rid > newest_id:
+            newest_id = rid
+            newest = p
+
+    if newest is None:
         return False
 
-    import joblib
     try:
-        art = joblib.load(candidates[0])
+        art = _jl.load(newest)
         saved_at_str = art.get("saved_at", "")
         if saved_at_str:
-            saved_at = datetime.fromisoformat(saved_at_str)
-            age_days = (datetime.now() - saved_at).days
+            age_days = (datetime.now() - datetime.fromisoformat(saved_at_str)).days
             return age_days <= min_age_days
     except Exception:
         pass
-
-    # 降级：用文件修改时间
-    mtime = datetime.fromtimestamp(candidates[0].stat().st_mtime)
-    age_days = (datetime.now() - mtime).days
+    age_days = (datetime.now() - datetime.fromtimestamp(newest.stat().st_mtime)).days
     return age_days <= min_age_days
 
 
@@ -491,8 +509,15 @@ def main():
 
     # 检查是否存在因子文件
     factor_files = list(factors_dir.glob("factor_*.pkl"))
+    if not factor_files and factors_dir.is_dir():
+        for _sub in factors_dir.iterdir():
+            if _sub.is_dir() and not _sub.name.startswith("."):
+                factor_files.extend(_sub.glob("factor_*.pkl"))
     if not factor_files:
-        logger.error("data/factors/ 中无因子文件，请先运行 main.py 进行策略训练")
+        logger.error(
+            "data/factors/ 及其子目录均无因子文件，"
+            "请先运行 main.py 或 main.py --portfolio 进行策略训练"
+        )
         sys.exit(1)
 
     logger.info("因子文件已加载", extra={
