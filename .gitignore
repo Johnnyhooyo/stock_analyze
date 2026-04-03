@@ -15,20 +15,20 @@ env/
 *.swp
 *.swo
 .claude/*
+!.claude/settings.local.json
 
 # Data
 data/factors/*.pkl
+data/factors/.run_id_counter
 data/timekline/*.csv
 data/plots/*.png
 data/logs/*
 data/reports/*.*
-
-# 持久化的数据（推送到远程）
-# data/historical/*.csv
-# data/trends/*.csv
-# data/sentiment/*.csv
-# Logs
-*.log
+data/historical/*.csv
+data/historical/*.meta.json
+data/trends/*.csv
+data/sentiment/*.csv
+data/cache/
 
 # Keys and secrets
 keys.yaml
@@ -38,3 +38,6 @@ secrets.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+# Docs plans (local)
+docs/superpowers/plans/
