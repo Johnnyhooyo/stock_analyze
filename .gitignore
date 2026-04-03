@@ -23,6 +23,9 @@ data/factors/.run_id_counter
 data/timekline/*.csv
 data/plots/*.png
 data/logs/*
+!data/logs/.gitkeep
+data/logs/pnl_history.jsonl
+data/logs/pnl_history.csv
 data/reports/*.*
 data/historical/*.csv
 data/historical/*.meta.json

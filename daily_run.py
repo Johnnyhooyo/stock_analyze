@@ -35,6 +35,7 @@ import yaml
 
 from config_loader import load_config
 from log_config import get_logger
+from data.pnl_tracker import PnLTracker
 
 logger = get_logger(__name__)
 
@@ -768,6 +769,16 @@ def main():
         "buy_signals": daily_report['buy_signals'],
         "sell_signals": daily_report['sell_signals'],
     })
+
+    # ── PnL 追踪：T+1 回填 + 当日快照 ───────────────────────────
+    if not args.dry_run and market_is_open:
+        from data.calendar import prev_trading_day
+        tracker = PnLTracker()
+        price_map = {r["ticker"]: r["last_close"] for r in daily_report["recommendations"]}
+        prev_date = prev_trading_day(datetime.now().date())
+        if price_map:
+            tracker.fill_t1_returns(prev_date.strftime("%Y-%m-%d"), price_map)
+        tracker.record_daily(run_date, results)
 
     for r in results:
         pos_str = f"{r.shares}股@{r.avg_cost:.0f}" if r.has_position else "空仓"
