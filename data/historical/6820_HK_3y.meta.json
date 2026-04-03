@@ -1,8 +1,0 @@
-{
-  "ticker": "6820.HK",
-  "source": "yahooquery",
-  "download_ts": "2026-03-25T19:12:28.001648",
-  "rows": 742,
-  "sha256": "6c81301f7cf02a3eebd2740266bb692cfe83f7ee971f20c1bef6366024186c4f",
-  "last_bar_date": "2026-03-24"
-}

@@ -1,8 +1,0 @@
-{
-  "ticker": "0489.HK",
-  "source": "yahooquery",
-  "download_ts": "2026-03-25T19:10:59.588512",
-  "rows": 732,
-  "sha256": "0af29f4e6dccd80a8e641b729d1d4ddfd708eebc9fe8bc2b189b6aa246f7931a",
-  "last_bar_date": "2026-03-17"
-}
