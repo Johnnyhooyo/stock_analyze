@@ -572,9 +572,10 @@ def _get_strategy_training_type(strategy_name: str, config: dict) -> str:
     if strategy_name in train_config.get('custom', []):
         return 'custom'
 
-    # 默认：xgboost/lightgbm 相关的是 multi，其他是 single
+    # 默认：xgboost/lightgbm/rnn 相关的是 multi，其他是 single
     if 'xgboost' in strategy_name or 'lightgbm' in strategy_name or \
-       'ridge' in strategy_name or 'linear' in strategy_name or 'forest' in strategy_name:
+       'ridge' in strategy_name or 'linear' in strategy_name or \
+       'forest' in strategy_name or 'rnn' in strategy_name:
         return 'multi'
     return 'single'
 

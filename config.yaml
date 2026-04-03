@@ -19,11 +19,26 @@ risk_management:
   use_kelly: false
 slippage: 0.001
 stamp_duty: 0.001
+ml_strategies:
+  rnn_trend:
+    rnn_hidden_size: 64
+    rnn_num_layers: 2
+    rnn_dropout: 0.2
+    rnn_window: 30
+    rnn_label_period: 5
+    rnn_label_threshold: 0.02
+    rnn_upper_threshold: 0.60
+    rnn_lower_threshold: 0.40
+    rnn_epochs: 50
+    rnn_batch_size: 128
+    rnn_lr: 0.001
+    rnn_cell_type: "gru"
 strategy_training:
   custom: []
   multi:
   - xgboost_enhanced
   - lightgbm_enhanced
+  - rnn_trend
   single:
   - bollinger_rsi_trend
   - macd_rsi_trend
