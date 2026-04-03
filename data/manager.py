@@ -450,7 +450,7 @@ class DataManager:
 
     def download_hsi_incremental(
         self,
-        period: str = "3y",
+        period: str = "5y",
         out_dir: Optional[Path] = None,
         delay: float = 0.3,
         stocks: Optional[List[str]] = None,
@@ -563,11 +563,11 @@ class DataManager:
 
     @staticmethod
     def _get_hsi_stocks() -> List[str]:
-        """获取 HSI 成分股列表。"""
+        """获取全量港股主板股票列表。"""
         try:
-            from data.hsi_stocks import HSI_STOCKS
-            return list(HSI_STOCKS)
+            from data.hk_stocks import get_all_hk_stocks
+            return get_all_hk_stocks()
         except ImportError:
-            logger.error("无法获取 HSI 成分股列表")
+            logger.error("无法获取港股列表")
             return []
 

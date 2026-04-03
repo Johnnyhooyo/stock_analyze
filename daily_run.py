@@ -102,7 +102,7 @@ def _analyze_one_ticker(
     analyzer,       # PositionAnalyzer 实例（共享只读）
     portfolio_state,  # PortfolioState 实例
     data_mgr,       # DataManager 实例
-    period: str = "3y",
+    period: str = "5y",
 ) -> Optional[object]:
     """
     下载 / 加载单只股票数据，运行 PositionAnalyzer，返回 RecommendationResult。
@@ -512,8 +512,8 @@ def main():
         help="并发分析线程数（默认读 config.yaml → daily_run.max_workers）",
     )
     parser.add_argument(
-        "--period", type=str, default="3y",
-        help="历史数据周期（默认 3y）",
+        "--period", type=str, default="5y",
+        help="历史数据周期（默认 5y）",
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -544,6 +544,26 @@ def main():
     )
     max_workers = args.max_workers or daily_cfg.get("max_workers", 4)
 
+    # ── 因子注册表每日维护 ─────────────────────────────────────────
+    factors_dir = Path(__file__).parent / "data" / "factors"
+    try:
+        from data.factor_registry import FactorRegistry
+        registry = FactorRegistry()
+        expired = registry.expire_stale()
+        archived = registry.archive_old(factors_dir=factors_dir)
+        summary = registry.summary()
+        logger.info(
+            "因子注册表状态",
+            extra={
+                "active": summary["active"],
+                "newly_expired": expired,
+                "newly_archived": archived,
+                "total_archived": summary["archived"],
+            },
+        )
+    except Exception as e:
+        logger.warning("因子注册表维护失败（非阻塞）: %s", e)
+
     # ── 检查港股交易日 ────────────────────────────────────────────
     from data.calendar import is_trading_day as _is_hk_trading_day
     from datetime import date as _date
@@ -554,7 +574,7 @@ def main():
 
     # ── 决定目标股票列表 ──────────────────────────────────────────
     from engine.portfolio_state import load_portfolio
-    from data.hsi_stocks import get_hsi_stocks
+    from data.hk_stocks import get_all_hk_stocks
 
     portfolio_state = load_portfolio()
     logger.info("持仓状态已加载", extra={"portfolio_summary": portfolio_state.summary()})
@@ -565,11 +585,11 @@ def main():
         for t in tickers:
             portfolio_state.add_watchlist_ticker(t)
     elif args.watchlist == "hsi":
-        tickers = get_hsi_stocks()
+        tickers = get_all_hk_stocks()
     elif args.watchlist == "all":
-        hsi = get_hsi_stocks()
+        all_hk = get_all_hk_stocks()
         port = portfolio_state.all_tickers()
-        tickers = list(dict.fromkeys(hsi + port))
+        tickers = list(dict.fromkeys(all_hk + port))
     else:
         # portfolio（默认）
         tickers = portfolio_state.all_tickers()
@@ -648,14 +668,14 @@ def main():
     sector_ranking = []
     if args.enable_screener:
         from engine.stock_screener import StockScreener
-        from data.hsi_stocks import get_hsi_stocks
+        from data.hk_stocks import get_all_hk_stocks
 
         logger.info("选股模块启动", extra={"universe": config.get("screener", {}).get("universe", "hsi")})
 
         screener = StockScreener(config)
         screener_top_n = args.screener_top_n or screener.top_n_count
 
-        candidate_tickers = get_hsi_stocks()
+        candidate_tickers = get_all_hk_stocks()
         data_dict = {}
         for t in candidate_tickers:
             try:

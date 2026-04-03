@@ -78,6 +78,10 @@ class DataConfig:
             data_sources=raw.get("data_sources", default_sources),
             alpha_vantage_key=keys.get("alpha_vantage_key") or raw.get("alpha_vantage_key"),
             storage_format=str(raw.get("storage_format", "csv")),
+            download_timeout=int(raw.get("download_timeout", 20)),
+            retry_attempts=int(raw.get("retry_attempts", 3)),
+            retry_backoff=float(raw.get("retry_backoff", 1.0)),
+            batch_delay=float(raw.get("batch_delay", 0.3)),
             batch_max_workers=int(raw.get("batch_max_workers", 4)),
         )
 

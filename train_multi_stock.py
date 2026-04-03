@@ -15,7 +15,7 @@ from strategies.xgboost_enhanced import add_features, prepare_data
 from strategies.lightgbm_enhanced import run as run_lgbm
 
 
-def load_all_hsi_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
+def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     """
     加载所有恒生指数成分股数据并合并
 
@@ -60,6 +60,9 @@ def load_all_hsi_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
                 # 添加股票标识
                 df = df.reset_index()  # 重置索引，将日期变成列
                 df['ticker'] = ticker
+
+                # 去除重复日期（同一天多条记录只保留第一条）
+                df = df.drop_duplicates(subset=['date'], keep='first')
 
                 # 标准化列名
                 if 'Close' not in df.columns:
@@ -371,7 +374,7 @@ def optimize_multi_stock_params(
 if __name__ == "__main__":
     # 加载数据
     print("加载股票数据...")
-    data = load_all_hsi_data(period='3y')
+    data = load_all_hsi_data(period='5y')
 
     # 使用 Optuna 优化参数
     result = optimize_multi_stock_params(

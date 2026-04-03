@@ -302,7 +302,7 @@ class StrategyOptimizer:
         """加载多股票训练数据"""
         try:
             from train_multi_stock import load_all_hsi_data
-            multi_data = load_all_hsi_data(period='3y', min_days=300)
+            multi_data = load_all_hsi_data(period='5y', min_days=300)
             if not multi_data.empty and 'Close' in multi_data.columns:
                 print(f"    [多股票优化] 已加载多股票数据 ({len(multi_data)} 条记录)")
                 return multi_data

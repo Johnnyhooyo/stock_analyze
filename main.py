@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 # ──────────────────────────────────────────────────────────────────
 from log_config import get_logger
 from data.manager import DataManager
+from data.factor_registry import FactorRegistry, _get_training_type
 from data.calendar import prev_trading_day as _prev_hk_trading_day, is_trading_day as _is_hk_trading_day
 from analyze_factor import (
     _discover_strategies,
@@ -155,15 +156,15 @@ def _save_factor(result: dict, factors_dir: Path) -> str:
     """
     将搜索结果统一保存为 factor_{run_id:04d}.pkl，返回保存路径字符串。
     run_id 自动递增，每次调用只写一个文件。
+
+    保存后自动将因子注册到 factor_registry.json。
     """
     factors_dir.mkdir(parents=True, exist_ok=True)
     run_id    = _next_factor_run_id(factors_dir)
     save_path = factors_dir / f"factor_{run_id:04d}.pkl"
 
-    # 处理 model 可能为 None 的情况
     model = result.get('model')
     if model is None:
-        # 对于没有模型的策略，保存一个空字典
         model = {}
 
     joblib.dump(
@@ -182,7 +183,6 @@ def _save_factor(result: dict, factors_dir: Path) -> str:
             'calmar_ratio':       result.get('calmar_ratio', float('nan')),
             'sortino_ratio':      result.get('sortino_ratio', float('nan')),
             'total_trades':       result.get('total_trades', 0),
-            # 验证标记（double / double_no_wf / val_only）
             'validated':          result.get('validated', 'unknown'),
             'holdout':            result.get('holdout', {}),
             'wf_summary':         result.get('wf_summary', {}),
@@ -191,6 +191,35 @@ def _save_factor(result: dict, factors_dir: Path) -> str:
         },
         save_path,
     )
+
+    try:
+        meta = result.get('meta', {})
+        config = result.get('config', {})
+        strategy_name = meta.get('name', 'unknown')
+        ticker = config.get('ticker')
+        training_type = _get_training_type(strategy_name)
+        subdir = None
+        if factors_dir.name.endswith('_HK') or factors_dir.name.endswith('_HK_s'):
+            subdir = factors_dir.name
+        elif factors_dir != (Path(__file__).parent / 'data' / 'factors'):
+            subdir = factors_dir.name
+
+        registry = FactorRegistry()
+        registry.register(
+            factor_id=run_id,
+            filename=f"factor_{run_id:04d}.pkl",
+            subdir=subdir,
+            strategy_name=strategy_name,
+            ticker=ticker,
+            training_type=training_type,
+            sharpe_ratio=result.get('sharpe_ratio', 0.0),
+            cum_return=result.get('cum_return', 0.0),
+            max_drawdown=result.get('max_drawdown', 0.0),
+            total_trades=result.get('total_trades', 0),
+        )
+    except Exception as e:
+        logger.warning("因子注册失败（非阻塞）", extra={"factor": save_path.name, "error": str(e)})
+
     return str(save_path)
 
 
@@ -282,7 +311,7 @@ def step1_ensure_data(sources_override=None, ticker: str = None, skip_download: 
             logger.warning("本地无历史日线数据，正在下载")
         hist_data, hist_path = mgr.download(
             effective_ticker,
-            period=cfg.get('period', '3y'),
+            period=cfg.get('period', '5y'),
             sources_override=sources_override,
         )
         if hist_data is None or hist_data.empty:
@@ -310,7 +339,7 @@ def _ensure_hsi_data(cfg: dict = None) -> None:
     """HSI成分股增量更新 — 单独提取，供 main() 和 train_portfolio_tickers() 调用一次。"""
     if cfg is None:
         cfg = load_config()
-    hsi_period = cfg.get('hsi_period', '3y')
+    hsi_period = cfg.get('hsi_period', '5y')
     logger.info("开始增量更新HSI成分股数据", extra={"period": hsi_period})
     try:
         mgr = DataManager()

@@ -85,18 +85,22 @@ class SignalAggregator:
         factors_dir: Optional[Path] = None,
         min_sharpe_weight: float = 0.0,
         max_factors: int = 20,
+        use_registry: bool = True,
     ):
         """
         Args:
             factors_dir:       factor_*.pkl 所在目录（默认 data/factors/）
             min_sharpe_weight: 参与投票的最低 sharpe 阈值（默认 0，全部参与）
             max_factors:       最多加载的因子数量（取编号最大的 N 个）
+            use_registry:      是否使用因子注册表过滤（默认 True，只加载 active 因子）
         """
         self.factors_dir = factors_dir or (
             Path(__file__).parent.parent / "data" / "factors"
         )
         self.min_sharpe_weight = min_sharpe_weight
         self.max_factors = max_factors
+        self._use_registry = use_registry
+        self._registry = None
 
     # ── 内部：加载因子列表 ────────────────────────────────────────
 
@@ -171,6 +175,33 @@ class SignalAggregator:
 
     # ── 主接口 ────────────────────────────────────────────────────
 
+    def _get_registry(self):
+        """懒加载注册表"""
+        if self._registry is None and self._use_registry:
+            try:
+                from data.factor_registry import FactorRegistry
+                self._registry = FactorRegistry()
+            except Exception:
+                self._registry = None
+        return self._registry
+
+    def _filter_by_registry(self, artifacts: list[dict], subdir: str | None) -> list[dict]:
+        """根据注册表过滤因子，只保留 active 的记录"""
+        registry = self._get_registry()
+        if registry is None:
+            return artifacts
+        try:
+            active = registry.active_records()
+            if not active:
+                return artifacts
+            active_keys = {(r.filename, r.subdir) for r in active}
+            filtered = [a for a in artifacts if (Path(a["_path"]).name, subdir) in active_keys]
+            if len(filtered) < len(artifacts):
+                logger.debug("注册表过滤: %d -> %d 个因子", len(artifacts), len(filtered))
+            return filtered
+        except Exception:
+            return artifacts
+
     def aggregate(
         self, ticker: str, data: pd.DataFrame, config: dict
     ) -> AggregatedSignal:
@@ -185,17 +216,18 @@ class SignalAggregator:
         Returns:
             AggregatedSignal
         """
-        # ── 混合加载：per-ticker 规则因子 + 全局 ML 因子 ─────────────────
         ticker_safe = ticker.replace(".", "_").upper()
         per_ticker_dir = self.factors_dir / ticker_safe
 
         if per_ticker_dir.is_dir() and any(per_ticker_dir.glob("factor_*.pkl")):
             per_ticker_arts = self._load_factors(per_ticker_dir)
+            per_ticker_arts = self._filter_by_registry(per_ticker_arts, subdir=ticker_safe)
             global_arts_all = self._load_factors(self.factors_dir)
             global_ml_arts = [
                 a for a in global_arts_all
                 if len(a.get("meta", {}).get("feat_cols", [])) > 0
             ]
+            global_ml_arts = self._filter_by_registry(global_ml_arts, subdir=None)
             artifacts = per_ticker_arts + global_ml_arts
             artifacts = artifacts[:self.max_factors]
             logger.debug(
@@ -205,7 +237,8 @@ class SignalAggregator:
             )
         else:
             artifacts = self._load_factors(self.factors_dir)
-            logger.debug("全局因子加载（无per-ticker目录）: %d 个",
+            artifacts = self._filter_by_registry(artifacts, subdir=None)
+            logger.debug("全局因子加载: %d 个",
                          len(artifacts), extra={"ticker": ticker})
 
         if not artifacts:

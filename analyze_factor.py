@@ -29,7 +29,7 @@ _memory = _joblib.Memory(location=str(_CACHE_DIR), verbose=0)
 
 
 @_memory.cache
-def _load_multi_stock_data_cached(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
+def _load_multi_stock_data_cached(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     """实际加载逻辑，结果由 joblib.Memory 缓存到磁盘。"""
     try:
         from train_multi_stock import load_all_hsi_data
@@ -41,7 +41,7 @@ def _load_multi_stock_data_cached(period: str = '3y', min_days: int = 300) -> pd
         return pd.DataFrame()
 
 
-def _load_multi_stock_data(period: str = '3y', min_days: int = 300) -> pd.DataFrame:
+def _load_multi_stock_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     """加载多股票数据（磁盘缓存，多进程安全）。"""
     return _load_multi_stock_data_cached(period, min_days)
 
@@ -673,7 +673,7 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict,
     if train_type == 'multi':
         # 多股票训练 + 单股票验证
         # 关键: 训练数据截止时间与目标股票验证开始时间对齐
-        multi_data = _load_multi_stock_data(period='3y', min_days=300)
+        multi_data = _load_multi_stock_data(period='5y', min_days=300)
         if not multi_data.empty and 'Close' in multi_data.columns:
             df_train = multi_data.copy()
 
@@ -1365,6 +1365,7 @@ if __name__ == "__main__":
     if _best is not None:
         try:
             from main import _save_factor, _next_factor_run_id
+            from data.factor_registry import FactorRegistry, _get_training_type
             _factors_dir = Path(__file__).parent / 'data' / 'factors'
             _factor_path = _save_factor(_best, _factors_dir)
             logger.info("因子已保存", extra={
@@ -1374,6 +1375,26 @@ if __name__ == "__main__":
                 "sharpe_ratio": _best.get('sharpe_ratio', float('nan')),
                 "validated": _best.get('validated', '?')
             })
+            try:
+                registry = FactorRegistry()
+                _run_id = int(Path(_factor_path).stem.split('_')[1])
+                _strategy = _best.get('meta', {}).get('name', 'unknown')
+                _ticker = _best.get('config', {}).get('ticker')
+                _ttype = _get_training_type(_strategy)
+                registry.register(
+                    factor_id=_run_id,
+                    filename=Path(_factor_path).name,
+                    subdir=None,
+                    strategy_name=_strategy,
+                    ticker=_ticker,
+                    training_type=_ttype,
+                    sharpe_ratio=_best.get('sharpe_ratio', 0.0),
+                    cum_return=_best.get('cum_return', 0.0),
+                    max_drawdown=_best.get('max_drawdown', 0.0),
+                    total_trades=_best.get('total_trades', 0),
+                )
+            except Exception as _re:
+                logger.warning("因子注册失败（非阻塞）", extra={"error": str(_re)})
         except Exception as _e:
             logger.warning("因子保存失败", extra={"error": str(_e)})
 
