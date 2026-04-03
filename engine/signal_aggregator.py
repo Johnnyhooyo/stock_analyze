@@ -197,6 +197,7 @@ class SignalAggregator:
                 if len(a.get("meta", {}).get("feat_cols", [])) > 0
             ]
             artifacts = per_ticker_arts + global_ml_arts
+            artifacts = artifacts[:self.max_factors]
             logger.debug(
                 "混合加载: per-ticker %d 个规则因子 + 全局 %d 个ML因子",
                 len(per_ticker_arts), len(global_ml_arts),

@@ -266,7 +266,7 @@ def main():
     
     # ── [新增] 选股阶段 ──────────────────────────────────────────
     if args.watchlist in ("hsi", "all") or args.enable_screener:
-        print("\n  🔍 选股模块: 全市场扫描...")
+        logger.info("选股模块启动")
         from engine.stock_screener import StockScreener
         
         screener = StockScreener(config)
@@ -300,10 +300,11 @@ def main():
                 tickers.append(pick.ticker)
                 portfolio_state.add_watchlist_ticker(pick.ticker)
         
-        print(f"  ✅ 选股完成: {len(screen_results)} 只扫描, Top-{len(top_picks)} 加入分析")
+        logger.info("选股完成", extra={"total_scanned": len(screen_results), "top_n": len(top_picks)})
         for i, pick in enumerate(top_picks, 1):
-            print(f"     {i:2d}. {pick.ticker:<10s} 评分={pick.composite_score:.1f}  "
-                  f"信号: {', '.join(pick.signals[:3])}")
+            logger.info(
+                f"  {i}. {pick.ticker} 评分={pick.composite_score:.1f}  信号: {', '.join(pick.signals[:3])}"
+            )
     
     # ── (现有) 并发分析所有股票 ──────────────────────────────────
     ...
@@ -382,13 +383,13 @@ screener:
 
 ### 4.1 分步交付
 
-| 阶段 | 内容 | 工作量 | 依赖 |
-|------|------|--------|------|
-| **Step 1** | 基础选股引擎：动量 + 趋势 + 量价评分 | M (5天) | 无 |
-| **Step 2** | 集成到 `daily_run.py`，报告增加选股板块 | S (2天) | Step 1 |
-| **Step 3** | 板块分析 + 行业轮动 | S (2天) | Step 1 |
-| **Step 4** | 估值 + 情感因子（可选） | M (3天) | Step 1 |
-| **Step 5** | 选股因子回测验证框架 | M (5天) | Step 1 |
+| 阶段 | 内容 | 测试文件 | 依赖 |
+|------|------|---------|------|
+| **Step 1** | 基础选股引擎：动量 + 趋势 + 量价评分 | `tests/test_stock_screener.py`（19 tests） | 无 |
+| **Step 2** | 集成到 `daily_run.py`，报告增加选股板块 | `tests/test_integration.py`（2 tests） | Step 1 |
+| **Step 3** | 板块分析 + 行业轮动 | `tests/test_integration.py`（2 tests） | Step 1 |
+| **Step 4** | 估值 + 情感因子（可选） | `tests/test_stock_screener.py`（6 tests） | Step 1 |
+| **Step 5** | 选股因子回测验证框架 | `tests/test_screener_backtest.py`（7 tests） | Step 1 |
 
 **总工作量**：L（约 2-3 周）
 
@@ -438,4 +439,7 @@ screener:
 
 4. **HSI 成分股局限**：仅 80 只股票可能遗漏港股通/中小盘机会。
    - 缓解：Phase 4 扩展 universe 至港股通（500+ 只），但需控制 API 调用量。
+
+5. **sector 列表硬编码维护负担**：`config.yaml` 中 `sectors` 的 ticker 列表会随 HSI 成分调整而过期。
+   - 缓解：定期同步 `data/hsi_stocks.py` 与 `sectors` 定义；后续改为从 `hsi_stocks.py` 动态读取并通过预定义标签匹配。
 

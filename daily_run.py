@@ -53,7 +53,7 @@ def _check_factor_freshness(factors_dir: Path, min_age_days: int = 7) -> bool:
     def _newest_in(d: Path):
         cands = sorted(
             d.glob("factor_*.pkl"),
-            key=lambda p: int(p.stem.split("_")[1]),
+            key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
         return cands[0] if cands else None
@@ -66,14 +66,14 @@ def _check_factor_freshness(factors_dir: Path, min_age_days: int = 7) -> bool:
         ]
 
     newest = None
-    newest_id = -1
+    newest_mtime = 0
     for d in dirs:
         p = _newest_in(d)
         if p is None:
             continue
-        rid = int(p.stem.split("_")[1])
-        if rid > newest_id:
-            newest_id = rid
+        mtime = p.stat().st_mtime
+        if mtime > newest_mtime:
+            newest_mtime = mtime
             newest = p
 
     if newest is None:
@@ -141,10 +141,22 @@ def _build_daily_report(
     portfolio_value: float,
     run_date: str,
     market_is_open: bool,
+    config: dict = None,
+    screener_results: list = None,
+    sector_ranking: list = None,
 ) -> dict:
     """
     将所有 RecommendationResult 汇总为 daily_report 字典，
     供飞书通知和 Markdown 存储使用。
+
+    Args:
+        results: PositionAnalyzer.analyze() 返回的 RecommendationResult 列表
+        portfolio_value: 组合总资产
+        run_date: 运行日期
+        market_is_open: 今日是否为港股交易日
+        config: 配置字典（用于选股权重）
+        screener_results: StockScreener.screen() 返回的 ScreenerResult 列表
+        sector_ranking: StockScreener.sector_ranking() 返回的板块排名列表
     """
     recommendations = []
     total_market_value = 0.0
@@ -222,6 +234,15 @@ def _build_daily_report(
         "buy_signals": buy_signals,
         "sell_signals": sell_signals,
         "recommendations": recommendations,
+        "screener_results": [
+            r.to_dict() if hasattr(r, "to_dict") else r for r in (screener_results or [])
+        ],
+        "screener_weights": {
+            "momentum": config.get("screener", {}).get("weight_momentum", 0.35),
+            "trend": config.get("screener", {}).get("weight_trend", 0.35),
+            "volume": config.get("screener", {}).get("weight_volume", 0.30),
+        },
+        "sector_ranking": sector_ranking or [],
     }
 
 
@@ -373,6 +394,70 @@ def _build_markdown_report(daily_report: dict) -> str:
 
         lines.append("")
 
+    # ── 选股推荐板块 ───────────────────────────────────────────
+    screener_results = daily_report.get("screener_results", [])
+    if screener_results:
+        sw = daily_report.get("screener_weights", {})
+        w_mom = sw.get("momentum", 0.35)
+        w_trend = sw.get("trend", 0.35)
+        w_vol = sw.get("volume", 0.30)
+
+        lines.extend([
+            "---",
+            "",
+            "## 今日选股推荐",
+            "",
+            f"> 基于量化多因子评分（动量{int(w_mom*100)}% + 趋势{int(w_trend*100)}% + 量价{int(w_vol*100)}%）",
+            "",
+            "| 排名 | 标的 | 综合评分 | 动量 | 趋势 | 量价 | 5日涨幅 | 20日涨幅 | 选股信号 |",
+            "|------|------|---------|------|------|------|---------|---------|----------|",
+        ])
+
+        for r in screener_results:
+            sig_str = ", ".join(r.get("signals", [])[:3])
+            lines.append(
+                f"| {r.get('rank', '-')} "
+                f"| {r.get('ticker', '')} "
+                f"| **{r.get('composite_score', 0):.1f}** "
+                f"| {r.get('momentum_score', 0):.0f} "
+                f"| {r.get('trend_score', 0):.0f} "
+                f"| {r.get('volume_score', 0):.0f} "
+                f"| {r.get('change_pct_5d', 0):+.1f}% "
+                f"| {r.get('change_pct_20d', 0):+.1f}% "
+                f"| {sig_str} |"
+            )
+
+        lines.append("")
+        lines.append(
+            "> ⚠️ 选股推荐仅表示量化模型认为该标的值得关注，不构成买入建议。 "
+            "请结合自身持仓、风险偏好和市场环境综合判断。"
+        )
+        lines.append("")
+
+    # ── 板块强弱排名 ─────────────────────────────────────────
+    sector_ranking = daily_report.get("sector_ranking", [])
+    if sector_ranking:
+        lines.extend([
+            "",
+            "### 板块强弱排序",
+            "",
+            "| 板块 | 平均评分 | 股票数 | 龙头股 | 龙头评分 | 趋势 |",
+            "|------|---------|-------|--------|---------|------|",
+        ])
+        trend_emoji = {"上升": "📈", "横盘": "➡️", "下降": "📉"}
+        for s in sector_ranking:
+            trend = "上升" if s.get("avg_score", 0) >= 65 else ("横盘" if s.get("avg_score", 0) >= 50 else "下降")
+            emoji = trend_emoji.get(trend, "➡️")
+            lines.append(
+                f"| {s.get('sector', '其他')} "
+                f"| **{s.get('avg_score', 0):.1f}** "
+                f"| {s.get('count', 0)} "
+                f"| {s.get('top_stock', '-')} "
+                f"| {s.get('top_score', 0):.1f} "
+                f"| {emoji} {trend} |"
+            )
+        lines.append("")
+
     lines.extend([
         "---",
         "",
@@ -432,6 +517,14 @@ def main():
     parser.add_argument(
         "--debug", action="store_true",
         help="打印详细错误堆栈",
+    )
+    parser.add_argument(
+        "--enable-screener", action="store_true",
+        help="启用选股模块（扫描全市场候选股）",
+    )
+    parser.add_argument(
+        "--screener-top-n", type=int, default=None,
+        help="选股模块输出 Top-N 候选（默认读 config.yaml screener.top_n）",
     )
     args = parser.parse_args()
 
@@ -549,6 +642,60 @@ def main():
         except Exception as e:
             logger.warning("批量数据更新失败", extra={"error": str(e)})
 
+    # ── [Step 2] 选股模块 ─────────────────────────────────────────
+    screener_results = []
+    sector_ranking = []
+    if args.enable_screener:
+        from engine.stock_screener import StockScreener
+        from data.hsi_stocks import get_hsi_stocks
+
+        logger.info("选股模块启动", extra={"universe": config.get("screener", {}).get("universe", "hsi")})
+
+        screener = StockScreener(config)
+        screener_top_n = args.screener_top_n or screener.top_n_count
+
+        candidate_tickers = get_hsi_stocks()
+        data_dict = {}
+        for t in candidate_tickers:
+            try:
+                df = data_mgr.load(t, period="1y")
+                if df is not None and len(df) > 60:
+                    data_dict[t] = df
+            except Exception:
+                pass
+
+        screen_all = screener.screen(list(data_dict.keys()), data_dict)
+        top_picks = screener.top_n(
+            screen_all,
+            n=screener_top_n,
+            exclude_held=True,
+            portfolio_state=portfolio_state,
+        )
+
+        logger.info("选股扫描完成", extra={
+            "total_scanned": len(screen_all),
+            "top_n": len(top_picks),
+        })
+
+        for pick in top_picks:
+            logger.info("选股候选", extra={
+                "ticker": pick.ticker,
+                "score": round(pick.composite_score, 1),
+                "signals": pick.signals,
+            })
+            if pick.ticker not in tickers:
+                tickers.append(pick.ticker)
+                portfolio_state.add_watchlist_ticker(pick.ticker)
+                logger.info("加入分析列表", extra={"ticker": pick.ticker})
+
+        screener_results = top_picks
+        sector_ranking = screener.sector_ranking(screen_all)
+        logger.info("选股模块完成", extra={
+            "total_tickers_now": len(tickers),
+            "screener_candidates": len(top_picks),
+            "sectors_identified": len(sector_ranking),
+        })
+
     # ── 初始化分析器 ──────────────────────────────────────────────
     from engine.position_analyzer import PositionAnalyzer
 
@@ -607,6 +754,9 @@ def main():
         portfolio_value=portfolio_state.portfolio_value,
         run_date=run_date,
         market_is_open=market_is_open,
+        config=config,
+        screener_results=screener_results,
+        sector_ranking=sector_ranking,
     )
 
     # 记录汇总信息

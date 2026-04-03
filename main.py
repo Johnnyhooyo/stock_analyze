@@ -206,7 +206,7 @@ def _latest_factor_path(factors_dir: Path) -> str | None:
 #  步骤 1 : 数据就绪检查
 # ══════════════════════════════════════════════════════════════════
 
-def step1_ensure_data(sources_override=None, ticker: str = None):
+def step1_ensure_data(sources_override=None, ticker: str = None, skip_download: bool = False):
     """
     确保历史日线数据已就绪。
 
@@ -249,6 +249,16 @@ def step1_ensure_data(sources_override=None, ticker: str = None):
             "latest_date": str(latest_date.date())
         })
     else:
+        if skip_download:
+            if hist_files:
+                hist_path = str(hist_files[0])
+                hist_data = pd.read_csv(hist_path, index_col=0, parse_dates=True)
+                latest_date = hist_data.index.max()
+                logger.warning("使用过期本地缓存（%s），--skip-data-download 已设置", latest_date.date())
+            else:
+                logger.error("本地无 %s 的历史数据缓存，且 --skip-data-download 已设置，流程终止", effective_ticker)
+                sys.exit(1)
+            return hist_data, hist_path
         if hist_files:
             # 显示数据内容的最新日期，而不是文件修改时间
             from datetime import date as _date, time as _time
@@ -357,7 +367,7 @@ def step2_train_native(
     best_result, sorted_results, test_df = run_search(hist_data, cfg, strategy_type=strategy_type)
 
     # ── Hold-Out + Walk-Forward 选优（统一入口） ──────────────────
-    strategy_mods = _discover_strategies()
+    strategy_mods = _discover_strategies(strategy_type=strategy_type)
     if sorted_results:
         best_result = _select_best_with_holdout(
             sorted_results, test_df, cfg, strategy_mods, full_data=hist_data
@@ -436,7 +446,7 @@ def step2_train_optuna(
         'min_sharpe_ratio': cfg.get('min_sharpe_ratio', 1.0),
         'max_drawdown': cfg.get('max_drawdown', -0.15),
         'min_total_trades': cfg.get('min_total_trades', 5),
-        # 策略训练配置（支持 multi/stingle/custom 分类）
+        # 策略训练配置（支持 multi/single/custom 分类）
         'strategy_training': cfg.get('strategy_training', {}),
         'lookback_months': cfg.get('lookback_months', 3),
         'train_years': cfg.get('train_years', 5),
@@ -617,6 +627,7 @@ def train_portfolio_tickers(
     optuna_trials: int = 50,
     sources_override: list[str] = None,
     n_days: int = 3,
+    skip_download: bool = False,
 ) -> list[dict]:
     """
     分层混合训练：
@@ -626,7 +637,8 @@ def train_portfolio_tickers(
     返回每只 ticker 的结果列表。
     """
     config = load_config()
-    _ensure_hsi_data(config)
+    if not skip_download:
+        _ensure_hsi_data(config)
 
     base_factors_dir = Path(__file__).parent / 'data' / 'factors'
     results: list[dict] = []
@@ -635,8 +647,9 @@ def train_portfolio_tickers(
     # ML 策略内部加载 HSI 全量数据，只需任意一只股票的历史数据作为验证集
     ref_ticker = tickers[0] if tickers else config.get('ticker', '0700.HK')
     logger.info("ML全局训练开始（使用 %s 作为验证参考）", ref_ticker)
+    ml_status = "ok"
     try:
-        ref_hist, _ = step1_ensure_data(sources_override=sources_override, ticker=ref_ticker)
+        ref_hist, _ = step1_ensure_data(sources_override=sources_override, ticker=ref_ticker, skip_download=skip_download)
         step2_train(
             ref_hist,
             use_optuna=use_optuna,
@@ -646,6 +659,7 @@ def train_portfolio_tickers(
         )
         logger.info("ML全局训练完成，因子已存入 %s", base_factors_dir)
     except Exception as e:
+        ml_status = "failed"
         logger.warning("ML全局训练失败（将继续进行规则策略训练）: %s", e)
 
     # ── 步骤 B：每只 ticker 的规则策略训练 ────────────────────────
@@ -659,7 +673,7 @@ def train_portfolio_tickers(
         # 下载数据
         try:
             hist_data, _ = step1_ensure_data(
-                sources_override=sources_override, ticker=ticker
+                sources_override=sources_override, ticker=ticker, skip_download=skip_download
             )
         except Exception as e:
             logger.error("数据获取失败，跳过 %s: %s", ticker, e,
@@ -707,6 +721,7 @@ def train_portfolio_tickers(
             "sharpe_ratio": sharpe,
             "validated":   validated,
             "report_md":   report_md,
+            "ml_status":   ml_status,
         })
         logger.info("规则训练完成: %s",
                     ticker,
@@ -1411,7 +1426,7 @@ def _print_portfolio_summary(results: list[dict], config: dict) -> None:
             err = str(r.get('error', ''))[:30]
             lines.append(f"  {r['ticker']:<12s}  {'❌ FAIL':<8s}  {'':>8s}  {err}")
     lines += ["=" * 66, ""]
-    print("\n".join(lines))
+    logger.info("组合训练汇总\n%s", "\n".join(lines))
     logger.info("组合训练汇总", extra={"ok": len(ok), "failed": len(failed)})
 
     feishu_webhook = config.get('feishu_webhook')
@@ -1469,6 +1484,10 @@ def main():
         '--portfolio', action='store_true',
         help='分层混合模式：ML全局训练一次 + 对 portfolio.yaml 每只股票训练规则策略',
     )
+    parser.add_argument(
+        '--skip-data-download', action='store_true',
+        help='跳过数据下载，强制使用本地缓存文件（如无缓存则报错退出）',
+    )
     args = parser.parse_args()
 
     # 加载配置
@@ -1496,6 +1515,7 @@ def main():
             optuna_trials=args.optuna_trials,
             sources_override=sources_override,
             n_days=args.n_days,
+            skip_download=args.skip_data_download,
         )
         _print_portfolio_summary(results, config)
         return
@@ -1503,9 +1523,10 @@ def main():
     logger.info("腾讯股票分析流程启动")
 
     # ── 步骤 1 ────────────────────────────────────────────────────
-    hist_data, hist_path = step1_ensure_data(sources_override)
+    hist_data, hist_path = step1_ensure_data(sources_override, skip_download=args.skip_data_download)
 
-    _ensure_hsi_data(config)
+    if not args.skip_data_download:
+        _ensure_hsi_data(config)
 
     # ── 步骤 2 ────────────────────────────────────────────────────
     factors_dir = Path(__file__).parent / 'data' / 'factors'

@@ -83,7 +83,8 @@ class TestTrainPortfolioTickers:
         from main import train_portfolio_tickers
         results = train_portfolio_tickers(tickers=["0700.HK", "0005.HK"])
         assert len(results) == 2
-        # step1 失败，所有 ticker 都 data_failed（ML training 也需要 step1）
+        # mock raises on ALL step1_ensure_data calls (including the ML ref-ticker fetch),
+        # so both the ML block and every per-ticker block hit data_failed.
         assert all(r["status"] == "data_failed" for r in results)
 
     @patch("main._ensure_hsi_data")
