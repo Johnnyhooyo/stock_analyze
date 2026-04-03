@@ -15,6 +15,51 @@ from strategies.xgboost_enhanced import add_features, prepare_data
 from strategies.lightgbm_enhanced import run as run_lgbm
 
 
+# ── 黑名单追踪（同一进程内跨多次调用）────────────────────────────────
+_session_failures: dict[str, int] = {}
+
+
+def _check_stock_quality(df: pd.DataFrame, ticker: str) -> Tuple[bool, str]:
+    """
+    检查单只股票的数据质量。
+
+    Returns:
+        (pass, reason): pass=True 表示合格，reason 为不合格原因
+    """
+    close = df['Close']
+
+    nan_pct = close.isna().mean()
+    if nan_pct > 0.2:
+        return False, f"NaN_pct {nan_pct:.1%} > 20%"
+
+    if close.nunique() < 5:
+        return False, f"Close_nunique {close.nunique()} < 5"
+
+    if 'Volume' in df.columns and len(df) > 0:
+        volume = df['Volume']
+        zero_vol_pct = (volume == 0).mean()
+        if zero_vol_pct > 0.3:
+            return False, f"volume_zero_pct {zero_vol_pct:.1%} > 30%"
+
+        if (volume == 0).all():
+            return False, "volume all zero"
+
+    return True, ""
+
+
+def _update_blacklist(ticker: str, reason: str) -> None:
+    """检查失败次数，连续2次失败则加入黑名单。"""
+    failures = _session_failures.get(ticker, 0) + 1
+    _session_failures[ticker] = failures
+    if failures >= 2:
+        try:
+            from data.hk_stocks import add_to_blacklist
+            add_to_blacklist(ticker, reason, ["quality_check"])
+        except Exception:
+            pass
+        _session_failures[ticker] = 0
+
+
 def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     """
     加载所有恒生指数成分股数据并合并
@@ -30,6 +75,7 @@ def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
 
     all_data = []
     stock_info = []
+    skipped_quality = 0
 
     for csv_file in data_dir.glob(f'*_{period}.csv'):
         try:
@@ -68,6 +114,14 @@ def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
                 if 'Close' not in df.columns:
                     continue
 
+                # 质量检查
+                ok, reason = _check_stock_quality(df, ticker)
+                if not ok:
+                    print(f"  SKIP {ticker}: {reason}")
+                    _update_blacklist(ticker, reason)
+                    skipped_quality += 1
+                    continue
+
                 all_data.append(df)
                 stock_info.append({
                     'ticker': ticker,
@@ -91,7 +145,7 @@ def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     # 排序
     combined = combined.sort_index()
 
-    print(f"加载了 {len(stock_info)} 只股票的数据")
+    print(f"加载了 {len(stock_info)} 只股票的数据（质量过滤跳过 {skipped_quality} 只）")
     print(f"总记录数: {len(combined)}")
     print(f"时间范围: {combined.index.min().date()} ~ {combined.index.max().date()}")
 

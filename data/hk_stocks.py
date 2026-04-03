@@ -19,7 +19,7 @@ from log_config import get_logger
 logger = get_logger(__name__)
 
 _CACHE_DIR = Path(__file__).parent.parent / "cache"
-_CACHE_FILE = _CACHE_DIR / "hk_stocks_by_date.json"
+_BLACKLIST_FILE = Path(__file__).parent / "hk_stocks_blacklist.json"
 
 
 def _get_cache_date_path(fetch_date: date) -> Path:
@@ -219,13 +219,77 @@ def _save_to_cache(cache_path: Path, tickers: list[str]) -> None:
         logger.warning(f"[hk_stocks] 缓存写入失败: {e}")
 
 
+def _load_blacklist() -> dict:
+    """加载黑名单。返回 {ticker: {reason, added_at, failed_checks}}。"""
+    try:
+        if not _BLACKLIST_FILE.exists():
+            return {}
+        with open(_BLACKLIST_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("blacklist", {})
+    except Exception as e:
+        logger.warning(f"[hk_stocks] 黑名单加载失败: {e}")
+        return {}
+
+
+def _save_blacklist(blacklist: dict) -> None:
+    """保存黑名单到文件。"""
+    try:
+        with open(_BLACKLIST_FILE, "w", encoding="utf-8") as f:
+            json.dump({"blacklist": blacklist, "updated_at": date.today().isoformat()}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"[hk_stocks] 黑名单保存失败: {e}")
+
+
+def add_to_blacklist(ticker: str, reason: str, failed_checks: list[str]) -> None:
+    """
+    将股票加入黑名单。
+
+    Args:
+        ticker: 股票代码（如 0001.HK）
+        reason: 加入原因描述
+        failed_checks: 失败的检查项列表
+    """
+    blacklist = _load_blacklist()
+    ticker = ticker.upper()
+    if ticker in blacklist:
+        return
+    blacklist[ticker] = {
+        "reason": reason,
+        "added_at": date.today().isoformat(),
+        "failed_checks": failed_checks,
+    }
+    _save_blacklist(blacklist)
+    logger.info(f"[hk_stocks] 加入黑名单: {ticker} ({reason})")
+
+
+def is_blacklisted(ticker: str) -> bool:
+    """检查股票是否在黑名单中。"""
+    blacklist = _load_blacklist()
+    return ticker.upper() in blacklist
+
+
+def _filter_blacklist(tickers: list[str]) -> list[str]:
+    """从列表中移除黑名单股票，返回过滤后的列表。"""
+    blacklist = _load_blacklist()
+    if not blacklist:
+        return tickers
+    bl_set = set(blacklist.keys())
+    before = len(tickers)
+    filtered = [t for t in tickers if t.upper() not in bl_set]
+    removed = before - len(filtered)
+    if removed > 0:
+        logger.info(f"[hk_stocks] 黑名单过滤掉 {removed} 只: {list(bl_set)[:10]}")
+    return filtered
+
+
 def get_all_hk_stocks() -> list[str]:
     """
     获取全部港股主板股票代码列表。
 
     - 同一天内多次调用只请求一次网络，后续返回缓存
-    - 第二天首次调用重新从 akshare 获取
-    - akshare 失败时 fallback 到本地已有历史数据，再回退到 HSI 成分股列表
+    - 第二天首次调用重新从数据源获取
+    - 黑名单中的股票会被自动过滤
     """
     today = date.today()
     cache_path = _get_cache_date_path(today)
@@ -233,22 +297,22 @@ def get_all_hk_stocks() -> list[str]:
     if cache_path.exists():
         tickers = _load_from_cache(cache_path)
         if tickers:
-            return tickers
+            return _filter_blacklist(tickers)
 
     tickers = _fetch_all_sources()
     if tickers:
         _save_to_cache(cache_path, tickers)
-        return tickers
+        return _filter_blacklist(tickers)
 
-    logger.warning("[hk_stocks] akshare 失败，从本地历史数据扫描股票列表")
+    logger.warning("[hk_stocks] 所有数据源失败，从本地历史数据扫描股票列表")
     local_tickers = _scan_local_stocks()
     if local_tickers:
         _save_to_cache(cache_path, local_tickers)
-        return local_tickers
+        return _filter_blacklist(local_tickers)
 
     logger.warning("[hk_stocks] 本地也无数据，回退到 HSI 成分股列表")
     from data.hsi_stocks import get_hsi_stocks
-    return get_hsi_stocks()
+    return _filter_blacklist(get_hsi_stocks())
 
 
 def _scan_local_stocks() -> Optional[list[str]]:

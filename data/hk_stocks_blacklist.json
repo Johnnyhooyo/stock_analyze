@@ -1,0 +1,12 @@
+{
+  "blacklist": {
+    "00029.HK": {
+      "reason": "volume_zero_pct > 0.9",
+      "added_at": "2026-04-03",
+      "failed_checks": [
+        "volume_zero_pct"
+      ]
+    }
+  },
+  "updated_at": "2026-04-03"
+}
