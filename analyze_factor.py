@@ -32,8 +32,8 @@ _memory = _joblib.Memory(location=str(_CACHE_DIR), verbose=0)
 def _load_multi_stock_data_cached(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     """实际加载逻辑，结果由 joblib.Memory 缓存到磁盘。"""
     try:
-        from train_multi_stock import load_all_hsi_data
-        data = load_all_hsi_data(period=period, min_days=min_days)
+        from train_multi_stock import load_all_hk_data
+        data = load_all_hk_data(period=period, min_days=min_days)
         if not data.empty and 'ticker' in data.columns:
             data = data.drop(columns=['ticker'])
         return data

@@ -5,6 +5,7 @@ Alpha Vantage 数据供应商
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from datetime import datetime
 from typing import Optional
@@ -49,16 +50,20 @@ class AlphaVantageVendor(DataVendor):
             logger.info("alpha_vantage 库未安装，跳过")
             return None
 
-        try:
+        def _do_fetch():
             logger.info(f"Alpha Vantage 下载 {ticker}")
             ts = TimeSeries(key=self.api_key, output_format="pandas")
             data, meta = ts.get_daily_adjusted(symbol=ticker, outputsize="compact")
-            # 列名如 '1. open', '4. close' → 取 '. ' 后部分
             data = data.rename(columns=lambda s: s.split(". ")[1] if ". " in s else s)
             data.index = pd.to_datetime(data.index)
-            data = data.sort_index()
-            logger.info(f"Alpha Vantage 获取 {ticker} 成功 ({len(data)} 行)")
-            return data
+            return data.sort_index()
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_do_fetch)
+                return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            logger.info(f"Alpha Vantage {ticker} 下载超时 ({timeout}s)")
         except Exception as e:
             logger.info(f"Alpha Vantage 下载失败: {e}")
         return None

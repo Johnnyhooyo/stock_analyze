@@ -32,8 +32,8 @@ from data.calendar import (  # noqa: F401
     next_trading_day,
     latest_expected_trading_day,
 )
-from data.hsi_stocks import HSI_STOCKS, get_hsi_stocks  # noqa: F401
 from data.hk_stocks import get_all_hk_stocks  # noqa: F401
+from data.hsi_stocks import HSI_STOCKS, get_hsi_stocks  # noqa: F401  # fallback list
 from data.pnl_tracker import PnLTracker  # noqa: F401
 from data.factor_registry import FactorRegistry, FactorRecord  # noqa: F401
 
@@ -55,10 +55,10 @@ __all__ = [
     "prev_trading_day",
     "next_trading_day",
     "latest_expected_trading_day",
-    # 成分股
-    "HSI_STOCKS",
-    "get_hsi_stocks",
+    # 股票列表
     "get_all_hk_stocks",
+    "HSI_STOCKS",       # fallback list
+    "get_hsi_stocks",   # fallback list
     # PnL 追踪
     "PnLTracker",
     # 因子注册表

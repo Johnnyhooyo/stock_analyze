@@ -130,6 +130,17 @@ STRATEGY_PARAMS = {
         'rsi_oversold': (20, 40),
         'rsi_overbought': (60, 80),
     },
+    'rnn_trend': {
+        'rnn_hidden_size': [32, 64, 128],
+        'rnn_num_layers': [1, 2],
+        'rnn_dropout': (0.1, 0.5),
+        'rnn_window': (15, 60),
+        'rnn_label_period': (3, 10),
+        'rnn_label_threshold': (0.01, 0.05),
+        'rnn_epochs': [30, 50, 80],
+        'rnn_lr': (0.0005, 0.005),
+        'rnn_cell_type': ['gru', 'lstm'],
+    },
     'xgboost_enhanced': {
         'test_days': (3, 15),
         'xgb_n_estimators': (50, 200),
@@ -229,14 +240,14 @@ def _suggest_params(trial: optuna.Trial, param_space: dict) -> dict:
     """根据参数空间建议参数"""
     params = {}
     for name, bounds in param_space.items():
-        if isinstance(bounds, (list, tuple)) and len(bounds) == 2:
-            # 连续区间
+        if isinstance(bounds, tuple) and len(bounds) == 2:
+            # 连续区间 (tuple)
             if isinstance(bounds[0], float):
                 params[name] = trial.suggest_float(name, bounds[0], bounds[1])
             else:
                 params[name] = trial.suggest_int(name, bounds[0], bounds[1])
         elif isinstance(bounds, list):
-            # 离散选择
+            # 离散选择 (list)
             params[name] = trial.suggest_categorical(name, bounds)
     return params
 
@@ -301,8 +312,8 @@ class StrategyOptimizer:
     def _load_multi_stock_data(self) -> pd.DataFrame:
         """加载多股票训练数据"""
         try:
-            from train_multi_stock import load_all_hsi_data
-            multi_data = load_all_hsi_data(period='5y', min_days=300)
+            from train_multi_stock import load_all_hk_data
+            multi_data = load_all_hk_data(period='5y', min_days=300)
             if not multi_data.empty and 'Close' in multi_data.columns:
                 print(f"    [多股票优化] 已加载多股票数据 ({len(multi_data)} 条记录)")
                 return multi_data

@@ -2,7 +2,7 @@
 选股引擎 — 全市场量化选股，输出高潜力标的候选池
 
 设计理念：
-  - 轻量级：每只股票 < 0.5 秒，80 只 HSI 全扫 < 40 秒
+  - 轻量级：每只股票 < 0.5 秒，支持全量港股扫描
   - 多维度：动量 + 趋势 + 量价（Step 1 范围）
   - 可配置：各维度权重通过 config.yaml 调整
   - 与交易策略解耦：选股 = "值得关注"，交易信号 = "值得操作"
@@ -92,7 +92,7 @@ class StockScreener:
         self.enable_sentiment = scr_cfg.get("enable_sentiment", False)
         self.top_n_count = scr_cfg.get("top_n", 10)
         self.min_score = scr_cfg.get("min_score", 50.0)
-        self.universe = scr_cfg.get("universe", "hsi")
+        self.universe = scr_cfg.get("universe", "hk")
         self.sectors = scr_cfg.get("sectors", {})
         self._factors = ScreenerFactors()
 

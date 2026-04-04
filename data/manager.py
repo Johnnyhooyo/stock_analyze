@@ -446,9 +446,9 @@ class DataManager:
             sources_override=sources_override,
         )
 
-    # ── HSI 批量更新 ─────────────────────────────────────────────
+    # ── 全量港股批量更新 ──────────────────────────────────────────
 
-    def download_hsi_incremental(
+    def download_hk_incremental(
         self,
         period: str = "5y",
         out_dir: Optional[Path] = None,
@@ -457,7 +457,7 @@ class DataManager:
         max_workers: Optional[int] = None,
     ) -> dict:
         """
-        增量更新所有 HSI 成分股数据。
+        增量更新全量港股数据。
 
         - 已有文件且是最新的 → 跳过
         - 已有文件但过期 → 下载并合并
@@ -467,7 +467,7 @@ class DataManager:
             period: 数据周期
             out_dir: 输出目录
             delay: 串行模式下请求间隔（并发模式由 rate limiter 控制）
-            stocks: 股票列表（默认 HSI 成分股）
+            stocks: 股票列表（默认全量港股）
             max_workers: 并发线程数（None 使用 config.batch_max_workers, 1 = 串行）
         """
         if out_dir is None:
@@ -475,7 +475,7 @@ class DataManager:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if stocks is None:
-            stocks = self._get_hsi_stocks()
+            stocks = self._get_hk_stocks()
 
         workers = max_workers or self.config.batch_max_workers
 
@@ -498,7 +498,7 @@ class DataManager:
             need_update.append((ticker, file_path))
 
         logger.info(
-            f"[HSI增量] 总计 {total} 只, 跳过 {skipped} 只(已是最新), 待更新 {len(need_update)} 只 (workers={workers})"
+            f"[HK增量] 总计 {total} 只, 跳过 {skipped} 只(已是最新), 待更新 {len(need_update)} 只 (workers={workers})"
         )
 
         if not need_update:
@@ -551,7 +551,7 @@ class DataManager:
 
 
         logger.info(
-            f"[HSI增量] 完成: 总计 {total}, 跳过 {skipped}, 更新 {updated}, 失败 {len(failed)}"
+            f"[HK增量] 完成: 总计 {total}, 跳过 {skipped}, 更新 {updated}, 失败 {len(failed)}"
             + (f" 失败列表: {failed}" if failed else "")
         )
         return {
@@ -562,7 +562,7 @@ class DataManager:
         }
 
     @staticmethod
-    def _get_hsi_stocks() -> List[str]:
+    def _get_hk_stocks() -> List[str]:
         """获取全量港股主板股票列表。"""
         try:
             from data.hk_stocks import get_all_hk_stocks
@@ -570,4 +570,7 @@ class DataManager:
         except ImportError:
             logger.error("无法获取港股列表")
             return []
+
+    # backward-compat alias
+    download_hsi_incremental = download_hk_incremental
 

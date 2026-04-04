@@ -12,7 +12,7 @@ daily_run.py — 每日量化推荐引擎入口
 典型用法：
   python3 daily_run.py                          # 使用 portfolio.yaml 中的观察列表
   python3 daily_run.py --tickers 0700.HK 0005.HK  # 指定股票
-  python3 daily_run.py --watchlist hsi          # 分析 HSI 全部成分股
+  python3 daily_run.py --watchlist hk           # 分析全部港股
   python3 daily_run.py --skip-notify            # 不发送飞书通知
   python3 daily_run.py --retrain                # 强制重新训练因子
   python3 daily_run.py --dry-run                # 打印建议但不保存状态
@@ -484,8 +484,8 @@ def main():
         help="指定分析的股票代码列表，如 0700.HK 0005.HK",
     )
     parser.add_argument(
-        "--watchlist", choices=["hsi", "portfolio", "all"], default="portfolio",
-        help="使用预设观察列表（hsi=HSI成分股，portfolio=portfolio.yaml，all=两者合并）",
+        "--watchlist", choices=["hk", "hsi", "portfolio", "all"], default="portfolio",
+        help="使用预设观察列表（hk/hsi=全量港股，portfolio=portfolio.yaml，all=两者合并）",
     )
     parser.add_argument(
         "--retrain", action="store_true",
@@ -521,7 +521,11 @@ def main():
     )
     parser.add_argument(
         "--enable-screener", action="store_true",
-        help="启用选股模块（扫描全市场候选股）",
+        help="强制启用选股模块（覆盖 config.yaml enable_screener=false）",
+    )
+    parser.add_argument(
+        "--no-screener", action="store_true",
+        help="禁用选股模块（覆盖 config.yaml enable_screener=true）",
     )
     parser.add_argument(
         "--screener-top-n", type=int, default=None,
@@ -584,7 +588,7 @@ def main():
         # 确保这些 ticker 在 portfolio 中注册（空仓观察）
         for t in tickers:
             portfolio_state.add_watchlist_ticker(t)
-    elif args.watchlist == "hsi":
+    elif args.watchlist in ("hk", "hsi"):
         tickers = get_all_hk_stocks()
     elif args.watchlist == "all":
         all_hk = get_all_hk_stocks()
@@ -643,17 +647,17 @@ def main():
     from data.manager import DataManager
     data_mgr = DataManager()
 
-    # ── 增量更新 HSI 数据（若需要） ───────────────────────────────
-    if args.watchlist in ("hsi", "all") or len(tickers) > 5:
+    # ── 增量更新港股数据（若需要） ───────────────────────────────
+    if args.watchlist in ("hk", "hsi", "all") or len(tickers) > 5:
         logger.info("开始增量更新股票数据", extra={"ticker_count": len(tickers)})
         try:
-            hsi_result = data_mgr.download_hsi_incremental(
+            hk_result = data_mgr.download_hk_incremental(
                 period=args.period,
                 stocks=tickers,
             )
-            updated = hsi_result.get("updated", 0)
-            skipped = hsi_result.get("skipped", 0)
-            failed = hsi_result.get("failed", [])
+            updated = hk_result.get("updated", 0)
+            skipped = hk_result.get("skipped", 0)
+            failed = hk_result.get("failed", [])
             logger.info("数据更新完成", extra={
                 "updated": updated,
                 "skipped": skipped,
@@ -666,11 +670,15 @@ def main():
     # ── [Step 2] 选股模块 ─────────────────────────────────────────
     screener_results = []
     sector_ranking = []
-    if args.enable_screener:
+    enable_screener = (
+        not args.no_screener
+        and (args.enable_screener or daily_cfg.get("enable_screener", True))
+    )
+    if enable_screener:
         from engine.stock_screener import StockScreener
         from data.hk_stocks import get_all_hk_stocks
 
-        logger.info("选股模块启动", extra={"universe": config.get("screener", {}).get("universe", "hsi")})
+        logger.info("选股模块启动", extra={"universe": config.get("screener", {}).get("universe", "hk")})
 
         screener = StockScreener(config)
         screener_top_n = args.screener_top_n or screener.top_n_count
@@ -679,7 +687,7 @@ def main():
         data_dict = {}
         for t in candidate_tickers:
             try:
-                df = data_mgr.load(t, period="1y")
+                df = data_mgr.load(t, period=config.get("period", "5y"))
                 if df is not None and len(df) > 60:
                     data_dict[t] = df
             except Exception:
@@ -698,6 +706,7 @@ def main():
             "top_n": len(top_picks),
         })
 
+        orig_tickers = set(tickers)
         for pick in top_picks:
             logger.info("选股候选", extra={
                 "ticker": pick.ticker,
@@ -708,6 +717,12 @@ def main():
                 tickers.append(pick.ticker)
                 portfolio_state.add_watchlist_ticker(pick.ticker)
                 logger.info("加入分析列表", extra={"ticker": pick.ticker})
+
+        # 持久化新增 watchlist 到 portfolio.yaml
+        if not args.dry_run and daily_cfg.get("persist_screener_picks", True):
+            new_tickers = [p.ticker for p in top_picks if p.ticker not in orig_tickers]
+            portfolio_state.save()
+            logger.info("选股 watchlist 已持久化", extra={"new_tickers": new_tickers})
 
         screener_results = top_picks
         sector_ranking = screener.sector_ranking(screen_all)

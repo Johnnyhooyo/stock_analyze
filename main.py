@@ -252,7 +252,7 @@ def step1_ensure_data(sources_override=None, ticker: str = None, skip_download: 
     # ── 1a. 历史日线 ────────────────────────────────────────────
     hist_dir = Path(__file__).parent / 'data' / 'historical'
 
-    # 只匹配目标 ticker 的文件，避免误读 HSI 其他成分股数据
+    # 只匹配目标 ticker 的文件，避免误读其他港股数据
     # 文件名格式：{ticker}_{period}.csv 或 {safe_name}_{period}.csv
     # 例如 0700.hk_5y.csv 或 0700_HK_3y.csv
     _ticker_lower = effective_ticker.lower()
@@ -335,24 +335,28 @@ def step1_ensure_data(sources_override=None, ticker: str = None, skip_download: 
     return hist_data, hist_path
 
 
-def _ensure_hsi_data(cfg: dict = None) -> None:
-    """HSI成分股增量更新 — 单独提取，供 main() 和 train_portfolio_tickers() 调用一次。"""
+def _ensure_hk_data(cfg: dict = None) -> None:
+    """全量港股增量更新 — 单独提取，供 main() 和 train_portfolio_tickers() 调用一次。"""
     if cfg is None:
         cfg = load_config()
-    hsi_period = cfg.get('hsi_period', '5y')
-    logger.info("开始增量更新HSI成分股数据", extra={"period": hsi_period})
+    hk_period = cfg.get('hsi_period', '5y')
+    logger.info("开始增量更新港股数据", extra={"period": hk_period})
     try:
         mgr = DataManager()
-        hsi_result = mgr.download_hsi_incremental(period=hsi_period)
-        logger.info("HSI成分股更新完成", extra={
-            "total":          hsi_result['total'],
-            "skipped":        hsi_result['skipped'],
-            "updated":        hsi_result['updated'],
-            "failed_count":   len(hsi_result['failed']),
-            "failed_tickers": hsi_result['failed'],
+        hk_result = mgr.download_hk_incremental(period=hk_period)
+        logger.info("港股数据更新完成", extra={
+            "total":          hk_result['total'],
+            "skipped":        hk_result['skipped'],
+            "updated":        hk_result['updated'],
+            "failed_count":   len(hk_result['failed']),
+            "failed_tickers": hk_result['failed'],
         })
     except Exception as e:
-        logger.warning("HSI成分股更新失败", extra={"error": str(e)})
+        logger.warning("港股数据更新失败", extra={"error": str(e)})
+
+
+# backward-compat alias
+_ensure_hsi_data = _ensure_hk_data
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -667,13 +671,13 @@ def train_portfolio_tickers(
     """
     config = load_config()
     if not skip_download:
-        _ensure_hsi_data(config)
+        _ensure_hk_data(config)
 
     base_factors_dir = Path(__file__).parent / 'data' / 'factors'
     results: list[dict] = []
 
     # ── 步骤 A：ML 全局训练（一次）────────────────────────────────
-    # ML 策略内部加载 HSI 全量数据，只需任意一只股票的历史数据作为验证集
+    # ML 策略内部加载全量港股数据，只需任意一只股票的历史数据作为验证集
     ref_ticker = tickers[0] if tickers else config.get('ticker', '0700.HK')
     logger.info("ML全局训练开始（使用 %s 作为验证参考）", ref_ticker)
     ml_status = "ok"
@@ -1555,7 +1559,7 @@ def main():
     hist_data, hist_path = step1_ensure_data(sources_override, skip_download=args.skip_data_download)
 
     if not args.skip_data_download:
-        _ensure_hsi_data(config)
+        _ensure_hk_data(config)
 
     # ── 步骤 2 ────────────────────────────────────────────────────
     factors_dir = Path(__file__).parent / 'data' / 'factors'

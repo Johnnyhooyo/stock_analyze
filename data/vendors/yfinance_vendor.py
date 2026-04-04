@@ -6,6 +6,7 @@ yfinance 数据供应商
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from datetime import datetime
 from typing import Optional
@@ -44,34 +45,39 @@ class YFinanceVendor(DataVendor):
 
         variants = generate_ticker_variants(ticker)
         for variant in variants:
-            df = self._single_download(yf, variant, start, end)
+            df = self._single_download(yf, variant, start, end, timeout)
             if df is not None and not df.empty:
                 logger.info(f"yfinance 获取 {variant} 成功 ({len(df)} 行)")
                 return df.sort_index()
         return None
 
     @staticmethod
-    def _single_download(yf, ticker: str, start: datetime, end: datetime) -> Optional[pd.DataFrame]:
-        """单次下载尝试。"""
-        try:
+    def _single_download(yf, ticker: str, start: datetime, end: datetime, timeout: int = 20) -> Optional[pd.DataFrame]:
+        """单次下载尝试（带超时）。"""
+        end_dt = end.date() if hasattr(end, 'date') else end
+        start_dt = start.date() if hasattr(start, 'date') else start
+
+        def _download():
             df = yf.download(
                 ticker,
-                start=start.date() if hasattr(start, 'date') else start,
-                end=end.date() if hasattr(end, 'date') else end,
+                start=start_dt,
+                end=end_dt,
                 progress=False,
                 threads=False,
             )
             if df is not None and not df.empty:
                 return df
-        except Exception:
-            pass
-        # 回退: yf.Ticker.history
-        try:
             t = yf.Ticker(ticker)
             df = t.history(start=start, end=end)
-            if df is not None and not df.empty:
-                return df
-        except Exception:
-            pass
+            return df if df is not None and not df.empty else None
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_download)
+                return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            logger.info(f"yfinance {ticker} 下载超时 ({timeout}s)")
+        except Exception as e:
+            logger.info(f"yfinance {ticker} 下载失败: {e}")
         return None
 

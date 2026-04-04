@@ -5,6 +5,7 @@ yahooquery 数据供应商
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from datetime import datetime
 from typing import Optional
@@ -43,14 +44,14 @@ class YahooQueryVendor(DataVendor):
 
         variants = generate_ticker_variants(ticker)
         for variant in variants:
-            df = self._fetch_one(YQ, variant, start, end)
+            df = self._fetch_one(YQ, variant, start, end, timeout)
             if df is not None and not df.empty:
                 logger.info(f"yahooquery 获取 {variant} 成功 ({len(df)} 行)")
                 return df.sort_index()
         return None
 
-    def _fetch_one(self, YQ, ticker: str, start: datetime, end: datetime) -> Optional[pd.DataFrame]:
-        try:
+    def _fetch_one(self, YQ, ticker: str, start: datetime, end: datetime, timeout: int = 20) -> Optional[pd.DataFrame]:
+        def _do_fetch():
             yq = YQ(ticker)
             hist = yq.history(
                 start=start.strftime("%Y-%m-%d"),
@@ -59,7 +60,6 @@ class YahooQueryVendor(DataVendor):
             if hist is None or (hasattr(hist, "empty") and hist.empty):
                 return None
 
-            # MultiIndex (ticker, date) → 取 ticker slice
             if isinstance(hist.index, pd.MultiIndex):
                 try:
                     df = hist.xs(ticker, level=0)
@@ -79,7 +79,14 @@ class YahooQueryVendor(DataVendor):
                 except Exception:
                     pass
             return df
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_do_fetch)
+                return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            logger.info(f"yahooquery {ticker} 下载超时 ({timeout}s)")
         except Exception as e:
             logger.info(f"yahooquery {ticker} 失败: {e}")
-            return None
+        return None
 

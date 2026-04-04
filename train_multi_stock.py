@@ -60,9 +60,9 @@ def _update_blacklist(ticker: str, reason: str) -> None:
         _session_failures[ticker] = 0
 
 
-def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
+def load_all_hk_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     """
-    加载所有恒生指数成分股数据并合并
+    加载所有港股数据并合并
 
     Args:
         period: 数据周期
@@ -130,7 +130,7 @@ def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
                     'end':    end_date,
                 })
         except Exception as e:
-            print(f"  [load_all_hsi_data] 跳过 {csv_file.name}: {e}")
+            print(f"  [load_all_hk_data] 跳过 {csv_file.name}: {e}")
             continue
 
     if not all_data:
@@ -150,6 +150,10 @@ def load_all_hsi_data(period: str = '5y', min_days: int = 300) -> pd.DataFrame:
     print(f"时间范围: {combined.index.min().date()} ~ {combined.index.max().date()}")
 
     return combined
+
+
+# backward-compat alias
+load_all_hsi_data = load_all_hk_data
 
 
 def create_multi_stock_dataset(
@@ -428,7 +432,7 @@ def optimize_multi_stock_params(
 if __name__ == "__main__":
     # 加载数据
     print("加载股票数据...")
-    data = load_all_hsi_data(period='5y')
+    data = load_all_hk_data(period='5y')
 
     # 使用 Optuna 优化参数
     result = optimize_multi_stock_params(

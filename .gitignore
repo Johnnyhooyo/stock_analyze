@@ -20,6 +20,8 @@ env/
 # Data
 data/factors/*.pkl
 data/factors/.run_id_counter
+data/factors/factor_registry.json
+data/factors/archive/
 data/timekline/*.csv
 data/plots/*.png
 data/logs/*
