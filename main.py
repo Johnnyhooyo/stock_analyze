@@ -1,14 +1,14 @@
 """
-main.py — 腾讯股票分析一体化流程
+main.py — 腾讯股票分析训练流程
 
 步骤 1 : 数据就绪检查
         - 历史日线数据（本地不存在则下载）
-步骤 2 : 多策略 × 100 次超参搜索
-        - 复用 analyze_factor.__main__ 中的逻辑
-        - 每个策略最多 max_tries 次随机参数组合
-        - 保存所有满足阈值的因子，并输出排行榜
-步骤 3 : 预测
-        - 基于最优模型预测未来 n 个交易日（日线）
+步骤 2 : 多策略超参搜索 + 因子保存
+        - 每个策略最多 max_tries 次随机参数组合（或 Optuna 贝叶斯优化）
+        - 保存所有满足阈值的因子到 data/factors/
+        - 训练完成后推送飞书摘要
+
+推断 / 操作建议请运行: python3 daily_run.py
 """
 
 import argparse
@@ -39,8 +39,6 @@ try:
 except ImportError:
     backtest_vbt = None
 from position_manager import PositionManager, load_position_from_config, calc_atr
-from feishu_notify import send_full_report_to_feishu
-from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
 
 try:
     from optimize_with_optuna import optimize_strategy, optimize_all_strategies
@@ -924,6 +922,11 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     不输出：单调外推的"预测价格"序列。
     返回 markdown 格式的报告内容。
     """
+    # 暂停使用：预测职责已移至 daily_run.py
+    # 本函数保留供调试，不在主流程中调用。
+    from feishu_notify import send_full_report_to_feishu
+    from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
+
     logger.info("生成信号报告", extra={
         "n_days": n_days,
         "factor_path": factor_path
