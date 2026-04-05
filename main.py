@@ -910,6 +910,7 @@ def _build_eval_table(
 # ══════════════════════════════════════════════════════════════════
 
 def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3) -> str:
+    # 暂停使用：预测职责已移至 daily_run.py。本函数保留供调试，不在主流程中调用。
     """
     生成未来 n_days 个交易日的交易信号报告。
 
@@ -922,8 +923,6 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
     不输出：单调外推的"预测价格"序列。
     返回 markdown 格式的报告内容。
     """
-    # 暂停使用：预测职责已移至 daily_run.py
-    # 本函数保留供调试，不在主流程中调用。
     from feishu_notify import send_full_report_to_feishu
     from sentiment_analysis import analyze_stock_sentiment, get_sentiment_signal
 
