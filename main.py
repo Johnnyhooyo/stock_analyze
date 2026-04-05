@@ -1481,14 +1481,6 @@ def main():
         help='数据源优先级（逗号分隔），例如 "yahooquery,yfinance"'
     )
     parser.add_argument(
-        '--skip-train', action='store_true',
-        help='跳过超参搜索，直接使用 data/factors/ 中最新的因子做预测'
-    )
-    parser.add_argument(
-        '--n-days', type=int, default=3,
-        help='日线预测天数（默认 3）'
-    )
-    parser.add_argument(
         '--use-optuna', action='store_true',
         help='使用 Optuna 贝叶斯优化替代随机搜索'
     )
@@ -1549,40 +1541,30 @@ def main():
         _ensure_hk_data(config)
 
     # ── 步骤 2 ────────────────────────────────────────────────────
-    factors_dir = Path(__file__).parent / 'data' / 'factors'
-    factor_path = None
-
-    if args.skip_train:
-        factor_path = _latest_factor_path(factors_dir)
-        if factor_path:
-            logger.info("跳过训练，使用现有因子", extra={"factor_file": Path(factor_path).name})
-        else:
-            logger.warning("--skip-train指定但无因子文件，执行正常训练")
-            args.skip_train = False
-
-    if not args.skip_train:
-        # 默认使用配置中的 use_optuna，可以通过命令行参数覆盖
-        use_optuna = args.use_optuna if args.use_optuna else config.get('use_optuna', False)
-        factor_path, _, _ = step2_train(hist_data, use_optuna=use_optuna, optuna_trials=args.optuna_trials, strategy_type=args.strategy_type)
-        if factor_path is None:
-            # 保存失败时兜底取最新已有文件
-            factor_path = _latest_factor_path(factors_dir)
-            if factor_path:
-                logger.info("使用已有最新因子", extra={"factor_file": Path(factor_path).name})
-
-    # ── 步骤 3 ────────────────────────────────────────────────────
-    logger.info("步骤3/3: 信号报告开始")
-
+    use_optuna = args.use_optuna if args.use_optuna else config.get('use_optuna', False)
+    factor_path, best_result, _ = step2_train(
+        hist_data,
+        use_optuna=use_optuna,
+        optuna_trials=args.optuna_trials,
+        strategy_type=args.strategy_type,
+    )
     if factor_path is None:
-        logger.critical("没有可用的因子/模型，无法进行预测")
-        return
+        factor_path = _latest_factor_path(Path(__file__).parent / 'data' / 'factors')
+        if factor_path:
+            logger.info("使用已有最新因子", extra={"factor_file": Path(factor_path).name})
 
-    # 3a. 信号报告（日线）
-    generate_signal_report(hist_data, factor_path, n_days=args.n_days)
+    # ── 训练完成通知 ──────────────────────────────────────────────
+    ticker = config.get('ticker', '0700.HK').upper()
+    result = {
+        "ticker":      ticker,
+        "status":      "ok" if best_result is not None else "no_factor",
+        "sharpe_ratio": best_result.get('sharpe_ratio', float('nan')) if best_result else float('nan'),
+        "validated":   best_result.get('validated', 'unknown') if best_result else 'unknown',
+        "ml_status":   "n/a",
+    }
+    _print_portfolio_summary([result], config)
 
-
-
-    logger.info("分析流程完成")
+    logger.info("训练流程完成")
 
 
 if __name__ == "__main__":
