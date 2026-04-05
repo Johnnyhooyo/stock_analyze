@@ -659,14 +659,12 @@ def train_portfolio_tickers(
     use_optuna: bool = False,
     optuna_trials: int = 50,
     sources_override: list[str] = None,
-    n_days: int = 3,
     skip_download: bool = False,
 ) -> list[dict]:
     """
     分层混合训练：
       1. ML 全局训练（strategy_type='multi'）运行一次 → data/factors/
       2. 对每只 ticker 跑规则策略训练（strategy_type='single'）→ data/factors/{TICKER_SAFE}/
-      3. 生成每只 ticker 的信号报告
     返回每只 ticker 的结果列表。
     """
     config = load_config()
@@ -734,15 +732,6 @@ def train_portfolio_tickers(
         if factor_path is None:
             factor_path = _latest_factor_path(ticker_factors_dir)
 
-        # 信号报告
-        report_md = ""
-        if factor_path:
-            try:
-                report_md = generate_signal_report(hist_data, factor_path, n_days=n_days)
-            except Exception as e:
-                logger.warning("信号报告失败 %s: %s", ticker, e,
-                               extra={"ticker": ticker})
-
         sharpe    = best_result.get('sharpe_ratio', float('nan')) if best_result else float('nan')
         validated = best_result.get('validated', 'unknown') if best_result else 'unknown'
 
@@ -753,7 +742,6 @@ def train_portfolio_tickers(
             "factors_dir": str(ticker_factors_dir),
             "sharpe_ratio": sharpe,
             "validated":   validated,
-            "report_md":   report_md,
             "ml_status":   ml_status,
         })
         logger.info("规则训练完成: %s",
@@ -1547,7 +1535,6 @@ def main():
             use_optuna=use_optuna,
             optuna_trials=args.optuna_trials,
             sources_override=sources_override,
-            n_days=args.n_days,
             skip_download=args.skip_data_download,
         )
         _print_portfolio_summary(results, config)

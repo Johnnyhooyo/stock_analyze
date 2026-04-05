@@ -28,9 +28,8 @@ class TestTrainPortfolioTickers:
     @patch("main._ensure_hk_data")
     @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
     @patch("main.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
-    @patch("main.generate_signal_report", return_value="# report")
     def test_ml_trained_once_rules_per_ticker(
-        self, mock_report, mock_train, mock_step1, mock_hk
+        self, mock_train, mock_step1, mock_hk
     ):
         """ML 全局训练 1 次，2 只股票的规则训练各 1 次，共调用 step2_train 3 次。"""
         from main import train_portfolio_tickers
@@ -44,9 +43,8 @@ class TestTrainPortfolioTickers:
     @patch("main._ensure_hk_data")
     @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
     @patch("main.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
-    @patch("main.generate_signal_report", return_value="# report")
     def test_ml_call_uses_multi_strategy_type(
-        self, mock_report, mock_train, mock_step1, mock_hk
+        self, mock_train, mock_step1, mock_hk
     ):
         """ML 全局训练调用中 strategy_type='multi'，无 factors_dir_override。"""
         from main import train_portfolio_tickers
@@ -58,9 +56,8 @@ class TestTrainPortfolioTickers:
     @patch("main._ensure_hk_data")
     @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
     @patch("main.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
-    @patch("main.generate_signal_report", return_value="# report")
     def test_rule_calls_use_single_and_per_ticker_dir(
-        self, mock_report, mock_train, mock_step1, mock_hk
+        self, mock_train, mock_step1, mock_hk
     ):
         """规则训练调用：strategy_type='single'，factors_dir_override 包含 TICKER_SAFE。"""
         from main import train_portfolio_tickers
@@ -90,9 +87,8 @@ class TestTrainPortfolioTickers:
     @patch("main._ensure_hk_data")
     @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
     @patch("main.step2_train", side_effect=[_FACTOR_RESULT, Exception("train error"), _FACTOR_RESULT])
-    @patch("main.generate_signal_report", return_value="# report")
     def test_rule_train_failure_skips_ticker_continues(
-        self, mock_report, mock_train, mock_step1, mock_hk
+        self, mock_train, mock_step1, mock_hk
     ):
         """规则训练失败时跳过该 ticker，其余 ticker 正常完成。"""
         from main import train_portfolio_tickers
