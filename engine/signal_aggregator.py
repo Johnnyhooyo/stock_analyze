@@ -101,6 +101,8 @@ class SignalAggregator:
         self.max_factors = max_factors
         self._use_registry = use_registry
         self._registry = None
+        # 预加载策略模块 dict（NAME → module），避免每个因子推断时重复 import
+        self._strategy_modules: dict = {}
 
     # ── 内部：加载因子列表 ────────────────────────────────────────
 
@@ -135,20 +137,17 @@ class SignalAggregator:
         ML 策略优先用 predict()，规则策略用 strategy_mod.run()。
         失败时返回 None（投弃权票）。
         """
-        from analyze_factor import _discover_strategies
-
         model = art.get("model")
         meta = art.get("meta", {})
         strategy_name = meta.get("name", "")
         feat_cols = meta.get("feat_cols", [])
         is_ml = model is not None and len(feat_cols) > 0
 
-        # 找到对应策略模块
-        strategy_mod = None
-        for mod in _discover_strategies():
-            if mod.NAME == strategy_name:
-                strategy_mod = mod
-                break
+        # 找到对应策略模块（懒加载并缓存，只在第一次调用时 import）
+        if not self._strategy_modules:
+            from analyze_factor import _discover_strategies
+            self._strategy_modules = {mod.NAME: mod for mod in _discover_strategies()}
+        strategy_mod = self._strategy_modules.get(strategy_name)
 
         art_config = {**config, **(art.get("config", {}))}
         # 保留 ticker
@@ -186,7 +185,13 @@ class SignalAggregator:
         return self._registry
 
     def _filter_by_registry(self, artifacts: list[dict], subdir: str | None) -> list[dict]:
-        """根据注册表过滤因子，只保留 active 的记录"""
+        """根据注册表过滤因子，只保留 active 的记录。
+
+        Fallback 规则：
+        - 注册表不可用 → 返回全部（原有行为）
+        - 注册表为空（无任何 active 记录）→ 返回全部（原有行为）
+        - 注册表非空但过滤后为空 → 记录 warning，返回全部（防止注册表与磁盘不同步时误过滤）
+        """
         registry = self._get_registry()
         if registry is None:
             return artifacts
@@ -194,12 +199,28 @@ class SignalAggregator:
             active = registry.active_records()
             if not active:
                 return artifacts
-            active_keys = {(r.filename, r.subdir) for r in active}
-            filtered = [a for a in artifacts if (Path(a["_path"]).name, subdir) in active_keys]
+            # subdir 大小写不敏感匹配，兼容历史注册记录
+            active_keys = {
+                (r.filename, (r.subdir or "").upper() if r.subdir else None)
+                for r in active
+            }
+            normalized_subdir = (subdir or "").upper() if subdir else None
+            filtered = [
+                a for a in artifacts
+                if (Path(a["_path"]).name, normalized_subdir) in active_keys
+            ]
+            if not filtered and artifacts:
+                logger.warning(
+                    "注册表过滤后因子为空（注册表 %d 条 active，磁盘 %d 个文件，subdir=%s），"
+                    "回退使用全部磁盘因子",
+                    len(active), len(artifacts), subdir,
+                )
+                return artifacts
             if len(filtered) < len(artifacts):
                 logger.debug("注册表过滤: %d -> %d 个因子", len(artifacts), len(filtered))
             return filtered
-        except Exception:
+        except Exception as e:
+            logger.warning("注册表过滤异常，回退使用全部因子: %s", e)
             return artifacts
 
     def aggregate(

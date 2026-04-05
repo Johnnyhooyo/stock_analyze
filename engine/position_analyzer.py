@@ -235,6 +235,7 @@ class PositionAnalyzer:
             position=pm_position,
             portfolio_value=self.portfolio_value,
             risk_config=self.risk_cfg,
+            ticker=ticker,
         )
         if has_position and portfolio_pos.trailing_peak is not None:
             pm._trailing._peak = portfolio_pos.trailing_peak

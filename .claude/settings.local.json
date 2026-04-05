@@ -88,7 +88,10 @@
       "Bash(ls /home/thenine/projects/stock_analyze/strategies/*.py)",
       "Bash(xargs -I{} basename {} .py)",
       "Bash(ls -d /home/thenine/projects/stock_analyze/data/factors/*/)",
-      "Bash(python -m pytest tests/test_portfolio_training.py -v)"
+      "Bash(python -m pytest tests/test_portfolio_training.py -v)",
+      "Bash(pytest:*)",
+      "Bash(bash /tmp/verify_spec.sh)",
+      "Bash(git:*)"
     ]
   }
 }

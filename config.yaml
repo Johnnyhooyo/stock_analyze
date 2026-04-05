@@ -1,25 +1,9 @@
-ticker: 0700.HK
-period: 5y
-train_years: 5
-backtest_engine: native
-data_sources:
-  - yahooquery
-  - yfinance
-
 fees_rate: 0.00088
-feishu_webhook: https://open.feishu.cn/open-apis/bot/v2/hook/ea59078b-e0f3-443f-a72a-d49d7114a58c
 initial_capital: 100000.0
 invest_fraction: 0.95
 lookback_months: 3
 max_tries: 1
 min_return: -999.0
-min_sharpe_ratio: 0.5
-max_drawdown: -0.30
-min_total_trades: 3
-test_days: 5
-test_months: 6
-early_stop_threshold: 0.01
-wf_min_window_win_rate: 0.4
 risk_management:
   atr_multiplier: 2.0
   atr_period: 14
@@ -40,21 +24,7 @@ strategy_training:
   multi:
   - xgboost_enhanced
   - lightgbm_enhanced
-  - rnn_trend
   single:
   - bollinger_rsi_trend
   - macd_rsi_trend
   - rsi_divergence
-  - macd_rsi_combo
-  - atr_breakout
-  - vwap_momentum
-  - stochastic_oscillator
-  - rsi_drawdown_0225
-  - ma_crossover
-
-daily_run:
-  enable_screener: true          # 默认开启选股模块
-  persist_screener_picks: true   # 选股 Top-N 写回 portfolio.yaml watchlist
-  max_workers: 4
-  min_factor_age_days: 7
-  retrain_on_stale: true

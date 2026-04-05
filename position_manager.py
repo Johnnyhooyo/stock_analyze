@@ -92,26 +92,51 @@ class TrailingStop:
 #  风控状态持久化（连续亏损天数等跨运行状态）
 # ──────────────────────────────────────────────────────────────────
 
-_STATE_FILE = os.path.join(os.path.dirname(__file__), "data", "logs", "risk_state.json")
+_STATE_DIR = os.path.join(os.path.dirname(__file__), "data", "logs")
+# 全局状态文件（向后兼容，当 ticker=None 时使用）
+_STATE_FILE = os.path.join(_STATE_DIR, "risk_state.json")
+
+_DEFAULT_STATE = {"consecutive_loss_days": 0, "last_trade_date": "", "trailing_peak": None}
 
 
-def _load_risk_state() -> dict:
-    """加载风控状态文件（不存在则返回默认值）"""
+def _state_path(ticker: Optional[str] = None) -> str:
+    """返回对应 ticker 的风控状态文件路径（per-ticker 隔离，防止并发覆盖）。"""
+    if ticker:
+        safe = ticker.replace(".", "_").upper()
+        return os.path.join(_STATE_DIR, f"risk_state_{safe}.json")
+    return _STATE_FILE
+
+
+def _load_risk_state(ticker: Optional[str] = None) -> dict:
+    """加载风控状态文件（不存在则返回默认值）。ticker 指定时使用 per-ticker 文件。"""
+    path = _state_path(ticker)
     try:
-        if os.path.exists(_STATE_FILE):
-            with open(_STATE_FILE, "r") as f:
+        if os.path.exists(path):
+            with open(path, "r") as f:
                 return json.load(f)
     except Exception:
         pass
-    return {"consecutive_loss_days": 0, "last_trade_date": "", "trailing_peak": None}
+    return dict(_DEFAULT_STATE)
 
 
-def _save_risk_state(state: dict):
-    """持久化风控状态"""
+def _save_risk_state(state: dict, ticker: Optional[str] = None):
+    """持久化风控状态（原子写入，防止并发写入损坏文件）。"""
+    import tempfile
+    path = _state_path(ticker)
     try:
-        os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-        with open(_STATE_FILE, "w") as f:
-            json.dump(state, f, indent=2)
+        os.makedirs(_STATE_DIR, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(suffix=".json.tmp", dir=_STATE_DIR)
+        try:
+            os.close(fd)
+            with open(tmp_path, "w") as f:
+                json.dump(state, f, indent=2)
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
     except Exception:
         pass
 
@@ -130,6 +155,7 @@ class PositionManager:
         daily_loss_limit: float = 0.05,
         max_consecutive_loss_days: int = 3,
         risk_config: Optional[dict] = None,
+        ticker: Optional[str] = None,
     ):
         self.position = position
         self.portfolio_value = portfolio_value
@@ -148,12 +174,13 @@ class PositionManager:
             rc.get("max_consecutive_loss_days", max_consecutive_loss_days)
         )
         self.trailing_stop: bool = rc.get("trailing_stop", True)
+        self._ticker = ticker  # 用于 per-ticker 风控状态隔离
 
         # 移动止损跟踪器
         self._trailing = TrailingStop(multiplier=self.atr_multiplier)
 
         # fix #10: 恢复持久化的 trailing peak
-        saved_state = _load_risk_state()
+        saved_state = _load_risk_state(ticker=self._ticker)
         if saved_state.get("trailing_peak") is not None:
             self._trailing._peak = saved_state["trailing_peak"]
 
@@ -265,7 +292,7 @@ class PositionManager:
             {'tripped': bool, 'reason': str, 'action': str,
              'consecutive_loss_days': int}
         """
-        state = _load_risk_state()
+        state = _load_risk_state(ticker=self._ticker)
 
         # 同一天不重复计数，但用最新 pnl 重新评估是否触发熔断
         if trade_date and state.get("last_trade_date") == trade_date:
@@ -296,7 +323,7 @@ class PositionManager:
         state["last_trade_date"] = trade_date
         # fix #10: 持久化 trailing peak
         state["trailing_peak"] = self._trailing._peak
-        _save_risk_state(state)
+        _save_risk_state(state, ticker=self._ticker)
 
         loss_days = state["consecutive_loss_days"]
 

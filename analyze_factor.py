@@ -64,8 +64,21 @@ def _save_config(cfg: dict) -> None:
     shutil.move(str(tmp), str(config_path))
 
 
+# 模块级策略缓存：key = strategy_type（None/"single"/"multi"/"custom"）
+# cfg 参数不参与缓存键，以避免配置漂移；如需强制刷新，调用 _clear_strategy_cache()
+_strategy_cache: dict[str | None, list] = {}
+
+
+def _clear_strategy_cache() -> None:
+    """清除策略模块缓存（测试或配置变更后调用）。"""
+    _strategy_cache.clear()
+
+
 def _discover_strategies(strategy_type: str = None, cfg: dict = None) -> list:
     """自动发现 strategies/ 包下的所有策略模块，返回模块列表。
+
+    结果按 strategy_type 缓存到进程级 dict，避免 Optuna 多 trial 或 daily_run
+    多因子推断时重复执行 importlib.import_module（每次调用约省去数十次动态导入）。
 
     Args:
         strategy_type: 可选，按类型过滤策略
@@ -75,6 +88,9 @@ def _discover_strategies(strategy_type: str = None, cfg: dict = None) -> list:
             - None: 返回所有策略
         cfg: 可选，直接传入配置字典（避免重复加载）
     """
+    if strategy_type in _strategy_cache:
+        return _strategy_cache[strategy_type]
+
     config = cfg if cfg is not None else load_config()
     train_config = config.get('strategy_training', {})
 
@@ -102,6 +118,8 @@ def _discover_strategies(strategy_type: str = None, cfg: dict = None) -> list:
         except ImportError as e:
             import logging
             logging.getLogger(__name__).warning(f"策略 '{name}' 导入失败: {e}")
+
+    _strategy_cache[strategy_type] = modules
     return modules
 
 
@@ -118,6 +136,9 @@ def compute_ic(factor: pd.Series, forward_returns: pd.Series) -> float:
     """
     combined = pd.concat([factor, forward_returns], axis=1).dropna()
     if len(combined) < 5:
+        return float('nan')
+    # 任一输入为常量时相关系数无意义，直接返回 nan（消除 ConstantInputWarning）
+    if combined.iloc[:, 0].nunique() < 2 or combined.iloc[:, 1].nunique() < 2:
         return float('nan')
     r, _ = _scipy_stats.spearmanr(combined.iloc[:, 0], combined.iloc[:, 1])
     return float(r)
@@ -498,18 +519,22 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
 
     # ── 胜率 & 盈亏比 ──
     trades = bt[bt['trade'] != 0].copy()
-    if len(trades) > 1:
+    if len(trades) >= 1:
         trade_returns = []
-        for i in range(len(trades) - 1):
+        for i in range(len(trades)):
             if trades.iloc[i]['trade'] == 1:  # 买入
                 entry_price = trades.iloc[i]['Close']
                 # 找下一个卖出
+                exit_price = None
                 for j in range(i + 1, len(trades)):
                     if trades.iloc[j]['trade'] == -1:  # 卖出
                         exit_price = trades.iloc[j]['Close']
-                        ret = (exit_price - entry_price) / entry_price
-                        trade_returns.append(ret)
                         break
+                if exit_price is None:
+                    # 最后一笔买入未平仓：以回测最后一根收盘价虚拟平仓，纳入统计
+                    exit_price = float(bt['Close'].iloc[-1])
+                ret = (exit_price - entry_price) / entry_price
+                trade_returns.append(ret)
         if trade_returns:
             wins = [r for r in trade_returns if r > 0]
             losses = [r for r in trade_returns if r <= 0]
@@ -531,9 +556,11 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
         calmar_ratio = float('nan')
 
     # ── 索提诺比率 (Sortino Ratio) ──
+    # 分子：年化收益率（mean_ret * 252）；分母：年化下行标准差
+    # 两端量纲统一为年化值，否则 Sortino 将被系统性低估约 252 倍
     downside_returns = strat_rets[strat_rets < 0]
     if len(downside_returns) > 0 and downside_returns.std(ddof=1) > 0:
-        sortino_ratio = mean_ret / (downside_returns.std(ddof=1) * np.sqrt(252))
+        sortino_ratio = (mean_ret * 252) / (downside_returns.std(ddof=1) * np.sqrt(252))
     else:
         sortino_ratio = float('nan')
 
