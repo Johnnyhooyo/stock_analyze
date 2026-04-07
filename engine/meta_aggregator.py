@@ -121,7 +121,53 @@ class MetaAggregator:
         market = self._market_state_at(data, len(data) - 1)
         return np.concatenate([sig_vec, market])
 
-    # ── Training (stub — implemented in Task 2) ───────────────────
+    # ── Training ──────────────────────────────────────────────────
+
+    def _build_historical_signals(
+        self,
+        data: pd.DataFrame,
+        artifacts: list[dict],
+    ) -> tuple[list[str], np.ndarray]:
+        """
+        Re-run each artifact's strategy on full historical data.
+        Returns (strategy_names, signal_matrix) where signal_matrix shape = (n_bars, n_strategies).
+        Strategies that fail to produce signals are silently skipped.
+        """
+        from analyze_factor import _discover_strategies
+        strategy_modules = {mod.NAME: mod for mod in _discover_strategies()}
+
+        names: list[str] = []
+        series_list: list[pd.Series] = []
+
+        for art in artifacts:
+            meta = art.get("meta", {})
+            name = meta.get("name", "")
+            if not name:
+                continue
+            mod = strategy_modules.get(name)
+            if mod is None:
+                continue
+            try:
+                model = art.get("model")
+                feat_cols = meta.get("feat_cols", [])
+                is_ml = model is not None and len(feat_cols) > 0
+                art_cfg = dict(art.get("config", {}))
+
+                if is_ml and hasattr(mod, "predict"):
+                    sig = mod.predict(model, data.copy(), art_cfg, meta)
+                else:
+                    sig, _, _ = mod.run(data.copy(), art_cfg)
+
+                if sig is not None and not sig.empty:
+                    names.append(name)
+                    series_list.append(sig.reindex(data.index).fillna(0).astype(float))
+            except Exception as e:
+                logger.debug("历史信号生成失败 %s: %s", name, e)
+
+        if not series_list:
+            return [], np.empty((len(data), 0), dtype=float)
+
+        return names, np.column_stack([s.values for s in series_list])
 
     def train(
         self,
@@ -132,7 +178,72 @@ class MetaAggregator:
         n_splits: int = 5,
         label_days: int = 5,
     ) -> dict:
-        raise NotImplementedError("train() implemented in Task 2")
+        """
+        Walk-Forward training (expanding window, TimeSeriesSplit).
+
+        Steps:
+          1. Re-run each artifact's strategy on full history → signal matrix
+          2. Compute market state features for each bar
+          3. Labels: 1 if close[t+label_days] > close[t] else 0
+          4. TimeSeriesSplit CV to compute accuracy
+          5. Train final model on all valid samples (for inference)
+        """
+        if len(artifacts) < 2:
+            raise ValueError(f"至少需要 2 个因子才能训练 meta-model，当前: {len(artifacts)}")
+
+        strategy_names, sig_matrix = self._build_historical_signals(data, artifacts)
+
+        if len(strategy_names) < 1:
+            raise ValueError(
+                f"至少需要 1 个策略产生有效历史信号，实际产生信号的策略数: {len(strategy_names)}"
+            )
+
+        n = len(data)
+
+        # Market state features for each bar (uses data up to that bar only)
+        market_rows = [self._market_state_at(data, i) for i in range(n)]
+        market_matrix = np.array(market_rows, dtype=float)
+
+        # Labels: look-forward label_days bars
+        closes = data["Close"].values
+        labels = np.zeros(n, dtype=int)
+        for i in range(n - label_days):
+            labels[i] = 1 if closes[i + label_days] > closes[i] else 0
+
+        # Mask out last label_days rows (no future data available)
+        valid_idx = np.arange(n - label_days)
+        X_all = np.hstack([sig_matrix, market_matrix])
+        X_valid = X_all[valid_idx]
+        y_valid = labels[valid_idx]
+
+        # Walk-Forward CV
+        from sklearn.model_selection import TimeSeriesSplit
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        fold_accs: list[float] = []
+
+        for tr_idx, te_idx in tscv.split(X_valid):
+            if len(tr_idx) < 10 or len(te_idx) < 5:
+                continue
+            scaler = StandardScaler()
+            X_tr = scaler.fit_transform(X_valid[tr_idx])
+            X_te = scaler.transform(X_valid[te_idx])
+            lr = LogisticRegression(max_iter=1000, random_state=42, C=1.0)
+            lr.fit(X_tr, y_valid[tr_idx])
+            fold_accs.append(float((lr.predict(X_te) == y_valid[te_idx]).mean()))
+
+        mean_acc = float(np.mean(fold_accs)) if fold_accs else 0.5
+
+        # Final model: all valid samples
+        scaler_final = StandardScaler()
+        X_scaled = scaler_final.fit_transform(X_valid)
+        lr_final = LogisticRegression(max_iter=1000, random_state=42, C=1.0)
+        lr_final.fit(X_scaled, y_valid)
+
+        self._model = lr_final
+        self._scaler = scaler_final
+        self._strategy_names = strategy_names
+
+        return {"accuracy": mean_acc, "n_samples": len(y_valid), "n_features": X_all.shape[1]}
 
     # ── Save / Load ───────────────────────────────────────────────
 

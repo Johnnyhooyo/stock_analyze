@@ -83,3 +83,67 @@ class TestSaveLoadPredict:
         signal, proba = loaded.predict(feat)
         assert signal in (0, 1)
         assert 0.0 <= proba <= 1.0
+
+
+class TestTrain:
+    def _make_rule_artifact(self, strategy_name: str) -> dict:
+        return {
+            "meta": {"name": strategy_name, "params": {}, "feat_cols": []},
+            "model": None,
+            "sharpe_ratio": 1.2,
+            "config": {},
+        }
+
+    def test_train_returns_expected_keys(self, synthetic_ohlcv, tmp_path):
+        """train() returns dict with accuracy, n_samples, n_features."""
+        ma = MetaAggregator(meta_dir=tmp_path)
+        artifacts = [
+            self._make_rule_artifact("ma_crossover"),
+            self._make_rule_artifact("rsi_reversion"),
+        ]
+        result = ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
+        assert "accuracy" in result
+        assert "n_samples" in result
+        assert "n_features" in result
+
+    def test_train_accuracy_in_valid_range(self, synthetic_ohlcv, tmp_path):
+        """Accuracy must be a float in [0, 1]."""
+        ma = MetaAggregator(meta_dir=tmp_path)
+        artifacts = [
+            self._make_rule_artifact("ma_crossover"),
+            self._make_rule_artifact("rsi_reversion"),
+        ]
+        result = ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
+        assert 0.0 <= result["accuracy"] <= 1.0
+
+    def test_train_sets_strategy_names(self, synthetic_ohlcv, tmp_path):
+        """After train(), _strategy_names matches the strategies that produced signals."""
+        ma = MetaAggregator(meta_dir=tmp_path)
+        artifacts = [
+            self._make_rule_artifact("ma_crossover"),
+            self._make_rule_artifact("rsi_reversion"),
+        ]
+        ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
+        assert len(ma._strategy_names) >= 1  # at least one strategy produced signals
+
+    def test_train_raises_with_fewer_than_2_artifacts(self, synthetic_ohlcv, tmp_path):
+        """train() raises ValueError when fewer than 2 artifacts provided."""
+        ma = MetaAggregator(meta_dir=tmp_path)
+        with pytest.raises(ValueError, match="至少需要"):
+            ma.train("0700.HK", synthetic_ohlcv, [self._make_rule_artifact("ma_crossover")],
+                     config={}, n_splits=2, label_days=5)
+
+    def test_train_predict_after_train(self, synthetic_ohlcv, tmp_path):
+        """After train(), predict() returns valid output."""
+        ma = MetaAggregator(meta_dir=tmp_path)
+        artifacts = [
+            self._make_rule_artifact("ma_crossover"),
+            self._make_rule_artifact("rsi_reversion"),
+        ]
+        ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
+        feat = ma.build_feature_vector(
+            {name: 1 for name in ma._strategy_names}, synthetic_ohlcv
+        )
+        signal, proba = ma.predict(feat)
+        assert signal in (0, 1)
+        assert 0.0 <= proba <= 1.0
