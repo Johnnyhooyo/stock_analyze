@@ -145,6 +145,7 @@ def _build_daily_report(
     config: dict = None,
     screener_results: list = None,
     sector_ranking: list = None,
+    portfolio_risk=None,
 ) -> dict:
     """
     将所有 RecommendationResult 汇总为 daily_report 字典，
@@ -244,6 +245,7 @@ def _build_daily_report(
             "volume": config.get("screener", {}).get("weight_volume", 0.30),
         },
         "sector_ranking": sector_ranking or [],
+        "portfolio_risk": portfolio_risk.to_dict() if portfolio_risk is not None else {},
     }
 
 
@@ -784,6 +786,32 @@ def main():
         "total": len(tickers)
     })
 
+    # ── 组合级风控检查 ────────────────────────────────────────────
+    portfolio_risk = None
+    try:
+        from engine.portfolio_risk import PortfolioRiskChecker
+        checker = PortfolioRiskChecker(config)
+        portfolio_risk = checker.check(
+            results=results,
+            portfolio_value=portfolio_state.portfolio_value,
+        )
+        # 买入阻断：总仓位超限 或 触发去杠杆时，将 "买入" 覆盖为 "观望"
+        if portfolio_risk.position_breach or portfolio_risk.should_deleverage:
+            block_reason = "[组合风控] " + (portfolio_risk.flags[0] if portfolio_risk.flags else "仓位超限")
+            for r in results:
+                if r.action == "买入":
+                    r.action = "观望"
+                    r.signal = 0
+                    r.reason = block_reason
+                    r.risk_flags = list(r.risk_flags) + portfolio_risk.flags
+        elif portfolio_risk.has_warnings:
+            # 非阻断性警告：仅追加风控标志到个股，不覆盖建议
+            for r in results:
+                if r.has_position:
+                    r.risk_flags = list(r.risk_flags) + portfolio_risk.flags
+    except Exception as _e:
+        logger.warning("组合风控检查失败（已跳过）: %s", _e)
+
     # ── 汇总报告 ──────────────────────────────────────────────────
     daily_report = _build_daily_report(
         results=results,
@@ -793,6 +821,7 @@ def main():
         config=config,
         screener_results=screener_results,
         sector_ranking=sector_ranking,
+        portfolio_risk=portfolio_risk,
     )
 
     # 记录汇总信息
