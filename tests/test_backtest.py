@@ -6,7 +6,7 @@ import pandas as pd
 
 import pytest
 
-from analyze_factor import backtest
+from analyze_factor import backtest, _backtest_reference
 
 
 class TestBacktestReturnsRequiredFields:
@@ -69,3 +69,80 @@ class TestBacktestSignalShift:
         # With shift(1), the first signal executes on day 1, not day 0
         # Therefore buy should happen AFTER the first bar
         assert result["buy_cnt"] <= 1  # at most 1 buy after shifted signal
+
+
+# ── 向量化引擎 vs 参考引擎对比 ────────────────────────────────────
+
+_NO_ATR_CONFIG = {
+    "initial_capital": 100_000.0,
+    "invest_fraction": 0.95,
+    "slippage": 0.001,
+    "fees_rate": 0.00088,
+    "stamp_duty": 0.001,
+    "risk_management": {"simulate_in_backtest": False, "use_atr_stop": False},
+}
+
+_FLOAT_METRICS = [
+    "cum_return", "annualized_return", "sharpe_ratio",
+    "max_drawdown", "volatility", "calmar_ratio", "sortino_ratio",
+    "win_rate", "profit_loss_ratio",
+]
+
+_INT_METRICS = ["buy_cnt", "sell_cnt", "total_trades"]
+
+
+def _make_cycle_signal(index, hold=20, flat=10):
+    """交替持仓/空仓信号，产生多笔完整交易。"""
+    sig = pd.Series(0, index=index)
+    cycle = hold + flat
+    for i, _ in enumerate(index):
+        if i % cycle < hold:
+            sig.iloc[i] = 1
+    return sig
+
+
+class TestVectorizedMatchesReference:
+    """向量化引擎与参考实现的数值一致性测试。"""
+
+    def test_trade_counts_exact(self, synthetic_ohlcv):
+        sig = _make_cycle_signal(synthetic_ohlcv.index)
+        vec = backtest(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        ref = _backtest_reference(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        for key in _INT_METRICS:
+            assert vec[key] == ref[key], f"{key}: vec={vec[key]} ref={ref[key]}"
+
+    def test_float_metrics_close(self, synthetic_ohlcv):
+        sig = _make_cycle_signal(synthetic_ohlcv.index)
+        vec = backtest(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        ref = _backtest_reference(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        for key in _FLOAT_METRICS:
+            v, r = vec[key], ref[key]
+            if pd.isna(v) and pd.isna(r):
+                continue
+            assert abs(v - r) < 1e-6, f"{key}: vec={v} ref={r} diff={abs(v-r)}"
+
+    def test_portfolio_value_series_close(self, synthetic_ohlcv):
+        sig = _make_cycle_signal(synthetic_ohlcv.index)
+        vec = backtest(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        ref = _backtest_reference(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        pv_diff = (vec["portfolio_value"] - ref["portfolio_value"]).abs()
+        assert pv_diff.max() < 1e-6, f"max pv diff={pv_diff.max()}"
+
+    def test_all_flat_signal(self, synthetic_ohlcv):
+        sig = pd.Series(0, index=synthetic_ohlcv.index)
+        vec = backtest(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        ref = _backtest_reference(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        assert vec["buy_cnt"] == ref["buy_cnt"] == 0
+        assert vec["sell_cnt"] == ref["sell_cnt"] == 0
+
+    def test_all_hold_signal(self, synthetic_ohlcv):
+        sig = pd.Series(1, index=synthetic_ohlcv.index)
+        vec = backtest(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        ref = _backtest_reference(synthetic_ohlcv, sig, _NO_ATR_CONFIG)
+        for key in _INT_METRICS:
+            assert vec[key] == ref[key], f"{key}: vec={vec[key]} ref={ref[key]}"
+        for key in ["cum_return", "sharpe_ratio", "max_drawdown"]:
+            v, r = vec[key], ref[key]
+            if pd.isna(v) and pd.isna(r):
+                continue
+            assert abs(v - r) < 1e-6, f"{key}: vec={v} ref={r}"

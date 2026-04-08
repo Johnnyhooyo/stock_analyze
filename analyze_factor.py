@@ -398,10 +398,178 @@ def _check_meets_threshold(bt: dict, min_return: float, min_sharpe: float,
 
 def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
     """
-    在 data 上执行回测模拟。
+    向量化回测引擎（主引擎）。
+
     signal : int Series (1=做多, 0=观望), 索引与 data 对齐
     返回    : dict 包含 cum_return, annualized_return, buy_cnt, sell_cnt,
-                       portfolio_value Series, strategy Series
+                       portfolio_value Series, strategy Series, detail DataFrame
+
+    实现思路
+    --------
+    1. 信号 shift(1) 防前视偏差
+    2. 边沿检测（0→1 买入，1→0 卖出），得到 entry/exit 下标数组
+    3. 按交易对迭代（笔数远少于 K 线数），逐笔计算资金变化
+    4. NumPy 数组区间赋值重建完整资金曲线（O(bars) 向量化，无逐行写入）
+    """
+    initial_capital = float(config.get('initial_capital', 100_000.0))
+    invest_fraction = float(config.get('invest_fraction', 0.95))
+    slippage        = float(config.get('slippage', 0.001))
+    fees_rate       = float(config.get('fees_rate', 0.00088))
+    stamp_duty      = float(config.get('stamp_duty', 0.001))
+
+    # ATR 止损信号预处理（保持现状，不向量化）
+    risk_cfg = config.get('risk_management', {})
+    if risk_cfg.get('simulate_in_backtest', True) and risk_cfg.get('use_atr_stop', True):
+        try:
+            from position_manager import simulate_atr_stoploss
+            signal = simulate_atr_stoploss(
+                data, signal,
+                atr_period=int(risk_cfg.get('atr_period', 14)),
+                atr_multiplier=float(risk_cfg.get('atr_multiplier', 2.0)),
+                trailing=bool(risk_cfg.get('trailing_stop', True)),
+                cooldown_bars=int(risk_cfg.get('cooldown_bars', 0)),
+            )
+        except Exception as _e:
+            logger.warning(f"[backtest] ATR 止损模拟失败（已跳过）: {_e}")
+
+    # ── 1. 对齐信号并 shift(1) 防前视偏差 ──────────────────────────
+    index  = data.index
+    sig_s  = signal.reindex(index).fillna(0).shift(1).fillna(0).astype(int)
+    sig    = sig_s.values.astype(np.int8)
+    closes = data['Close'].values.astype(np.float64)
+    n      = len(closes)
+
+    # ── 2. 边沿检测：entry=0→1，exit=1→0 ────────────────────────────
+    prev     = np.empty(n, dtype=np.int8)
+    prev[0]  = 0
+    prev[1:] = sig[:-1]
+    entry_bars = np.where((sig == 1) & (prev == 0))[0]
+    exit_bars  = np.where((sig == 0) & (prev == 1))[0]
+
+    # ── 3. 贪婪配对 entry/exit（exit=-1 表示末尾未平仓） ────────────
+    pairs = []
+    ei    = 0
+    for entry in entry_bars:
+        while ei < len(exit_bars) and exit_bars[ei] <= entry:
+            ei += 1
+        exit_b = int(exit_bars[ei]) if ei < len(exit_bars) else -1
+        pairs.append((int(entry), exit_b))
+
+    # ── 4. 逐笔计算资金 + NumPy 区间赋值重建资金曲线 ────────────────
+    pv        = np.full(n, initial_capital, dtype=np.float64)
+    trade_arr = np.zeros(n, dtype=np.int8)
+    trade_returns: list[float] = []
+    cash = initial_capital
+
+    for entry_b, exit_b in pairs:
+        # 买入：收盘价 + 滑点，扣手续费
+        buy_price = closes[entry_b] * (1.0 + slippage)
+        available = cash / (1.0 + fees_rate)
+        shares    = int(available * invest_fraction // buy_price)
+        if shares <= 0:
+            continue
+        cash_after_buy = cash - shares * buy_price - shares * buy_price * fees_rate
+        trade_arr[entry_b] = 1
+        entry_close = closes[entry_b]
+
+        if exit_b == -1:
+            # 末尾未平仓：持仓到最后一根 K 线
+            pv[entry_b:] = cash_after_buy + shares * closes[entry_b:]
+            trade_returns.append((closes[-1] - entry_close) / entry_close)
+            cash = cash_after_buy  # 未平仓，cash 逻辑上不变
+        else:
+            # 持仓期资金曲线（entry_b ~ exit_b-1）
+            pv[entry_b:exit_b] = cash_after_buy + shares * closes[entry_b:exit_b]
+
+            # 卖出：收盘价 - 滑点，扣手续费+印花税
+            sell_price      = closes[exit_b] * (1.0 - slippage)
+            proceeds        = shares * sell_price
+            fees_sell       = proceeds * (fees_rate + stamp_duty)
+            cash_after_sell = cash_after_buy + proceeds - fees_sell
+
+            pv[exit_b]        = cash_after_sell
+            trade_arr[exit_b] = -1
+            trade_returns.append((closes[exit_b] - entry_close) / entry_close)
+
+            # 平仓后全现金（后续交易的 entry 会覆盖该区间）
+            if exit_b + 1 < n:
+                pv[exit_b + 1:] = cash_after_sell
+            cash = cash_after_sell
+
+    # ── 5. 每日收益率 ────────────────────────────────────────────────
+    strat    = np.empty(n, dtype=np.float64)
+    strat[0] = 0.0
+    strat[1:] = pv[1:] / pv[:-1] - 1.0
+
+    strat_s = pd.Series(strat, index=index, dtype=float)
+    pv_s    = pd.Series(pv,    index=index, dtype=float)
+
+    # ── 6. 统计指标 ──────────────────────────────────────────────────
+    cum_return   = float((1.0 + strat_s.fillna(0.0)).prod() - 1.0)
+    base         = 1.0 + cum_return
+    ann          = float(base ** (252.0 / max(1, n)) - 1.0) if base > 0 else -1.0
+
+    mean_ret = float(strat_s.mean()) if n > 0 else 0.0
+    std_ret  = float(strat_s.std(ddof=1))
+    sharpe   = float(mean_ret / std_ret * np.sqrt(252)) if std_ret > 0 else float('nan')
+
+    running_max  = pv_s.expanding().max()
+    drawdown     = (pv_s - running_max) / running_max
+    max_drawdown = float(drawdown.min())
+    volatility   = float(strat_s.std(ddof=1) * np.sqrt(252))
+
+    if trade_returns:
+        wins   = [r for r in trade_returns if r > 0]
+        losses = [r for r in trade_returns if r <= 0]
+        win_rate          = len(wins) / len(trade_returns)
+        avg_win           = float(np.mean(wins))   if wins   else 0.0
+        avg_loss          = float(np.mean(losses)) if losses else 0.0
+        profit_loss_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else float('inf')
+    else:
+        win_rate, profit_loss_ratio = 0.0, 0.0
+
+    calmar_ratio = float(ann) / abs(max_drawdown) if max_drawdown != 0 else float('nan')
+
+    neg_rets = strat_s[strat_s < 0]
+    sortino_ratio = (
+        (mean_ret * 252) / (neg_rets.std(ddof=1) * np.sqrt(252))
+        if len(neg_rets) > 0 and neg_rets.std(ddof=1) > 0
+        else float('nan')
+    )
+
+    buy_cnt  = int((trade_arr == 1).sum())
+    sell_cnt = int((trade_arr == -1).sum())
+
+    # ── 7. detail DataFrame（兼容下游） ─────────────────────────────
+    detail = data.copy()
+    detail['signal']   = sig_s
+    detail['trade']    = pd.Series(trade_arr.astype(int), index=index)
+    detail['pv']       = pv_s
+    detail['strategy'] = strat_s
+
+    return {
+        'cum_return':        cum_return,
+        'annualized_return': ann,
+        'sharpe_ratio':      sharpe,
+        'max_drawdown':      max_drawdown,
+        'volatility':        volatility,
+        'win_rate':          win_rate,
+        'profit_loss_ratio': profit_loss_ratio,
+        'calmar_ratio':      calmar_ratio,
+        'sortino_ratio':     sortino_ratio,
+        'buy_cnt':           buy_cnt,
+        'sell_cnt':          sell_cnt,
+        'total_trades':      buy_cnt + sell_cnt,
+        'portfolio_value':   pv_s,
+        'strategy':          strat_s,
+        'detail':            detail,
+    }
+
+
+def _backtest_reference(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
+    """
+    原始逐行循环回测引擎（保留作为参考实现，用于测试对比）。
+    签名与 backtest() 完全相同，内部实现未改动。
     """
     initial_capital = float(config.get('initial_capital', 100_000.0))
     invest_fraction = float(config.get('invest_fraction', 0.95))  # 默认 0.95，预留现金缓冲
