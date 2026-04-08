@@ -23,6 +23,9 @@ import numpy as np
 import pandas as pd
 
 from log_config import get_logger
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from engine.meta_aggregator import MetaAggregator
 
 logger = get_logger(__name__)
 
@@ -86,13 +89,17 @@ class SignalAggregator:
         min_sharpe_weight: float = 0.0,
         max_factors: int = 20,
         use_registry: bool = True,
+        aggregation_method: str = "vote",
+        meta_dir: Optional[Path] = None,
     ):
         """
         Args:
-            factors_dir:       factor_*.pkl 所在目录（默认 data/factors/）
-            min_sharpe_weight: 参与投票的最低 sharpe 阈值（默认 0，全部参与）
-            max_factors:       最多加载的因子数量（取编号最大的 N 个）
-            use_registry:      是否使用因子注册表过滤（默认 True，只加载 active 因子）
+            factors_dir:         factor_*.pkl 所在目录（默认 data/factors/）
+            min_sharpe_weight:   参与投票的最低 sharpe 阈值（默认 0，全部参与）
+            max_factors:         最多加载的因子数量（取编号最大的 N 个）
+            use_registry:        是否使用因子注册表过滤（默认 True，只加载 active 因子）
+            aggregation_method:  聚合方式，"vote"（默认）或 "stacking"
+            meta_dir:            meta-model 存储目录（默认 data/meta/）
         """
         self.factors_dir = factors_dir or (
             Path(__file__).parent.parent / "data" / "factors"
@@ -103,6 +110,9 @@ class SignalAggregator:
         self._registry = None
         # 预加载策略模块 dict（NAME → module），避免每个因子推断时重复 import
         self._strategy_modules: dict = {}
+        self._aggregation_method = aggregation_method
+        self._meta_dir = meta_dir or (Path(__file__).parent.parent / "data" / "meta")
+        self._meta_cache: dict[str, Optional["MetaAggregator"]] = {}
 
     # ── 内部：加载因子列表 ────────────────────────────────────────
 
@@ -172,6 +182,19 @@ class SignalAggregator:
 
         return None
 
+    # ── 内部：加载 meta-model ──────────────────────────────────────
+
+    def _load_meta(self, ticker: str) -> Optional["MetaAggregator"]:
+        """Lazily load meta-model for ticker. Returns None if unavailable."""
+        if ticker not in self._meta_cache:
+            try:
+                from engine.meta_aggregator import MetaAggregator
+                self._meta_cache[ticker] = MetaAggregator.load(ticker, self._meta_dir)
+            except Exception as e:
+                logger.debug("meta-model 加载异常: %s", e)
+                self._meta_cache[ticker] = None
+        return self._meta_cache[ticker]
+
     # ── 主接口 ────────────────────────────────────────────────────
 
     def _get_registry(self):
@@ -180,7 +203,8 @@ class SignalAggregator:
             try:
                 from data.factor_registry import FactorRegistry
                 self._registry = FactorRegistry()
-            except Exception:
+            except Exception as e:
+                logger.debug("因子注册表加载失败，降级为全量磁盘扫描", extra={"error": str(e)})
                 self._registry = None
         return self._registry
 
@@ -317,6 +341,23 @@ class SignalAggregator:
 
         consensus = 1 if bull_w >= bear_w else 0
         confidence = (max(bull_w, bear_w) / total_w) if total_w > 0 else 0.5
+
+        # Stacking override (only when votes are available)
+        if self._aggregation_method == "stacking" and votes:
+            meta = self._load_meta(ticker)
+            if meta is not None:
+                try:
+                    base_signals = {v["strategy_name"]: v["signal"] for v in votes}
+                    feat = meta.build_feature_vector(base_signals, data)
+                    consensus, confidence = meta.predict(feat)
+                except Exception as e:
+                    logger.warning(
+                        "%s: stacking predict 失败，fallback 到 vote: %s", ticker, e,
+                        extra={"ticker": ticker}
+                    )
+            else:
+                logger.debug("%s: meta-model 不存在，fallback 到 vote", ticker,
+                             extra={"ticker": ticker})
 
         # 分别统计 ML 和规则策略
         ml_votes = [v for v in votes if v["is_ml"]]
