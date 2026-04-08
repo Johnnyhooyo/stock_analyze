@@ -1,8 +1,8 @@
 # 港股量化分析系统 — 2026 Q2 执行计划
 
 > 基于 2026-04-05 全面代码审计生成  
-> 当前状态：219 测试全通过 | Phase 1 完成 | Phase 2 部分完成  
-> 分支：`feature/hybrid-portfolio-training`
+> 当前状态：229 测试全通过 | Phase 1 完成 | Phase 2.5 全部完成（BUG-1/2/3/4/5/6/7 + OPT-1/3 已修复）  
+> 分支：`main`
 
 ---
 
@@ -28,28 +28,30 @@
 | Phase 1 | 基础债务清理（portfolio_state、统一配置、公共指标、测试框架、结构化日志） | ✅ 全部完成 |
 | Phase 2-4 | PnL 历史追踪 | ✅ `data/pnl_tracker.py` |
 | Phase 2-6 | 深度学习策略 | ✅ `strategies/rnn_trend.py` (GRU/LSTM) |
-| Phase 2-3 | 因子生命周期管理 | 🚧 `data/factor_registry.py` 已实现，集成点未完成 |
+| Phase 2-3 | 因子生命周期管理 | ✅ `data/factor_registry.py` + `signal_aggregator.py` + `main.py` 集成完整 |
 | Phase 2-7 | main.py 职责收敛 | ✅ 预测步骤移除，仅保留训练 + 飞书摘要；`generate_signal_report` 暂停调用 |
 | 新增 | 全市场选股引擎 | ✅ `engine/stock_screener.py` |
 | 新增 | 数据质量过滤 + 黑名单 | ✅ `data/hk_stocks.py` + `hk_stocks_blacklist.json` |
 
 ### 核心指标
 
-- **测试**：219 个单元测试全通过，核心覆盖率 > 60%
+- **测试**：223 个单元测试全通过，核心覆盖率 > 60%
 - **策略**：9 个规则策略 + 3 个 ML 策略 + 1 个深度学习策略 = 13 个
 - **数据源**：6 个 vendor（yahooquery → yfinance → akshare → ...）
 - **股票池**：全量港股 2767+ 只（含质量过滤 + 黑名单）
 
 ### 已知阻塞性问题
 
-1. `config.yaml` 关键字段被删减，训练阈值失效
-2. 因子注册表集成不完整，`daily_run` 可能返回空信号
+~~1. `config.yaml` 关键字段被删减，训练阈值失效~~ → ✅ 已修复（BUG-1，2026-04-07）  
+~~2. 因子注册表集成不完整，`daily_run` 可能返回空信号~~ → ✅ 已修复（BUG-2，2026-04-07）
+
+**当前无阻塞性问题。**
 
 ---
 
 ## 二、Bug 修复清单
 
-### BUG-1: config.yaml 关键字段丢失（P0 — 阻塞性）
+### BUG-1: config.yaml 关键字段丢失（P0 — 阻塞性）✅ 已修复 2026-04-07
 
 **文件**: `config.yaml`
 
@@ -67,13 +69,13 @@
 
 **特别危险**: `min_return: -999.0` 意味着任何亏损策略都能通过验证，完全丧失质量把关。
 
-**修复方案**: 从 git 历史恢复完整 config.yaml（`git checkout HEAD -- config.yaml`），然后按需调整。
+**修复方案**: 从 git 历史恢复完整 config.yaml，按 CLAUDE.md 文档默认值重建，同时修复 `analyze_factor.run_search()` 中 `_save_config(base_cfg)` 副作用（每次测试调用会把 stripped config 写回磁盘）。
 
-**验证**: `python3 daily_run.py --dry-run --skip-notify --skip-sentiment` 正常输出建议。
+**验证**: `python3 daily_run.py --dry-run --skip-notify --skip-sentiment` 正常输出建议，223 个测试运行后 config.yaml 内容不变。
 
 ---
 
-### BUG-2: 因子注册表集成不完整导致空信号（P0 — 阻塞性）
+### BUG-2: 因子注册表集成不完整导致空信号（P0 — 阻塞性）✅ 已修复 2026-04-07
 
 **文件**: `engine/signal_aggregator.py:88-203`, `main.py:195-222`
 
@@ -101,7 +103,7 @@ per_ticker_dir = self.factors_dir / ticker_safe
 3. 增加 fallback：当注册表过滤后为空但目录中有文件时，记录警告并返回原始列表
 4. 补充集成测试：`test_save_factor_then_aggregate` 端到端验证
 
-**验证**: 训练一个策略 → 检查 `factor_registry.json` 记录 → `daily_run --dry-run` 能加载该因子。
+**验证**: `tests/test_integration.py::TestFactorRegistryAggregateIntegration` 4 个端到端测试全通过，覆盖：注册→聚合、per-ticker subdir 匹配、subdir 不匹配 fallback、空注册表降级。
 
 ---
 
@@ -308,45 +310,36 @@ from strategies.lightgbm_enhanced import run as run_lgbm
 > 目标：修复阻塞性 Bug，确保系统可正确运行
 
 ```
-Week 1
-├── Day 1-2: BUG-1 恢复 config.yaml + BUG-2 因子注册表集成
-│   ├── [1] git checkout HEAD -- config.yaml 恢复完整配置
-│   ├── [2] 统一 subdir 命名规范（大写 ticker_safe）
-│   ├── [3] _filter_by_registry 增加 fallback 逻辑
-│   ├── [4] 端到端测试：train → register → aggregate
-│   └── [5] 验证：daily_run --dry-run 正常输出
+Week 1（2026-04-05 ~ 2026-04-07 完成）
+├── Day 1-2: BUG-1 恢复 config.yaml + BUG-2 因子注册表集成         ✅
+│   ├── [1] 恢复完整 config.yaml，修复 min_return: -999.0           ✅
+│   ├── [2] 移除 run_search() 中 _save_config() 副作用调用          ✅
+│   ├── [3] _filter_by_registry 大小写不敏感 + fallback             ✅
+│   ├── [4] 端到端测试：TestFactorRegistryAggregateIntegration      ✅
+│   └── [5] 验证：daily_run --dry-run 正常输出                      ✅
 │
-├── Day 3: BUG-3 策略发现缓存 + BUG-4 Sortino 修复
-│   ├── [1] SignalAggregator.__init__ 缓存策略模块
-│   ├── [2] 修复 Sortino 年化分子
-│   ├── [3] 补充单元测试
-│   └── [4] 性能对比测试
+├── Day 3: BUG-3 策略发现缓存 + BUG-4 Sortino 修复                  ✅（f36d4ae）
+│   ├── [1] SignalAggregator.__init__ 缓存策略模块                  ✅
+│   ├── [2] 修复 Sortino 年化分子                                   ✅
+│   ├── [3] compute_ic 常量输入检查（BUG-5）                        ✅
+│   └── [4] 回测未平仓交易处理（BUG-7）                             ✅
 │
-├── Day 4-5: BUG-5/6/7 + OPT-1 异常处理审计
-│   ├── [1] compute_ic 常量输入检查
-│   ├── [2] 风控状态 per-ticker 隔离
-│   ├── [3] 回测未平仓交易处理
-│   ├── [4] 关键路径异常处理改为 logger.warning
-│   └── [5] 全量测试 + daily_run 端到端验证
+└── Day 4-5: BUG-6 + OPT-1 异常处理审计                             ✅（2026-04-07）
 
 Week 2
-├── Day 1-2: OPT-3 策略发现缓存 + 代码清理
-│   ├── [1] _discover_strategies 模块级缓存
-│   ├── [2] 清理冗余的 except: pass
-│   └── [3] 补充集成测试覆盖
+├── Day 1-2: OPT-1 关键路径异常处理审计 + 代码清理                   ✅（2026-04-07）
 │
-└── Day 3: 发布 & 文档更新
-    ├── [1] 合并到 main 分支
-    ├── [2] 更新 CLAUDE.md Phase 2 状态
-    └── [3] 运行完整的 daily_run 验证
+└── Day 3: 发布 & 文档更新                                           ✅（2026-04-07）
 ```
 
 **交付物**:
-- config.yaml 完整恢复
-- 因子注册表端到端可用
-- Sortino/胜率/IC 计算正确
-- daily_run 耗时降低 3-5x
-- 测试数量 219 → ~235
+- config.yaml 完整恢复 ✅
+- 因子注册表端到端可用 ✅
+- Sortino/胜率/IC 计算正确 ✅
+- `_discover_strategies` 缓存，daily_run 耗时降低 ✅
+- 测试数量 219 → 223 ✅
+- BUG-6（风控状态 per-ticker 隔离 + 原子写入 + 6 个隔离测试）✅
+- OPT-1（关键路径异常处理：position_manager/analyze_factor/main/data/manager 等 16 处）✅
 
 ---
 

@@ -10,6 +10,10 @@ import pandas as pd
 from dataclasses import dataclass
 from typing import Optional
 
+from log_config import get_logger
+
+logger = get_logger(__name__)
+
 
 # ──────────────────────────────────────────────────────────────────
 #  持仓数据
@@ -114,8 +118,8 @@ def _load_risk_state(ticker: Optional[str] = None) -> dict:
         if os.path.exists(path):
             with open(path, "r") as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("风控状态文件读取失败，使用默认值", extra={"path": path, "error": str(e)})
     return dict(_DEFAULT_STATE)
 
 
@@ -137,8 +141,8 @@ def _save_risk_state(state: dict, ticker: Optional[str] = None):
             except OSError:
                 pass
             raise
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("风控状态文件保存失败", extra={"path": path, "error": str(e)})
 
 
 # ──────────────────────────────────────────────────────────────────

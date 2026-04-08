@@ -179,7 +179,8 @@ def quintile_analysis(
 
     try:
         combined['quantile'] = pd.qcut(combined['factor'], q=n_quantiles, labels=False, duplicates='drop') + 1
-    except Exception:
+    except Exception as e:
+        logger.debug("因子分层失败，返回空结果", extra={"error": str(e)})
         return pd.DataFrame()
 
     rows = []
@@ -490,7 +491,8 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
             ann = -1.0
         else:
             ann = base ** (252.0 / trading_days_total) - 1
-    except Exception:
+    except Exception as e:
+        logger.debug("年化收益率计算失败", extra={"error": str(e)})
         ann = float('nan')
 
     # ── 夏普率（年化，无风险利率取 0） ──
@@ -505,7 +507,8 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
             sharpe = mean_ret / std_ret * np.sqrt(252)
         else:
             sharpe = float('nan')
-    except Exception:
+    except Exception as e:
+        logger.debug("夏普率计算失败", extra={"error": str(e)})
         sharpe = float('nan')
 
     # ── 最大回撤 ──
@@ -669,7 +672,8 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict,
     if not pd.api.types.is_datetime64_any_dtype(df_target.index):
         try:
             df_target.index = pd.to_datetime(df_target.index)
-        except Exception:
+        except Exception as e:
+            logger.debug("数据索引日期转换失败", extra={"error": str(e)})
             return None
 
     df_target['returns'] = df_target['Close'].pct_change(fill_method=None)
@@ -809,8 +813,8 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict,
                     y_proba   = model.predict_proba(X_val)[:, 1]
                     roc_auc   = float(roc_auc_score(y_val, y_proba))
                     ml_log_loss = float(log_loss(y_val, y_proba))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("ML 验证指标计算失败（ROC/log-loss）", extra={"error": str(e)})
 
     # ── 回测（验证集） ──
     # ✅ 1-C 确认：两个回测引擎均在内部对信号做 shift(1)，即"T日收盘生成信号 → T+1日开盘执行"。
@@ -1248,7 +1252,6 @@ def run_search(
     strategy_mods = _discover_strategies(strategy_type=strategy_type, cfg=base_cfg)
     if not strategy_mods:
         logger.critical("未发现任何策略模块，请检查 strategies/ 目录")
-        _save_config(base_cfg)
         return None, [], test_df
 
     logger.info("策略搜索开始", extra={
@@ -1322,9 +1325,6 @@ def run_search(
                 "strategy_module": mod.NAME,
                 "best_cum_return": f"{best_of_strategy['cum_return']:.2%}"
             })
-
-    # ── 恢复原始配置 ──
-    _save_config(base_cfg)
 
     # ── 排行榜 ──
     sorted_results = sorted(all_results, key=lambda r: r['cum_return'], reverse=True)

@@ -154,3 +154,76 @@ class TestSignalAggregatorHybridLoading:
         arts = agg._load_factors(dir_b)
         assert len(arts) == 1
         assert arts[0]["sharpe_ratio"] == 1.8
+
+
+class TestSignalAggregatorStacking:
+    """SignalAggregator stacking mode: uses meta-model when available, fallback to vote."""
+
+    def _make_rule_factor(self, factors_dir: Path, run_id: int = 1):
+        import joblib
+        factors_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump({
+            "meta": {"name": "ma_crossover", "params": {}, "feat_cols": []},
+            "model": None, "sharpe_ratio": 1.2, "config": {},
+        }, factors_dir / f"factor_{run_id:04d}.pkl")
+
+    def _make_and_save_meta(self, ticker: str, strategy_names: list, meta_dir: Path, synthetic_ohlcv):
+        """Create a minimal fitted meta-model saved to meta_dir."""
+        import joblib
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.preprocessing import StandardScaler
+        import numpy as np
+        meta_dir.mkdir(parents=True, exist_ok=True)
+        n_feats = len(strategy_names) + 3
+        X = np.random.RandomState(0).randn(60, n_feats)
+        y = (X[:, 0] > 0).astype(int)
+        scaler = StandardScaler()
+        lr = LogisticRegression(max_iter=100)
+        lr.fit(scaler.fit_transform(X), y)
+        ticker_safe = ticker.replace(".", "_").upper()
+        joblib.dump(
+            {"model": lr, "scaler": scaler, "strategy_names": strategy_names},
+            meta_dir / f"meta_model_{ticker_safe}.pkl",
+        )
+
+    def test_stacking_uses_meta_model_when_available(self, synthetic_ohlcv, tmp_path):
+        """aggregation_method='stacking' with meta-model present → result is AggregatedSignal."""
+        factors_dir = tmp_path / "factors"
+        meta_dir = tmp_path / "meta"
+        self._make_rule_factor(factors_dir)
+        self._make_and_save_meta("0700.HK", ["ma_crossover"], meta_dir, synthetic_ohlcv)
+
+        agg = SignalAggregator(
+            factors_dir=factors_dir,
+            aggregation_method="stacking",
+            meta_dir=meta_dir,
+            use_registry=False,
+        )
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
+        assert isinstance(result, AggregatedSignal)
+        assert result.consensus_signal in (0, 1)
+        assert 0.0 <= result.confidence_pct <= 1.0
+
+    def test_stacking_fallback_to_vote_when_no_meta_model(self, synthetic_ohlcv, tmp_path):
+        """aggregation_method='stacking' without meta-model → fallback to vote, no error."""
+        factors_dir = tmp_path / "factors"
+        self._make_rule_factor(factors_dir)
+
+        agg = SignalAggregator(
+            factors_dir=factors_dir,
+            aggregation_method="stacking",
+            meta_dir=tmp_path / "nonexistent_meta",
+            use_registry=False,
+        )
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
+        assert isinstance(result, AggregatedSignal)
+        assert 0.0 <= result.confidence_pct <= 1.0
+
+    def test_vote_method_unchanged_by_new_params(self, synthetic_ohlcv, tmp_path):
+        """aggregation_method='vote' (default) behaves identically to original."""
+        factors_dir = tmp_path / "factors"
+        self._make_rule_factor(factors_dir)
+        agg = SignalAggregator(factors_dir=factors_dir, use_registry=False)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {})
+        assert isinstance(result, AggregatedSignal)
+        assert 0.0 <= result.confidence_pct <= 1.0

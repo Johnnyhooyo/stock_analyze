@@ -1,9 +1,12 @@
 """
 tests/test_position_manager.py — PositionManager risk controls tests
 """
+import json
+import os
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -12,6 +15,10 @@ from position_manager import (
     Position,
     TrailingStop,
     simulate_atr_stoploss,
+    _state_path,
+    _load_risk_state,
+    _save_risk_state,
+    _STATE_DIR,
 )
 
 
@@ -153,3 +160,85 @@ class TestValidatePositionSize:
         # 100_000 * 0.25 / 50 = 500 shares max
         result = pm.validate_position_size(1000, 50.0, 100_000)
         assert result == 500
+
+
+# ── BUG-6: per-ticker state isolation ────────────────────────────────────
+
+class TestPerTickerStateIsolation:
+    """Risk state files are isolated per-ticker; concurrent writes don't cross."""
+
+    def test_different_tickers_use_different_files(self):
+        path_a = _state_path("0700.HK")
+        path_b = _state_path("0005.HK")
+        assert path_a != path_b
+        assert "0700_HK" in path_a
+        assert "0005_HK" in path_b
+
+    def test_none_ticker_uses_global_file(self):
+        path = _state_path(None)
+        assert "risk_state.json" in path
+        assert "0700" not in path
+
+    def test_save_and_load_roundtrip_per_ticker(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("position_manager._STATE_DIR", str(tmp_path))
+        # Patch _state_path to use tmp_path
+        import position_manager as pm_mod
+        orig_dir = pm_mod._STATE_DIR
+        pm_mod._STATE_DIR = str(tmp_path)
+        try:
+            state_a = {"consecutive_loss_days": 2, "last_trade_date": "2026-01-01", "trailing_peak": 100.0}
+            state_b = {"consecutive_loss_days": 5, "last_trade_date": "2026-01-02", "trailing_peak": 200.0}
+            _save_risk_state(state_a, ticker="0700.HK")
+            _save_risk_state(state_b, ticker="0005.HK")
+            loaded_a = _load_risk_state(ticker="0700.HK")
+            loaded_b = _load_risk_state(ticker="0005.HK")
+            assert loaded_a["consecutive_loss_days"] == 2
+            assert loaded_b["consecutive_loss_days"] == 5
+            assert loaded_a["trailing_peak"] == 100.0
+            assert loaded_b["trailing_peak"] == 200.0
+        finally:
+            pm_mod._STATE_DIR = orig_dir
+
+    def test_circuit_breaker_state_isolated_between_tickers(self, tmp_path, monkeypatch):
+        import position_manager as pm_mod
+        orig_dir = pm_mod._STATE_DIR
+        pm_mod._STATE_DIR = str(tmp_path)
+        try:
+            pm_a = PositionManager(portfolio_value=100_000, max_consecutive_loss_days=3, ticker="0700.HK")
+            pm_b = PositionManager(portfolio_value=100_000, max_consecutive_loss_days=3, ticker="0005.HK")
+            # Drive 0700 to 2 loss days
+            pm_a.check_circuit_breaker(-0.02, trade_date="2026-01-01")
+            pm_a.check_circuit_breaker(-0.02, trade_date="2026-01-02")
+            # 0005 still at 0 loss days
+            result_b = pm_b.check_circuit_breaker(-0.01, trade_date="2026-01-01")
+            assert result_b["consecutive_loss_days"] == 1
+            # 0700 should be at 2
+            result_a = pm_a.check_circuit_breaker(-0.04, trade_date="2026-01-03")
+            assert result_a["consecutive_loss_days"] == 3
+        finally:
+            pm_mod._STATE_DIR = orig_dir
+
+    def test_atomic_write_leaves_no_tmp_files_on_success(self, tmp_path, monkeypatch):
+        import position_manager as pm_mod
+        pm_mod._STATE_DIR = str(tmp_path)
+        try:
+            _save_risk_state({"consecutive_loss_days": 1, "last_trade_date": "", "trailing_peak": None},
+                             ticker="0700.HK")
+            tmp_files = list(tmp_path.glob("*.tmp"))
+            assert tmp_files == [], f"Unexpected tmp files: {tmp_files}"
+            json_files = list(tmp_path.glob("risk_state_*.json"))
+            assert len(json_files) == 1
+        finally:
+            pm_mod._STATE_DIR = os.path.join(os.path.dirname(pm_mod.__file__), "data", "logs")
+
+    def test_load_returns_default_on_corrupt_json(self, tmp_path, monkeypatch):
+        import position_manager as pm_mod
+        orig_dir = pm_mod._STATE_DIR
+        pm_mod._STATE_DIR = str(tmp_path)
+        try:
+            bad_path = tmp_path / "risk_state_0700_HK.json"
+            bad_path.write_text("{corrupt json!!!")
+            state = _load_risk_state(ticker="0700.HK")
+            assert state["consecutive_loss_days"] == 0
+        finally:
+            pm_mod._STATE_DIR = orig_dir

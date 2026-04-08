@@ -11,6 +11,9 @@ import optuna
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional
+from log_config import get_logger
+
+logger = get_logger(__name__)
 
 # 导入回测引擎
 try:
@@ -790,7 +793,8 @@ def optimize_multiobjective(
                 result = backtest_native(backtest_data, signal, trial_cfg)
         except optuna.exceptions.TrialPruned:
             raise
-        except Exception:
+        except Exception as e:
+            logger.debug("多目标回测失败，剪枝本 trial", extra={"error": str(e)})
             raise optuna.TrialPruned()
 
         # 返回多个目标值

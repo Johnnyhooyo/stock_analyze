@@ -104,8 +104,8 @@ def _save_metadata(path: Path, ticker: str, source: str, rows: int, file_hash: s
             if len(lines) >= 2:
                 date_str = lines[-1].split(",")[0].strip().strip('"')
                 meta["last_bar_date"] = str(pd.Timestamp(date_str).date())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("CSV 末行日期解析失败，meta 不含 last_bar_date", extra={"error": str(e)})
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -131,8 +131,8 @@ def _is_stale(file_path: Path) -> bool:
                 from datetime import date as _date
                 last_date = _date.fromisoformat(str(last_bar))
                 return last_date < target
-        except Exception:
-            pass  # fallback
+        except Exception as e:
+            logger.debug("meta.json 读取失败，降级为慢速路径", extra={"error": str(e)})
 
     # ── 慢速路径 ─────────────────────────────────────────────────
     try:
@@ -163,7 +163,8 @@ def _is_stale(file_path: Path) -> bool:
             if hasattr(last_date, "tzinfo") and last_date.tzinfo is not None:
                 last_date = last_date.tz_convert(None)
             return last_date.date() < target
-    except Exception:
+    except Exception as e:
+        logger.debug("数据文件日期读取失败，视为需要更新", extra={"error": str(e)})
         return True
 
 

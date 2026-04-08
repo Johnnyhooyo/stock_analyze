@@ -86,8 +86,8 @@ def _check_factor_freshness(factors_dir: Path, min_age_days: int = 7) -> bool:
         if saved_at_str:
             age_days = (datetime.now() - datetime.fromisoformat(saved_at_str)).days
             return age_days <= min_age_days
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("因子文件 saved_at 解析失败，降级为文件 mtime", extra={"error": str(e)})
     age_days = (datetime.now() - datetime.fromtimestamp(newest.stat().st_mtime)).days
     return age_days <= min_age_days
 
@@ -690,8 +690,8 @@ def main():
                 df = data_mgr.load(t, period=config.get("period", "5y"))
                 if df is not None and len(df) > 60:
                     data_dict[t] = df
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("选股数据加载失败，跳过该标的", extra={"ticker": t, "error": str(e)})
 
         screen_all = screener.screen(list(data_dict.keys()), data_dict)
         top_picks = screener.top_n(
