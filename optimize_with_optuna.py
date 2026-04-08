@@ -494,6 +494,11 @@ class StrategyOptimizer:
         if max_drawdown < max_dd:
             raise optuna.TrialPruned(f"回撤过大({max_drawdown:.2%}<{max_dd:.2%})")
 
+        # 5.5 Walk-Forward 剪枝（可选，仅在 use_wf_pruning=True 时启用）
+        # 基础指标通过后才运行 WF，避免对低质量 trial 做昂贵的 WF 计算。
+        if self.config.get('use_wf_pruning', False):
+            self._run_wf_pruning(trial_cfg, trial, backtest_data)
+
         # 6. 获取优化指标
         value = float(result.get(self.metric, 0))
         if value is None or np.isnan(value):
@@ -522,6 +527,73 @@ class StrategyOptimizer:
         # 如果需要剪枝，可以在创建 study 时配置 pruner
 
         return value
+
+    def _run_wf_pruning(
+        self,
+        trial_cfg: dict,
+        trial: "optuna.Trial",
+        backtest_data: pd.DataFrame,
+    ) -> None:
+        """
+        Walk-Forward 剪枝：基础指标通过后，以 WF 窗口胜率作为附加约束。
+
+        若 WF 窗口胜率低于 ``wf_min_window_win_rate``（默认 0.5），
+        抛出 ``TrialPruned``，防止过拟合策略进入最终候选。
+
+        WF 窗口大小通过 config 控制（默认轻量窗口，避免拖慢 Optuna）：
+
+        .. code-block:: yaml
+
+            use_wf_pruning: true          # 启用开关
+            wf_min_window_win_rate: 0.5   # 窗口胜率阈值
+            wf_pruning_train_months: 6    # WF 训练窗口（月），默认 6
+            wf_pruning_test_months:  2    # WF 测试窗口（月），默认 2
+            wf_pruning_step_months:  2    # WF 滑动步长（月），默认 2
+
+        WF 内部异常（数据不足、策略出错）会被静默跳过，不影响当前 trial。
+        """
+        from validate_strategy import walk_forward_analysis
+
+        min_rate      = float(trial_cfg.get('wf_min_window_win_rate', 0.5))
+        train_months  = int(trial_cfg.get('wf_pruning_train_months', 6))
+        test_months   = int(trial_cfg.get('wf_pruning_test_months',  2))
+        step_months   = int(trial_cfg.get('wf_pruning_step_months',  2))
+
+        try:
+            wf = walk_forward_analysis(
+                data=self.data,
+                strategy_mod=self.strategy_mod,
+                config=trial_cfg,
+                train_months=train_months,
+                test_months=test_months,
+                step_months=step_months,
+            )
+        except Exception as _e:
+            logger.debug("WF 剪枝跳过（异常）: %s", _e)
+            return
+
+        if not wf.get('success'):
+            # 数据不足时跳过，不剪枝
+            return
+
+        summary = wf.get('summary', {})
+        win_rate = float(summary.get('window_win_rate', 0.0))
+        n_windows = int(summary.get('total_windows', 0))
+
+        # 记录 WF 指标到 trial，便于事后分析
+        trial.set_user_attr('wf_window_win_rate', round(win_rate, 3))
+        trial.set_user_attr('wf_total_windows', n_windows)
+
+        if win_rate < min_rate:
+            raise optuna.TrialPruned(
+                f"WF 窗口胜率不达标 ({win_rate:.1%} < {min_rate:.1%},"
+                f" {n_windows} 窗口)"
+            )
+
+        logger.debug(
+            "WF 剪枝通过: win_rate=%.1f%% windows=%d",
+            win_rate * 100, n_windows,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════

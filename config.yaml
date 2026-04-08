@@ -25,6 +25,10 @@ test_days: 5
 test_months: 6
 early_stop_threshold: 0.03
 wf_min_window_win_rate: 0.5
+use_wf_pruning: false          # true = 在 Optuna 中启用 Walk-Forward 剪枝（较慢但防过拟合）
+wf_pruning_train_months: 6    # WF 训练窗口（月）
+wf_pruning_test_months: 2     # WF 测试窗口（月）
+wf_pruning_step_months: 2     # WF 滑动步长（月）
 
 sentiment_weight: 0.03
 
