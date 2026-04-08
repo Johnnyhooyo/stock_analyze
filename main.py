@@ -100,7 +100,8 @@ def _hist_data_is_stale(hist_file_path: str) -> bool:
                 target_date = _prev_hk_trading_day(today)
 
         return latest_date.date() < target_date
-    except Exception:
+    except Exception as e:
+        logger.debug("数据过期检查失败，视为需要更新", extra={"error": str(e)})
         return True
 
 
@@ -136,8 +137,9 @@ def _next_factor_run_id(factors_dir: Path) -> int:
                 next_id = 1
         counter_path.write_text(str(next_id))
         return next_id
-    except Exception:
+    except Exception as e:
         # 降级：全量扫描
+        logger.debug("run_id 计数器读取失败，降级为全量扫描", extra={"error": str(e)})
         existing = list(factors_dir.glob('factor_*.pkl'))
         if not existing:
             return 1
@@ -292,7 +294,8 @@ def step1_ensure_data(sources_override=None, ticker: str = None, skip_download: 
             try:
                 df_tmp = pd.read_csv(hist_files[0], index_col=0, parse_dates=True)
                 latest_date = df_tmp.index.max()
-            except Exception:
+            except Exception as e:
+                logger.debug("读取 CSV 末行日期失败，视为数据过期", extra={"error": str(e)})
                 latest_date = pd.Timestamp('1970-01-01')
             today = _date.today()
             now = datetime.now()
@@ -742,11 +745,75 @@ def train_portfolio_tickers(
             "validated":   validated,
             "ml_status":   ml_status,
         })
+        # Meta-model 训练（per-ticker）
+        _train_meta_model(
+            ticker=ticker,
+            data=hist_data,
+            config=config,
+            factors_dir=ticker_factors_dir,
+            meta_dir=Path(__file__).parent / "data" / "meta",
+        )
         logger.info("规则训练完成: %s",
                     ticker,
                     extra={"ticker": ticker, "sharpe_ratio": sharpe})
 
     return results
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Meta-model 训练（Stacking 第二层）
+# ══════════════════════════════════════════════════════════════════
+
+def _train_meta_model(
+    ticker: str,
+    data: pd.DataFrame,
+    config: dict,
+    factors_dir: Path,
+    meta_dir: Path,
+) -> None:
+    """
+    训练并保存 meta-model（Stacking 第二层 Logistic Regression）。
+    在基础策略训练完成、factor_*.pkl 已保存后调用。
+    失败时记录 warning，不中断主流程。
+    """
+    try:
+        from engine.meta_aggregator import MetaAggregator
+        from engine.signal_aggregator import SignalAggregator
+
+        agg = SignalAggregator(factors_dir=factors_dir, use_registry=False)
+        artifacts = agg._load_factors()
+
+        if len(artifacts) < 2:
+            logger.warning(
+                "meta-model 训练跳过：active 因子数量不足（需要 >= 2，当前 %d）",
+                len(artifacts),
+                extra={"ticker": ticker},
+            )
+            return
+
+        stacking_cfg = config.get("stacking", {})
+        n_splits = int(stacking_cfg.get("n_splits", 5))
+        label_days = int(stacking_cfg.get("label_days", 5))
+
+        ma = MetaAggregator(meta_dir=meta_dir)
+        metrics = ma.train(
+            ticker=ticker,
+            data=data,
+            artifacts=artifacts,
+            config=config,
+            n_splits=n_splits,
+            label_days=label_days,
+        )
+        ma.save(ticker)
+        logger.info(
+            "meta-model 训练完成",
+            extra={"ticker": ticker, **metrics},
+        )
+    except Exception as e:
+        logger.warning(
+            "meta-model 训练失败，不影响基础策略: %s", e,
+            extra={"ticker": ticker},
+        )
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1138,7 +1205,8 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
         _train_end   = _val_start - pd.Timedelta(days=1)
         _train_start = _val_start - pd.DateOffset(years=train_years)
         train_period_str = f"{_train_start.date()} ~ {_train_end.date()}"
-    except Exception:
+    except Exception as e:
+        logger.debug("训练区间字符串生成失败", extra={"error": str(e)})
         train_period_str = '—'
 
     # ── BS 点（买卖点）────────────────────────────────────────────
@@ -1160,8 +1228,8 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
                                     'action': '买入',
                                     'pv':     t.return_,
                                 })
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("VectorBT 交易记录解析失败", extra={"error": str(e)})
             else:
                 bt_result = backtest(data, sig, config)
                 detail = bt_result.get('detail')
@@ -1174,8 +1242,8 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
                                 'action': '买入' if row['trade'] == 1 else '卖出',
                                 'pv':     row['pv'],
                             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("买卖点生成失败", extra={"error": str(e)})
 
     # ── Markdown 报告 ─────────────────────────────────────────────
     ticker_label = config.get('ticker', '0700.hk').upper()
@@ -1391,8 +1459,8 @@ def generate_signal_report(data: pd.DataFrame, factor_path: str, n_days: int = 3
         if _fa_signal is None and not is_ml and strategy_mod is not None:
             try:
                 _fa_signal, _, _ = strategy_mod.run(data.copy(), config)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("因子分析信号生成失败", extra={"error": str(e)})
         if _fa_signal is not None:
             fa_result = run_factor_analysis(df, _fa_signal, config)
             md_content += fa_result.get('summary_md', '')
@@ -1557,6 +1625,16 @@ def main():
 
     # ── 训练完成通知 ──────────────────────────────────────────────
     ticker = config.get('ticker', '0700.HK').upper()
+
+    # ── Meta-model 训练（Stacking）─────────────────────────────────
+    _train_meta_model(
+        ticker=ticker,
+        data=hist_data,
+        config=config,
+        factors_dir=Path(__file__).parent / "data" / "factors",
+        meta_dir=Path(__file__).parent / "data" / "meta",
+    )
+
     result = {
         "ticker":      ticker,
         "status":      "ok" if best_result is not None else "no_factor",
