@@ -13,6 +13,7 @@ from .signal_aggregator import SignalAggregator, AggregatedSignal
 from .position_analyzer import PositionAnalyzer, RecommendationResult
 from .stock_screener import StockScreener, ScreenerResult
 from .screener_factors import ScreenerFactors, FactorResult
+from .meta_aggregator import MetaAggregator
 
 __all__ = [
     "PortfolioState",
@@ -26,5 +27,6 @@ __all__ = [
     "ScreenerResult",
     "ScreenerFactors",
     "FactorResult",
+    "MetaAggregator",
 ]
 

@@ -141,9 +141,17 @@ class PositionAnalyzer:
         self.portfolio_value = float(
             self.risk_cfg.get("portfolio_value", 200_000.0)
         )
+        stacking_cfg = config.get("stacking", {})
+        _agg_method = stacking_cfg.get("aggregation_method", "vote")
+        _meta_dir_str = stacking_cfg.get("meta_dir", "data/meta")
+        _meta_dir = Path(_meta_dir_str) if Path(_meta_dir_str).is_absolute() else (
+            Path(__file__).parent.parent / _meta_dir_str
+        )
         self._aggregator = SignalAggregator(
             factors_dir=self.factors_dir,
             max_factors=max_factors,
+            aggregation_method=_agg_method,
+            meta_dir=_meta_dir,
         )
 
     # ── 历史统计价格区间 ──────────────────────────────────────────

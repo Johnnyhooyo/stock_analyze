@@ -1,30 +1,76 @@
+ticker: 0700.HK
+period: 5y
+train_years: 5
+backtest_engine: native
+data_sources:
+  - yahooquery
+  - yfinance
+storage_format: csv
+batch_max_workers: 4
+
 fees_rate: 0.00088
 initial_capital: 100000.0
 invest_fraction: 0.95
 lookback_months: 3
-max_tries: 1
-min_return: -999.0
-risk_management:
-  atr_multiplier: 2.0
-  atr_period: 14
-  cooldown_bars: 0
-  daily_loss_limit: 0.05
-  kelly_fraction: 0.5
-  max_consecutive_loss_days: 3
-  max_position_pct: 0.25
-  portfolio_value: 200000.0
-  simulate_in_backtest: true
-  trailing_stop: true
-  use_atr_stop: true
-  use_kelly: false
+max_tries: 300
+use_optuna: true
+optuna_trials: 100
+use_cv: false
+
+min_return: 0.10
+min_sharpe_ratio: 1.0
+max_drawdown: -0.15
+min_total_trades: 4
+test_days: 5
+test_months: 6
+early_stop_threshold: 0.03
+wf_min_window_win_rate: 0.5
+
+sentiment_weight: 0.03
+
+stacking:
+  aggregation_method: vote    # "vote" | "stacking"
+  meta_dir: data/meta
+  label_days: 5
+  n_splits: 5
+
 slippage: 0.001
 stamp_duty: 0.001
+
+risk_management:
+  use_atr_stop: true
+  atr_period: 14
+  atr_multiplier: 2.0
+  trailing_stop: true
+  simulate_in_backtest: true
+  cooldown_bars: 0
+  use_kelly: false
+  kelly_fraction: 0.5
+  max_position_pct: 0.25
+  portfolio_value: 200000.0
+  daily_loss_limit: 0.05
+  max_consecutive_loss_days: 3
+
 strategy_training:
   custom: []
   multi:
-  - xgboost_enhanced
-  - lightgbm_enhanced
+    - xgboost_enhanced
+    - lightgbm_enhanced
+    - rnn_trend
   single:
-  - bollinger_rsi_trend
-  - macd_rsi_trend
-  - rsi_divergence
+    - bollinger_rsi_trend
+    - macd_rsi_trend
+    - rsi_divergence
+    - macd_rsi_combo
+    - atr_breakout
+    - vwap_momentum
+    - stochastic_oscillator
+    - rsi_drawdown_0225
+    - ma_crossover
+
+daily_run:
+  enable_screener: true
+  persist_screener_picks: true
+  max_workers: 4
+  min_factor_age_days: 7
+  retrain_on_stale: true
