@@ -4,6 +4,7 @@ tests/test_integration.py — End-to-end integration smoke tests
 import numpy as np
 import pandas as pd
 import pytest
+from pathlib import Path
 
 from analyze_factor import backtest, run_factor_analysis
 from engine.portfolio_state import PortfolioPosition, PortfolioState
@@ -261,3 +262,202 @@ class TestScreenerIntegration:
         assert "板块强弱" in md
         assert "科技/互联网" in md
         assert "82.5" in md
+
+
+class TestFactorRegistryAggregateIntegration:
+    """BUG-2: 因子注册表集成 — _save_factor → registry → aggregate 端到端验证。"""
+
+    def _make_factor_file(self, factors_dir: Path, run_id: int = 1, ticker: str = "0700.HK") -> Path:
+        """创建最小化因子文件，模拟训练后保存的 artifact。"""
+        import joblib
+        factors_dir.mkdir(parents=True, exist_ok=True)
+        art = {
+            "meta": {"name": "ma_crossover", "params": {}, "feat_cols": []},
+            "model": None,
+            "sharpe_ratio": 1.5,
+            "config": {"ticker": ticker},
+        }
+        path = factors_dir / f"factor_{run_id:04d}.pkl"
+        joblib.dump(art, path)
+        return path
+
+    def test_registry_registered_factor_is_loadable_by_aggregator(self, tmp_path, synthetic_ohlcv):
+        """注册表中的因子能被 SignalAggregator 正确加载，不返回空信号。"""
+        from data.factor_registry import FactorRegistry
+        from engine.signal_aggregator import SignalAggregator
+
+        factors_dir = tmp_path / "factors"
+        factor_path = self._make_factor_file(factors_dir, run_id=1)
+
+        registry = FactorRegistry(registry_path=factors_dir / "factor_registry.json")
+        registry.register(
+            factor_id=1,
+            filename="factor_0001.pkl",
+            subdir=None,
+            strategy_name="ma_crossover",
+            ticker="0700.HK",
+            training_type="single",
+            sharpe_ratio=1.5,
+            cum_return=0.12,
+            max_drawdown=-0.08,
+            total_trades=10,
+        )
+
+        agg = SignalAggregator(factors_dir=factors_dir)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
+
+        assert result.total_strategies >= 1, "注册表过滤后因子不应为空"
+        assert 0.0 <= result.confidence_pct <= 1.0
+
+    def test_per_ticker_subdir_factor_survives_registry_filter(self, tmp_path, synthetic_ohlcv):
+        """per-ticker 子目录因子在注册表过滤后仍可被加载（subdir 匹配）。"""
+        from data.factor_registry import FactorRegistry
+        from engine.signal_aggregator import SignalAggregator
+
+        factors_dir = tmp_path / "factors"
+        ticker_dir = factors_dir / "0700_HK"
+        self._make_factor_file(ticker_dir, run_id=1, ticker="0700.HK")
+
+        registry = FactorRegistry(registry_path=factors_dir / "factor_registry.json")
+        registry.register(
+            factor_id=1,
+            filename="factor_0001.pkl",
+            subdir="0700_HK",
+            strategy_name="ma_crossover",
+            ticker="0700.HK",
+            training_type="single",
+            sharpe_ratio=1.5,
+            cum_return=0.12,
+            max_drawdown=-0.08,
+            total_trades=10,
+        )
+
+        agg = SignalAggregator(factors_dir=factors_dir)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
+
+        assert result.total_strategies >= 1, "per-ticker 注册表因子不应被过滤为空"
+
+    def test_registry_filter_fallback_when_subdir_mismatch(self, tmp_path, synthetic_ohlcv):
+        """registry 中 subdir 与磁盘不匹配时，fallback 返回全部磁盘因子（不返回空信号）。"""
+        from data.factor_registry import FactorRegistry
+        from engine.signal_aggregator import SignalAggregator
+
+        factors_dir = tmp_path / "factors"
+        self._make_factor_file(factors_dir, run_id=1)
+
+        # 故意注册错误 subdir，模拟历史数据不一致
+        registry = FactorRegistry(registry_path=factors_dir / "factor_registry.json")
+        registry.register(
+            factor_id=1,
+            filename="factor_0001.pkl",
+            subdir="WRONG_SUBDIR",   # 不匹配
+            strategy_name="ma_crossover",
+            ticker="0700.HK",
+            training_type="single",
+            sharpe_ratio=1.5,
+            cum_return=0.12,
+            max_drawdown=-0.08,
+            total_trades=10,
+        )
+
+        agg = SignalAggregator(factors_dir=factors_dir)
+        # fallback 应触发：过滤后为空但磁盘有文件 → 回退使用全部磁盘因子
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
+
+        assert result.total_strategies >= 1, "fallback 应保证有因子参与投票，不返回空信号"
+
+    def test_empty_registry_falls_back_to_disk_factors(self, tmp_path, synthetic_ohlcv):
+        """空注册表（无 active 记录）时，回退加载磁盘上所有因子（向后兼容）。"""
+        from engine.signal_aggregator import SignalAggregator
+
+        factors_dir = tmp_path / "factors"
+        self._make_factor_file(factors_dir, run_id=1)
+
+        # 不注册任何因子 → 注册表为空
+        agg = SignalAggregator(factors_dir=factors_dir)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
+
+        assert result.total_strategies >= 1, "空注册表不应导致空信号"
+
+
+class TestMetaAggregatorEndToEnd:
+    """Offline end-to-end: train → save → load → predict."""
+
+    def _make_rule_artifact(self, strategy_name: str) -> dict:
+        return {
+            "meta": {"name": strategy_name, "params": {}, "feat_cols": []},
+            "model": None,
+            "sharpe_ratio": 1.2,
+            "config": {},
+        }
+
+    def test_train_save_load_predict_pipeline(self, synthetic_ohlcv, tmp_path):
+        """Full offline pipeline: train on synthetic data, save, load, predict."""
+        from engine.meta_aggregator import MetaAggregator
+
+        meta_dir = tmp_path / "meta"
+        artifacts = [
+            self._make_rule_artifact("ma_crossover"),
+            self._make_rule_artifact("atr_breakout"),
+        ]
+
+        ma = MetaAggregator(meta_dir=meta_dir)
+        metrics = ma.train(
+            ticker="0700.HK",
+            data=synthetic_ohlcv,
+            artifacts=artifacts,
+            config={},
+            n_splits=2,
+            label_days=5,
+        )
+        assert 0.0 <= metrics["accuracy"] <= 1.0
+        assert metrics["n_samples"] > 0
+
+        path = ma.save("0700.HK")
+        assert path.exists()
+
+        loaded = MetaAggregator.load("0700.HK", meta_dir)
+        assert loaded is not None
+        assert loaded._strategy_names == ma._strategy_names
+
+        feat = loaded.build_feature_vector(
+            {name: 1 for name in loaded._strategy_names}, synthetic_ohlcv
+        )
+        signal, proba = loaded.predict(feat)
+        assert signal in (0, 1)
+        assert 0.0 <= proba <= 1.0
+
+    def test_signal_aggregator_stacking_e2e(self, synthetic_ohlcv, tmp_path):
+        """SignalAggregator in stacking mode uses trained meta-model correctly."""
+        import joblib
+        from engine.meta_aggregator import MetaAggregator
+        from engine.signal_aggregator import SignalAggregator, AggregatedSignal
+
+        factors_dir = tmp_path / "factors"
+        meta_dir = tmp_path / "meta"
+        factors_dir.mkdir()
+        joblib.dump({
+            "meta": {"name": "ma_crossover", "params": {}, "feat_cols": []},
+            "model": None, "sharpe_ratio": 1.5, "config": {},
+        }, factors_dir / "factor_0001.pkl")
+
+        ma = MetaAggregator(meta_dir=meta_dir)
+        artifacts = [
+            {"meta": {"name": "ma_crossover", "params": {}, "feat_cols": []},
+             "model": None, "sharpe_ratio": 1.5, "config": {}},
+            {"meta": {"name": "atr_breakout", "params": {}, "feat_cols": []},
+             "model": None, "sharpe_ratio": 1.2, "config": {}},
+        ]
+        ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
+        ma.save("0700.HK")
+
+        agg = SignalAggregator(
+            factors_dir=factors_dir,
+            aggregation_method="stacking",
+            meta_dir=meta_dir,
+            use_registry=False,
+        )
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
+        assert isinstance(result, AggregatedSignal)
+        assert result.consensus_signal in (0, 1)
+        assert 0.0 <= result.confidence_pct <= 1.0
