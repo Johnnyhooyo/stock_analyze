@@ -99,7 +99,7 @@ class TestTrain:
         ma = MetaAggregator(meta_dir=tmp_path)
         artifacts = [
             self._make_rule_artifact("ma_crossover"),
-            self._make_rule_artifact("rsi_reversion"),
+            self._make_rule_artifact("atr_breakout"),
         ]
         result = ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
         assert "accuracy" in result
@@ -111,7 +111,7 @@ class TestTrain:
         ma = MetaAggregator(meta_dir=tmp_path)
         artifacts = [
             self._make_rule_artifact("ma_crossover"),
-            self._make_rule_artifact("rsi_reversion"),
+            self._make_rule_artifact("atr_breakout"),
         ]
         result = ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
         assert 0.0 <= result["accuracy"] <= 1.0
@@ -121,10 +121,10 @@ class TestTrain:
         ma = MetaAggregator(meta_dir=tmp_path)
         artifacts = [
             self._make_rule_artifact("ma_crossover"),
-            self._make_rule_artifact("rsi_reversion"),
+            self._make_rule_artifact("atr_breakout"),
         ]
         ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
-        assert len(ma._strategy_names) >= 1  # at least one strategy produced signals
+        assert len(ma._strategy_names) >= 2  # both strategies must produce signals
 
     def test_train_raises_with_fewer_than_2_artifacts(self, synthetic_ohlcv, tmp_path):
         """train() raises ValueError when fewer than 2 artifacts provided."""
@@ -138,7 +138,7 @@ class TestTrain:
         ma = MetaAggregator(meta_dir=tmp_path)
         artifacts = [
             self._make_rule_artifact("ma_crossover"),
-            self._make_rule_artifact("rsi_reversion"),
+            self._make_rule_artifact("atr_breakout"),
         ]
         ma.train("0700.HK", synthetic_ohlcv, artifacts, config={}, n_splits=2, label_days=5)
         feat = ma.build_feature_vector(

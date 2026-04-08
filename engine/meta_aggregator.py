@@ -193,9 +193,9 @@ class MetaAggregator:
 
         strategy_names, sig_matrix = self._build_historical_signals(data, artifacts)
 
-        if len(strategy_names) < 1:
+        if len(strategy_names) < 2:
             raise ValueError(
-                f"至少需要 1 个策略产生有效历史信号，实际产生信号的策略数: {len(strategy_names)}"
+                f"至少需要 2 个策略的历史信号，实际产生信号的策略数: {len(strategy_names)}"
             )
 
         n = len(data)
