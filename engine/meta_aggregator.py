@@ -228,12 +228,28 @@ class MetaAggregator:
             X_tr = scaler.fit_transform(X_valid[tr_idx])
             X_te = scaler.transform(X_valid[te_idx])
             lr = LogisticRegression(max_iter=1000, random_state=42, C=1.0)
-            lr.fit(X_tr, y_valid[tr_idx])
-            fold_accs.append(float((lr.predict(X_te) == y_valid[te_idx]).mean()))
+            try:
+                lr.fit(X_tr, y_valid[tr_idx])
+                fold_accs.append(float((lr.predict(X_te) == y_valid[te_idx]).mean()))
+            except ValueError:
+                logger.debug("跳过 CV fold：训练集标签为单一类别")
+                continue
 
+        if not fold_accs:
+            logger.warning(
+                "所有 CV fold 已跳过（数据不足或标签单一），meta-model 精度设为默认 0.5",
+                extra={"ticker": ticker},
+            )
         mean_acc = float(np.mean(fold_accs)) if fold_accs else 0.5
 
         # Final model: all valid samples
+        if np.unique(y_valid).size < 2:
+            logger.warning(
+                "训练标签全为单一类别，跳过 meta-model 训练",
+                extra={"ticker": ticker},
+            )
+            return {"accuracy": 0.5, "n_samples": len(y_valid), "n_features": X_all.shape[1]}
+
         scaler_final = StandardScaler()
         X_scaled = scaler_final.fit_transform(X_valid)
         lr_final = LogisticRegression(max_iter=1000, random_state=42, C=1.0)
