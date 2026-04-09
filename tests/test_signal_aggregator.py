@@ -227,3 +227,66 @@ class TestSignalAggregatorStacking:
         result = agg.aggregate("0700.HK", synthetic_ohlcv, {})
         assert isinstance(result, AggregatedSignal)
         assert 0.0 <= result.confidence_pct <= 1.0
+
+
+class TestICWeightedVoting:
+    """IC 加权投票：rank_ic 存在时应优先于 sharpe 作为权重。"""
+
+    def _make_factor(self, d: Path, run_id: int, sharpe: float, rank_ic: float | None = None):
+        import joblib
+        d.mkdir(parents=True, exist_ok=True)
+        art = {
+            "meta": {"name": f"strat_{run_id}", "params": {}, "feat_cols": []},
+            "model": None,
+            "sharpe_ratio": sharpe,
+            "config": {},
+        }
+        if rank_ic is not None:
+            art["rank_ic"] = rank_ic
+        joblib.dump(art, d / f"factor_{run_id:04d}.pkl")
+
+    def test_ic_weight_beats_sharpe_fallback(self, tmp_path, synthetic_ohlcv):
+        """有 rank_ic 的因子，权重为 abs(ic)，不使用 sharpe。"""
+        factors_dir = tmp_path / "factors"
+        # factor 1: high sharpe, no IC → uses sharpe=2.0
+        self._make_factor(factors_dir, 1, sharpe=2.0, rank_ic=None)
+        # factor 2: low sharpe, high IC → uses abs(ic)=0.25
+        self._make_factor(factors_dir, 2, sharpe=0.2, rank_ic=0.25)
+
+        agg = SignalAggregator(factors_dir=factors_dir, use_registry=False)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {})
+        assert isinstance(result, AggregatedSignal)
+        assert 0.0 <= result.confidence_pct <= 1.0
+
+    def test_negative_ic_uses_abs(self, tmp_path, synthetic_ohlcv):
+        """负的 IC（反向相关因子）weight = abs(ic) > 0。"""
+        factors_dir = tmp_path / "factors"
+        self._make_factor(factors_dir, 1, sharpe=1.0, rank_ic=-0.30)
+        agg = SignalAggregator(factors_dir=factors_dir, use_registry=False)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {})
+        assert isinstance(result, AggregatedSignal)
+
+    def test_nan_ic_falls_back_to_sharpe(self, tmp_path, synthetic_ohlcv):
+        """rank_ic=nan → 回退到 sharpe 权重。"""
+        factors_dir = tmp_path / "factors"
+        self._make_factor(factors_dir, 1, sharpe=1.5, rank_ic=float("nan"))
+        agg = SignalAggregator(factors_dir=factors_dir, use_registry=False)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {})
+        assert isinstance(result, AggregatedSignal)
+        assert 0.0 <= result.confidence_pct <= 1.0
+
+    def test_missing_ic_key_falls_back_to_sharpe(self, tmp_path, synthetic_ohlcv):
+        """旧因子文件没有 rank_ic 键 → 回退到 sharpe 权重，不抛出异常。"""
+        import joblib
+        factors_dir = tmp_path / "factors"
+        factors_dir.mkdir()
+        # Deliberately omit rank_ic key (old factor format)
+        joblib.dump({
+            "meta": {"name": "ma_crossover", "params": {}, "feat_cols": []},
+            "model": None,
+            "sharpe_ratio": 1.2,
+            "config": {},
+        }, factors_dir / "factor_0001.pkl")
+        agg = SignalAggregator(factors_dir=factors_dir, use_registry=False)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {})
+        assert isinstance(result, AggregatedSignal)

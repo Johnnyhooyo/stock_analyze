@@ -296,15 +296,19 @@ class SignalAggregator:
 
         votes: list[dict] = []   # {signal, weight, strategy_name, is_ml}
         top_strategy = ""
-        top_sharpe = float("-inf")
+        top_weight = float("-inf")
 
         for art in artifacts:
             sharpe = art.get("sharpe_ratio", float("nan"))
             if math.isnan(sharpe):
                 sharpe = 0.0
 
-            # 低于最低阈值则跳过（但仍计入总数）
-            weight = max(sharpe, 0.01)  # 确保正权重
+            # Rank IC 优先作为权重；IC 缺失或 NaN 时退回 Sharpe
+            rank_ic = art.get("rank_ic", float("nan"))
+            if not math.isnan(rank_ic):
+                weight = max(abs(rank_ic), 0.01)   # IC 越高权重越大
+            else:
+                weight = max(sharpe, 0.01)          # 旧因子兜底
 
             sig = self._get_signal_from_artifact(art, data, config)
             if sig is None:
@@ -320,11 +324,12 @@ class SignalAggregator:
                 "weight": weight,
                 "strategy_name": strategy_name,
                 "sharpe": sharpe,
+                "rank_ic": rank_ic,
                 "is_ml": is_ml,
             })
 
-            if sharpe > top_sharpe:
-                top_sharpe = sharpe
+            if weight > top_weight:
+                top_weight = weight
                 top_strategy = strategy_name
 
         if not votes:
@@ -383,7 +388,7 @@ class SignalAggregator:
             total_strategies=len(votes),
             confidence_pct=confidence,
             top_strategy=top_strategy,
-            top_strategy_sharpe=top_sharpe,
+            top_strategy_sharpe=top_weight,
             ml_signal=ml_signal,
             rule_signal=rule_signal,
             raw_votes=votes,

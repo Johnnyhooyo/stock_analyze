@@ -22,12 +22,15 @@ _OHLCV = _make_ohlcv()
 _FACTOR_RESULT = ("/tmp/factor_0001.pkl", {"sharpe_ratio": 1.5, "validated": "double"}, [])
 _EMPTY_RESULT  = (None, None, [])
 
+# Patch targets: functions are used from pipeline.train_portfolio's namespace
+_MOD = "pipeline.train_portfolio"
+
 
 class TestTrainPortfolioTickers:
 
-    @patch("main._ensure_hk_data")
-    @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
-    @patch("main.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
+    @patch(f"{_MOD}._ensure_hk_data")
+    @patch(f"{_MOD}.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
+    @patch(f"{_MOD}.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
     def test_ml_trained_once_rules_per_ticker(
         self, mock_train, mock_step1, mock_hk
     ):
@@ -40,9 +43,9 @@ class TestTrainPortfolioTickers:
         assert mock_train.call_count == 3
         mock_hk.assert_called_once()
 
-    @patch("main._ensure_hk_data")
-    @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
-    @patch("main.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
+    @patch(f"{_MOD}._ensure_hk_data")
+    @patch(f"{_MOD}.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
+    @patch(f"{_MOD}.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
     def test_ml_call_uses_multi_strategy_type(
         self, mock_train, mock_step1, mock_hk
     ):
@@ -53,9 +56,9 @@ class TestTrainPortfolioTickers:
         assert first_call.kwargs.get("strategy_type") == "multi"
         assert first_call.kwargs.get("factors_dir_override") is None
 
-    @patch("main._ensure_hk_data")
-    @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
-    @patch("main.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
+    @patch(f"{_MOD}._ensure_hk_data")
+    @patch(f"{_MOD}.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
+    @patch(f"{_MOD}.step2_train", side_effect=[_FACTOR_RESULT, _FACTOR_RESULT, _FACTOR_RESULT])
     def test_rule_calls_use_single_and_per_ticker_dir(
         self, mock_train, mock_step1, mock_hk
     ):
@@ -72,9 +75,9 @@ class TestTrainPortfolioTickers:
                 f"call {i} 的目录 {dir_arg} 不含 {expected_safe}"
             )
 
-    @patch("main._ensure_hk_data")
-    @patch("main.step1_ensure_data", side_effect=Exception("network error"))
-    @patch("main.step2_train", return_value=_FACTOR_RESULT)
+    @patch(f"{_MOD}._ensure_hk_data")
+    @patch(f"{_MOD}.step1_ensure_data", side_effect=Exception("network error"))
+    @patch(f"{_MOD}.step2_train", return_value=_FACTOR_RESULT)
     def test_data_failure_skips_ticker_continues(self, mock_train, mock_step1, mock_hk):
         """数据下载失败时跳过该 ticker，继续处理其余 ticker，不抛异常。"""
         from main import train_portfolio_tickers
@@ -84,9 +87,9 @@ class TestTrainPortfolioTickers:
         # so both the ML block and every per-ticker block hit data_failed.
         assert all(r["status"] == "data_failed" for r in results)
 
-    @patch("main._ensure_hk_data")
-    @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
-    @patch("main.step2_train", side_effect=[_FACTOR_RESULT, Exception("train error"), _FACTOR_RESULT])
+    @patch(f"{_MOD}._ensure_hk_data")
+    @patch(f"{_MOD}.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
+    @patch(f"{_MOD}.step2_train", side_effect=[_FACTOR_RESULT, Exception("train error"), _FACTOR_RESULT])
     def test_rule_train_failure_skips_ticker_continues(
         self, mock_train, mock_step1, mock_hk
     ):
@@ -96,10 +99,10 @@ class TestTrainPortfolioTickers:
         assert results[0]["status"] == "train_failed"   # 0700.HK rule 失败
         assert results[1]["status"] == "ok"             # 0005.HK 正常
 
-    @patch("main._ensure_hk_data")
-    @patch("main.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
-    @patch("main.step2_train", side_effect=[_EMPTY_RESULT, _EMPTY_RESULT, _EMPTY_RESULT])
-    @patch("main._latest_factor_path", return_value=None)
+    @patch(f"{_MOD}._ensure_hk_data")
+    @patch(f"{_MOD}.step1_ensure_data", return_value=(_OHLCV, "/tmp/fake.csv"))
+    @patch(f"{_MOD}.step2_train", side_effect=[_EMPTY_RESULT, _EMPTY_RESULT, _EMPTY_RESULT])
+    @patch(f"{_MOD}._latest_factor_path", return_value=None)
     def test_no_factor_still_ok_status(self, mock_latest, mock_train, mock_step1, mock_hk):
         """训练未产生因子时 status=ok 但 factor_path=None。"""
         from main import train_portfolio_tickers

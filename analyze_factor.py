@@ -1038,6 +1038,11 @@ def run_trial(strategy_mod, data: pd.DataFrame, config: dict,
         'meta':              val_meta,   # ← 验证集 meta，indicators 与 detail 索引对齐
         'detail':            bt.get('detail', pd.DataFrame()),
         'config':            config,
+        # ── Rank IC：信号对验证集 1 日前向收益的 Spearman 相关系数 ──
+        'rank_ic':           compute_ic(
+            val_signal.reindex(val_df.index).fillna(0),
+            val_df['Close'].pct_change(fill_method=None).shift(-1),
+        ),
     }
 
 
