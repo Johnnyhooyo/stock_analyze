@@ -173,11 +173,11 @@ class PositionAnalyzer:
             p_lo = float(rolling.quantile(lower_pct))
             p_hi = float(rolling.quantile(upper_pct))
         else:
+            from scipy.stats import norm as _norm
             mu = float(returns.mean() * horizon_days)
             sig = float(returns.std() * (horizon_days ** 0.5))
-            _Z = {0.10: -1.282, 0.90: 1.282}
-            p_lo = mu + _Z[lower_pct] * sig if sig > 0 else 0.0
-            p_hi = mu + _Z[upper_pct] * sig if sig > 0 else 0.0
+            p_lo = mu + _norm.ppf(lower_pct) * sig if sig > 0 else 0.0
+            p_hi = mu + _norm.ppf(upper_pct) * sig if sig > 0 else 0.0
         return last_close * (1 + p_lo), last_close * (1 + p_hi)
 
     # ── 主分析入口 ────────────────────────────────────────────────

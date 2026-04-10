@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from log_config import get_logger
-from config_loader import load_config
+from config_loader import load_config, ticker_to_safe
 from pipeline.data_prep import step1_ensure_data, _ensure_hk_data
 from pipeline.train import step2_train
 from pipeline.select import _latest_factor_path
@@ -116,7 +116,7 @@ def train_portfolio_tickers(
 
     # ── 步骤 B：每只 ticker 的规则策略训练 ────────────────────────
     for ticker in tickers:
-        ticker_safe = ticker.replace('.', '_').upper()
+        ticker_safe = ticker_to_safe(ticker)
         ticker_factors_dir = base_factors_dir / ticker_safe
 
         logger.info("规则策略训练: %s → %s", ticker, ticker_factors_dir,

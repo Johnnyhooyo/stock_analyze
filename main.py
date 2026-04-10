@@ -110,25 +110,11 @@ def _historical_price_range(
         p_lo = float(rolling.quantile(lower_pct))
         p_hi = float(rolling.quantile(upper_pct))
     else:
-        _Z = {0.01: -2.326, 0.05: -1.645, 0.10: -1.282, 0.20: -0.842,
-              0.25: -0.674, 0.75:  0.674,  0.80:  0.842, 0.90:  1.282,
-              0.95:  1.645, 0.99:  2.326}
+        from scipy.stats import norm as _norm
         mu  = float(returns.mean() * horizon_days)
         sig = float(returns.std() * (horizon_days ** 0.5))
-
-        def _z(p: float) -> float:
-            if p in _Z:
-                return _Z[p]
-            keys = sorted(_Z.keys())
-            lo_k = max((k for k in keys if k <= p), default=keys[0])
-            hi_k = min((k for k in keys if k >= p), default=keys[-1])
-            if lo_k == hi_k:
-                return _Z[lo_k]
-            t = (p - lo_k) / (hi_k - lo_k)
-            return _Z[lo_k] + t * (_Z[hi_k] - _Z[lo_k])
-
-        p_lo = mu + _z(lower_pct) * sig
-        p_hi = mu + _z(upper_pct) * sig
+        p_lo = mu + _norm.ppf(lower_pct) * sig
+        p_hi = mu + _norm.ppf(upper_pct) * sig
     return last_close * (1 + p_lo), last_close * (1 + p_hi)
 
 

@@ -44,17 +44,10 @@ PARAM_SPACE = {
     'lgb_min_child_samples': (10, 50),
 }
 
-# 导入特征工程函数
+# 导入特征工程函数（指标计算已统一到 strategies.indicators）
 from strategies.xgboost_enhanced import (
     add_features,
     prepare_data,
-    _calculate_rsi,
-    _calculate_macd,
-    _calculate_bollinger_bands,
-    _calculate_kdj,
-    _calculate_atr,
-    _calculate_obv,
-    _calculate_pvt,
     TSFRESH_AVAILABLE,
 )
 

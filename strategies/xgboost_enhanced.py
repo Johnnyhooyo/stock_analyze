@@ -20,6 +20,15 @@ import numpy as np
 import pandas as pd
 from typing import Tuple, Optional
 from log_config import get_logger
+from strategies.indicators import (
+    rsi as _ind_rsi,
+    macd as _ind_macd,
+    bollinger_bands as _ind_bollinger,
+    kdj as _ind_kdj,
+    atr as _ind_atr,
+    obv as _ind_obv,
+    pvt as _ind_pvt,
+)
 
 logger = get_logger(__name__)
 
@@ -55,14 +64,8 @@ except ImportError:
     extract_simple_ts_features = None
 
 
-def _calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    """RSI 计算"""
-    delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
-
+# Thin wrappers around shared indicators — preserve call signatures for add_features()
+_calculate_rsi = _ind_rsi
 
 # 尝试导入 ta-lib 指标计算
 try:
@@ -78,13 +81,7 @@ def _calculate_macd(
     slow: int = 26,
     signal: int = 9
 ) -> Tuple[pd.Series, pd.Series, pd.Series]:
-    """MACD 计算"""
-    ema_fast = series.ewm(span=fast, adjust=False).mean()
-    ema_slow = series.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
+    return _ind_macd(series, fast, slow, signal)
 
 
 def _calculate_bollinger_bands(
@@ -92,12 +89,7 @@ def _calculate_bollinger_bands(
     period: int = 20,
     std_dev: float = 2.0
 ) -> Tuple[pd.Series, pd.Series, pd.Series]:
-    """布林带计算"""
-    ma = series.rolling(period).mean()
-    std = series.rolling(period).std()
-    upper = ma + std_dev * std
-    lower = ma - std_dev * std
-    # 位置指标 (0~1)
+    upper, ma, lower = _ind_bollinger(series, period, std_dev)
     position = (series - lower) / (upper - lower).replace(0, np.nan)
     return upper, ma, lower, position
 
@@ -108,43 +100,12 @@ def _calculate_kdj(
     close: pd.Series,
     period: int = 9
 ) -> Tuple[pd.Series, pd.Series, pd.Series]:
-    """KDJ 指标计算"""
-    lowest_low = low.rolling(period).min()
-    highest_high = high.rolling(period).max()
-
-    rsv = (close - lowest_low) / (highest_high - lowest_low).replace(0, np.nan) * 100
-
-    k = rsv.ewm(com=2, adjust=False).mean()
-    d = k.ewm(com=2, adjust=False).mean()
-    j = 3 * k - 2 * d
-
-    return k, d, j
+    return _ind_kdj(high, low, close, period)
 
 
-def _calculate_atr(
-    high: pd.Series,
-    low: pd.Series,
-    close: pd.Series,
-    period: int = 14
-) -> pd.Series:
-    """ATR 计算"""
-    tr1 = high - low
-    tr2 = (high - close.shift(1)).abs()
-    tr3 = (low - close.shift(1)).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    return tr.rolling(period).mean()
-
-
-def _calculate_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
-    """OBV 计算"""
-    obv = (np.sign(close.diff()) * volume).fillna(0).cumsum()
-    return obv
-
-
-def _calculate_pvt(close: pd.Series, volume: pd.Series) -> pd.Series:
-    """PVT (Price Volume Trend) 计算"""
-    pvt = ((close.diff() / close.shift(1)) * volume).fillna(0).cumsum()
-    return pvt
+_calculate_atr = _ind_atr
+_calculate_obv = _ind_obv
+_calculate_pvt = _ind_pvt
 
 
 def add_features(df: pd.DataFrame, use_ta_lib: bool = False) -> pd.DataFrame:

@@ -22,6 +22,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from config_loader import ticker_to_safe
 from log_config import get_logger
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -163,7 +164,7 @@ class SignalAggregator:
         # 保留 ticker
         art_config["ticker"] = config.get("ticker", art_config.get("ticker", "0700.HK"))
 
-        df = data.copy().sort_index()
+        df = data
 
         try:
             if is_ml and strategy_mod is not None and hasattr(strategy_mod, "predict"):
@@ -261,11 +262,11 @@ class SignalAggregator:
         Returns:
             AggregatedSignal
         """
-        ticker_safe = ticker.replace(".", "_").upper()
+        ticker_safe = ticker_to_safe(ticker)
         per_ticker_dir = self.factors_dir / ticker_safe
 
-        if per_ticker_dir.is_dir() and any(per_ticker_dir.glob("factor_*.pkl")):
-            per_ticker_arts = self._load_factors(per_ticker_dir)
+        per_ticker_arts = self._load_factors(per_ticker_dir) if per_ticker_dir.is_dir() else []
+        if per_ticker_arts:
             per_ticker_arts = self._filter_by_registry(per_ticker_arts, subdir=ticker_safe)
             global_arts_all = self._load_factors(self.factors_dir)
             global_ml_arts = [
@@ -293,6 +294,9 @@ class SignalAggregator:
                 consensus_signal=0,
                 confidence_pct=0.0,
             )
+
+        # Sort once; strategies copy internally so no need to copy per artifact
+        data = data.sort_index()
 
         votes: list[dict] = []   # {signal, weight, strategy_name, is_ml}
         top_strategy = ""

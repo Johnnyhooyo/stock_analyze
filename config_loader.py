@@ -35,3 +35,8 @@ def load_config(include_keys: bool = True) -> dict:
                 config.update(keys)
 
     return config
+
+
+def ticker_to_safe(ticker: str) -> str:
+    """Convert a ticker like '0700.HK' to a filesystem-safe form '0700_HK'."""
+    return ticker.replace(".", "_").upper()

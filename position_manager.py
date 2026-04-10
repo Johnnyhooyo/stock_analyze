@@ -10,6 +10,7 @@ import pandas as pd
 from dataclasses import dataclass
 from typing import Optional
 
+from config_loader import ticker_to_safe
 from log_config import get_logger
 
 logger = get_logger(__name__)
@@ -106,7 +107,7 @@ _DEFAULT_STATE = {"consecutive_loss_days": 0, "last_trade_date": "", "trailing_p
 def _state_path(ticker: Optional[str] = None) -> str:
     """返回对应 ticker 的风控状态文件路径（per-ticker 隔离，防止并发覆盖）。"""
     if ticker:
-        safe = ticker.replace(".", "_").upper()
+        safe = ticker_to_safe(ticker)
         return os.path.join(_STATE_DIR, f"risk_state_{safe}.json")
     return _STATE_FILE
 

@@ -36,14 +36,9 @@ PVT 计算:
 
 import pandas as pd
 
-from strategies.indicators import fibonacci, kdj
+from strategies.indicators import fibonacci, kdj, pvt as _pvt
 
 NAME = "kdj_pvt"
-
-
-def _pvt(close: pd.Series, volume: pd.Series) -> pd.Series:
-    pct_change = close.diff() / close.shift(1)
-    return (pct_change * volume).cumsum()
 
 
 def run(data: pd.DataFrame, config: dict):

@@ -280,6 +280,20 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
     return (direction * volume).cumsum()
 
 
+def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    """ATR（平均真实波幅）。"""
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return tr.rolling(period).mean()
+
+
+def pvt(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """PVT（价量趋势）。"""
+    return ((close.diff() / close.shift(1)) * volume).fillna(0).cumsum()
+
+
 def fibonacci(high: pd.Series, low: pd.Series, period: int = 60):
     """斐波那契回撤：返回 (fib_0618_support, fib_0382_resistance)。"""
     swing_high = high.rolling(period).max()

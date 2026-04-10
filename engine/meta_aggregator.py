@@ -24,6 +24,7 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
+from config_loader import ticker_to_safe
 from log_config import get_logger
 
 logger = get_logger(__name__)
@@ -266,7 +267,7 @@ class MetaAggregator:
     def save(self, ticker: str) -> Path:
         """Atomic save to data/meta/meta_model_{TICKER_SAFE}.pkl."""
         self._meta_dir.mkdir(parents=True, exist_ok=True)
-        ticker_safe = ticker.replace(".", "_").upper()
+        ticker_safe = ticker_to_safe(ticker)
         path = self._meta_dir / f"meta_model_{ticker_safe}.pkl"
         payload = {
             "model": self._model,
@@ -283,7 +284,7 @@ class MetaAggregator:
     def load(cls, ticker: str, meta_dir: Optional[Path] = None) -> Optional["MetaAggregator"]:
         """Load saved meta-model. Returns None if file missing or corrupt."""
         meta_dir = meta_dir or cls.META_DIR_DEFAULT
-        ticker_safe = ticker.replace(".", "_").upper()
+        ticker_safe = ticker_to_safe(ticker)
         path = meta_dir / f"meta_model_{ticker_safe}.pkl"
         if not path.exists():
             return None
