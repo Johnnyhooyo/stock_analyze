@@ -280,8 +280,12 @@ def run(data: pd.DataFrame, config: dict):
 
     # 预测
     train_pred = model.predict(X_train)
-    test_pred = model.predict(X_test)
-    test_proba = model.predict_proba(X_test)[:, 1]
+    if len(X_test) > 0:
+        test_pred = model.predict(X_test)
+        test_proba = model.predict_proba(X_test)[:, 1]
+    else:
+        test_pred = np.array([], dtype=int)
+        test_proba = np.array([], dtype=float)
 
     # 生成完整信号（在原始数据上生成信号，与 X 的索引对齐）
     # 创建与 X 等长的信号序列
