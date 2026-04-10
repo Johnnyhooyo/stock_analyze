@@ -79,109 +79,124 @@ def run(data: pd.DataFrame, config: dict):
     reg_lambda          = float(config.get('lgb_reg_lambda', 0.0))
     min_child_samples   = int(config.get('lgb_min_child_samples', 20))
 
-    # 添加技术指标特征
-    df = add_features(data, use_ta_lib=use_ta_lib)
+    # ── 多股票路径（有 ticker 列）：per-ticker 特征，避免跨 ticker 指标计算 ──
+    if 'ticker' in data.columns and data['ticker'].nunique() > 1:
+        from train_multi_stock import create_multi_stock_dataset
+        X, y, feat_cols = create_multi_stock_dataset(data, test_days, label_period)
+        if X.empty or len(X) < 10:
+            raise ValueError("多股票特征数据不足: 需要 > 10 个样本")
+        tsfresh_feat_count = 0
+        selected_tsfresh_cols = []
+        no_split = False
+        split_idx = len(X)
+        X_train, y_train = X, y
+        X_test = X.iloc[:0]
+        y_test = y.iloc[:0]
+    else:
+        # ── 单股票路径（原有逻辑）────────────────────────────────────────────────
+        # 添加技术指标特征
+        df = add_features(data, use_ta_lib=use_ta_lib)
 
-    # ===== 可选: 添加 tsfresh 特征 =====
-    # ⚠️ 关键：tsfresh 特征选择只能使用训练集数据，不得泄露测试期标签
-    no_split = config.get('no_internal_split', False)
-    _prelim_split_idx = int(len(df) * 0.8) if not no_split else len(df)
+        # ===== 可选: 添加 tsfresh 特征 =====
+        # ⚠️ 关键：tsfresh 特征选择只能使用训练集数据，不得泄露测试期标签
+        no_split = config.get('no_internal_split', False)
+        _prelim_split_idx = int(len(df) * 0.8) if not no_split else len(df)
 
-    tsfresh_feat_count = 0
-    selected_tsfresh_cols = []
-    if use_tsfresh:
-        try:
-            from strategies.tsfresh_features import (
-                extract_tsfresh_features,
-                extract_simple_ts_features,
-            )
-        except ImportError:
-            extract_tsfresh_features = None
-            extract_simple_ts_features = None
+        tsfresh_feat_count = 0
+        selected_tsfresh_cols = []
+        if use_tsfresh:
+            try:
+                from strategies.tsfresh_features import (
+                    extract_tsfresh_features,
+                    extract_simple_ts_features,
+                )
+            except ImportError:
+                extract_tsfresh_features = None
+                extract_simple_ts_features = None
 
-        if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
-            window_sizes = config.get('tsfresh_window_sizes', [10, 20])
+            if TSFRESH_AVAILABLE and extract_tsfresh_features is not None:
+                window_sizes = config.get('tsfresh_window_sizes', [10, 20])
 
-            # ---- 训练集部分：提取特征 + 特征选择（只用训练期标签） ----
-            train_data_for_ts = data.iloc[:_prelim_split_idx]
-            train_label = np.where(
-                train_data_for_ts['Close'].shift(-label_period) > train_data_for_ts['Close'],
-                1, 0
-            )
-            y_train_for_selection = pd.Series(train_label, index=train_data_for_ts.index)
+                # ---- 训练集部分：提取特征 + 特征选择（只用训练期标签） ----
+                train_data_for_ts = data.iloc[:_prelim_split_idx]
+                train_label = np.where(
+                    train_data_for_ts['Close'].shift(-label_period) > train_data_for_ts['Close'],
+                    1, 0
+                )
+                y_train_for_selection = pd.Series(train_label, index=train_data_for_ts.index)
 
-            train_tsfresh, train_tsfresh_cols = extract_tsfresh_features(
-                train_data_for_ts,
-                window_sizes=window_sizes,
-                extraction_level='efficient',
-                with_selection=True,
-                y=y_train_for_selection,
-            )
-            selected_tsfresh_cols = list(train_tsfresh_cols)
-
-            # ---- 测试集部分：只提取特征，对齐到训练集的列 ----
-            if not no_split and len(data) > _prelim_split_idx:
-                test_data_for_ts = data.iloc[_prelim_split_idx:]
-                test_tsfresh, _ = extract_tsfresh_features(
-                    test_data_for_ts,
+                train_tsfresh, train_tsfresh_cols = extract_tsfresh_features(
+                    train_data_for_ts,
                     window_sizes=window_sizes,
                     extraction_level='efficient',
-                    with_selection=False,
-                    y=None,
+                    with_selection=True,
+                    y=y_train_for_selection,
                 )
-                if not test_tsfresh.empty and selected_tsfresh_cols:
-                    test_tsfresh = test_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+                selected_tsfresh_cols = list(train_tsfresh_cols)
 
-                if not train_tsfresh.empty and not test_tsfresh.empty:
-                    tsfresh_features = pd.concat([train_tsfresh, test_tsfresh])
-                elif not train_tsfresh.empty:
-                    tsfresh_features = train_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+                # ---- 测试集部分：只提取特征，对齐到训练集的列 ----
+                if not no_split and len(data) > _prelim_split_idx:
+                    test_data_for_ts = data.iloc[_prelim_split_idx:]
+                    test_tsfresh, _ = extract_tsfresh_features(
+                        test_data_for_ts,
+                        window_sizes=window_sizes,
+                        extraction_level='efficient',
+                        with_selection=False,
+                        y=None,
+                    )
+                    if not test_tsfresh.empty and selected_tsfresh_cols:
+                        test_tsfresh = test_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+
+                    if not train_tsfresh.empty and not test_tsfresh.empty:
+                        tsfresh_features = pd.concat([train_tsfresh, test_tsfresh])
+                    elif not train_tsfresh.empty:
+                        tsfresh_features = train_tsfresh.reindex(columns=selected_tsfresh_cols, fill_value=0)
+                    else:
+                        tsfresh_features = pd.DataFrame()
                 else:
-                    tsfresh_features = pd.DataFrame()
-            else:
-                tsfresh_features = train_tsfresh
+                    tsfresh_features = train_tsfresh
 
-            if not tsfresh_features.empty:
-                tsfresh_features = tsfresh_features.reindex(df.index)
-                tsfresh_feat_count = len(selected_tsfresh_cols)
-                logger.info("lightgbm_enhanced tsfresh特征提取成功", extra={
-                    "tsfresh_feature_count": tsfresh_feat_count,
-                    "note": "已修复前视偏差"
-                })
-                df = pd.concat([df, tsfresh_features], axis=1)
-        elif extract_simple_ts_features is not None:
-            logger.info("lightgbm_enhanced使用简化版时间序列特征")
-            simple_features = extract_simple_ts_features(data, windows=[5, 10, 20])
-            if not simple_features.empty:
-                simple_features = simple_features.reindex(df.index)
-                df = pd.concat([df, simple_features], axis=1)
-                tsfresh_feat_count = len(simple_features.columns)
-                logger.info("lightgbm_enhanced简化版特征数", extra={"simplified_feature_count": tsfresh_feat_count})
+                if not tsfresh_features.empty:
+                    tsfresh_features = tsfresh_features.reindex(df.index)
+                    tsfresh_feat_count = len(selected_tsfresh_cols)
+                    logger.info("lightgbm_enhanced tsfresh特征提取成功", extra={
+                        "tsfresh_feature_count": tsfresh_feat_count,
+                        "note": "已修复前视偏差"
+                    })
+                    df = pd.concat([df, tsfresh_features], axis=1)
+            elif extract_simple_ts_features is not None:
+                logger.info("lightgbm_enhanced使用简化版时间序列特征")
+                simple_features = extract_simple_ts_features(data, windows=[5, 10, 20])
+                if not simple_features.empty:
+                    simple_features = simple_features.reindex(df.index)
+                    df = pd.concat([df, simple_features], axis=1)
+                    tsfresh_feat_count = len(simple_features.columns)
+                    logger.info("lightgbm_enhanced简化版特征数", extra={"simplified_feature_count": tsfresh_feat_count})
 
-    # 准备数据
-    X, y, feat_cols = prepare_data(df, test_days, label_period)
+        # 准备数据
+        X, y, feat_cols = prepare_data(df, test_days, label_period)
 
-    if tsfresh_feat_count > 0:
-        logger.info("lightgbm_enhanced总特征数", extra={"total_features": len(feat_cols)})
+        if tsfresh_feat_count > 0:
+            logger.info("lightgbm_enhanced总特征数", extra={"total_features": len(feat_cols)})
 
-    # 分割训练/测试（80% 训练，20% 测试）
-    split_idx = len(X)  # 默认值，no_split 时使用全部数据
-    if no_split:
-        # 使用全部数据训练
-        if len(X) < 10:
-            raise ValueError(f"数据不足: 需要 > 10 个样本")
-        X_train = X
-        y_train = y
-        X_test = X
-        y_test = y
-    else:
-        if len(X) < 10:
-            raise ValueError(f"数据不足: 需要 > 10 个样本")
-        split_idx = int(len(X) * 0.8)
-        X_train = X.iloc[:split_idx]
-        y_train = y.iloc[:split_idx]
-        X_test = X.iloc[split_idx:]
-        y_test = y.iloc[split_idx:]
+        # 分割训练/测试（80% 训练，20% 测试）
+        split_idx = len(X)  # 默认值，no_split 时使用全部数据
+        if no_split:
+            # 使用全部数据训练
+            if len(X) < 10:
+                raise ValueError(f"数据不足: 需要 > 10 个样本")
+            X_train = X
+            y_train = y
+            X_test = X
+            y_test = y
+        else:
+            if len(X) < 10:
+                raise ValueError(f"数据不足: 需要 > 10 个样本")
+            split_idx = int(len(X) * 0.8)
+            X_train = X.iloc[:split_idx]
+            y_train = y.iloc[:split_idx]
+            X_test = X.iloc[split_idx:]
+            y_test = y.iloc[split_idx:]
 
     # 训练模型
     try:

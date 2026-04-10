@@ -360,8 +360,12 @@ class StrategyOptimizer:
         # 准备多股票训练数据
         df_train = self.multi_stock_data.copy()
         df_train = df_train.sort_index()
-        df_train['returns'] = df_train['Close'].pct_change(fill_method=None)
-        df_train = df_train.dropna(subset=['returns'])
+        # 确保 DatetimeIndex（与 df_target 处理对称）
+        if not pd.api.types.is_datetime64_any_dtype(df_train.index):
+            df_train.index = pd.to_datetime(df_train.index)
+        # 过滤无效 Close：不用 pct_change，非唯一 DatetimeIndex 上的 Series 赋值
+        # 会触发 label-alignment 歧义，导致全 NaN → dropna 清空整个 df_train
+        df_train = df_train.dropna(subset=['Close'])
 
         # 目标股票验证数据
         df_target = self.data.copy().sort_index()
@@ -371,8 +375,7 @@ class StrategyOptimizer:
             except Exception:
                 raise optuna.TrialPruned("目标股票数据日期格式错误")
 
-        df_target['returns'] = df_target['Close'].pct_change(fill_method=None)
-        df_target = df_target.dropna(subset=['returns'])
+        df_target = df_target.dropna(subset=['Close'])
 
         # 验证时间范围（与目标股票验证开始时间对齐）
         target_end_date = df_target.index.max()
