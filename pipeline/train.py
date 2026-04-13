@@ -45,12 +45,14 @@ def step2_train(
     optuna_trials: int = 50,
     strategy_type: str = None,
     factors_dir_override: Path = None,
+    ticker: str = None,
 ) -> tuple:
     if use_optuna and OPTUNA_AVAILABLE:
         return step2_train_optuna(
             hist_data, n_trials=optuna_trials,
             strategy_type=strategy_type,
             factors_dir_override=factors_dir_override,
+            ticker=ticker,
         )
     else:
         return step2_train_native(
@@ -110,6 +112,7 @@ def step2_train_optuna(
     n_trials: int = 50,
     strategy_type: str = None,
     factors_dir_override: Path = None,
+    ticker: str = None,
 ) -> tuple:
     """使用 Optuna 贝叶斯优化进行超参搜索。"""
     logger.info("步骤2/3: 多策略超参搜索开始", extra={
@@ -182,8 +185,9 @@ def step2_train_optuna(
     _hd_close_nan = int(hist_data['Close'].isna().sum()) if 'Close' in hist_data.columns else -1
     _od_close_nan = int(optuna_data['Close'].isna().sum()) if 'Close' in optuna_data.columns else -1
     logger.warning(
-        "[DEBUG step2_train_optuna] hist_data: rows=%d, cols=%s, Close_NaN=%d | "
+        "[DEBUG step2_train_optuna] ticker=%s | hist_data: rows=%d, cols=%s, Close_NaN=%d | "
         "optuna_data: rows=%d, cols=%s, Close_NaN=%d",
+        ticker or cfg.get('ticker', '?'),
         len(hist_data), list(hist_data.columns), _hd_close_nan,
         len(optuna_data), list(optuna_data.columns), _od_close_nan,
         extra={

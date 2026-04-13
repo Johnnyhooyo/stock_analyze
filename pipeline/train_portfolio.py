@@ -108,6 +108,7 @@ def train_portfolio_tickers(
             optuna_trials=optuna_trials,
             strategy_type='multi',
             factors_dir_override=None,
+            ticker=ref_ticker,
         )
         logger.info("ML全局训练完成，因子已存入 %s", base_factors_dir)
     except Exception as e:
@@ -139,6 +140,7 @@ def train_portfolio_tickers(
                 optuna_trials=optuna_trials,
                 strategy_type='single',
                 factors_dir_override=ticker_factors_dir,
+                ticker=ticker,
             )
         except Exception as e:
             logger.error("规则训练失败，跳过 %s: %s", ticker, e, extra={"ticker": ticker})
