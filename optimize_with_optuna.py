@@ -290,6 +290,21 @@ class StrategyOptimizer:
         self.multi_stock_data = None
         if self.train_type == 'multi':
             self.multi_stock_data = self._load_multi_stock_data()
+            # DEBUG: 打印 self.data 的基本结构，帮助诊断 Close 全 NaN 问题
+            _close_null = int(data['Close'].isna().sum()) if 'Close' in data.columns else -1
+            _col_list = list(data.columns)
+            logger.warning(
+                "[DEBUG StrategyOptimizer.__init__] self.data诊断: 共%d行, Close有%d个NaN, 列=%s",
+                len(data),
+                _close_null,
+                str(_col_list),
+                extra={
+                    "index_dtype": str(data.index.dtype),
+                    "index_sample": str(data.index[:3].tolist()),
+                    "close_head5": str(data['Close'].head(5).tolist()) if 'Close' in data.columns else "N/A",
+                    "is_multiindex_col": isinstance(data.columns, pd.MultiIndex),
+                }
+            )
 
         # 记录最佳结果
         # 注意：当 n_jobs=1（默认串行）时无需加锁；若启用 n_jobs>1 需外部同步
@@ -378,10 +393,37 @@ class StrategyOptimizer:
         if 'Close' not in df_target.columns:
             raise optuna.TrialPruned(f"目标股票数据缺少Close列: {list(df_target.columns)}")
 
+        # DEBUG: 诊断 Close 列 NaN 情况
+        close_null_count = int(df_target['Close'].isna().sum())
+        close_dtype = str(df_target['Close'].dtype)
+        col_names = list(df_target.columns)
+        # 始终打印诊断（WARNING级别，INFO下也可见）
+        logger.warning(
+            "[DEBUG _run_multi_stock] df_target诊断: 共%d行, Close有%d个NaN(%.1f%%), dtype=%s",
+            len(df_target),
+            close_null_count,
+            100.0 * close_null_count / len(df_target) if len(df_target) else 0,
+            close_dtype,
+            extra={
+                "columns": str(col_names),
+                "index_dtype": str(df_target.index.dtype),
+                "index_sample": str(df_target.index[:3].tolist()),
+                "close_head10": str(df_target['Close'].head(10).tolist()),
+                "has_ticker_col": "ticker" in df_target.columns,
+                "unique_index_count": df_target.index.nunique(),
+                "is_multiindex_col": isinstance(df_target.columns, pd.MultiIndex),
+                "col_levels": str(df_target.columns.tolist()[:10]),
+            }
+        )
+
         df_target = df_target.dropna(subset=['Close'])
 
         if df_target.empty:
-            raise optuna.TrialPruned(f"目标股票数据全为空（dropna后）: self.data行数={len(self.data)}")
+            raise optuna.TrialPruned(
+                f"目标股票数据全为空（dropna后）: self.data行数={len(self.data)}, "
+                f"Close共{close_null_count}个NaN, dtype={close_dtype}, "
+                f"列={col_names}, close_sample={close_sample}, index_sample={index_sample}"
+            )
 
         # 验证时间范围（与目标股票验证开始时间对齐）
         target_end_date = df_target.index.max()
