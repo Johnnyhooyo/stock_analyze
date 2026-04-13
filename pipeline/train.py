@@ -178,6 +178,20 @@ def step2_train_optuna(
         })
     optuna_data = _search_data_opt
 
+    # DEBUG: 诊断 hist_data 和 optuna_data 的 Close 列
+    _hd_close_nan = int(hist_data['Close'].isna().sum()) if 'Close' in hist_data.columns else -1
+    _od_close_nan = int(optuna_data['Close'].isna().sum()) if 'Close' in optuna_data.columns else -1
+    logger.warning(
+        "[DEBUG step2_train_optuna] hist_data: rows=%d, cols=%s, Close_NaN=%d | "
+        "optuna_data: rows=%d, cols=%s, Close_NaN=%d",
+        len(hist_data), list(hist_data.columns), _hd_close_nan,
+        len(optuna_data), list(optuna_data.columns), _od_close_nan,
+        extra={
+            "hist_data_index_dtype": str(hist_data.index.dtype),
+            "hist_data_close_head5": str(hist_data['Close'].head(5).tolist()) if 'Close' in hist_data.columns else "N/A",
+        }
+    )
+
     all_results = []
     best_of_all = None
     best_value = float('-inf')
