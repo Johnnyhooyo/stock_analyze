@@ -211,6 +211,7 @@ def step2_train_optuna(
             direction='maximize',
             use_vectorbt=use_vectorbt,
             verbose=True,
+            ticker=ticker,
         )
         if result['best_value'] is not None and result['best_value'] > best_value:
             best_value = result['best_value']

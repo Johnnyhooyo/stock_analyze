@@ -270,10 +270,12 @@ class StrategyOptimizer:
         metric: str = 'sharpe_ratio',
         direction: str = 'maximize',
         use_vectorbt: bool = True,
+        ticker: str = None,
     ):
         self.data = data
         self.strategy_mod = strategy_mod
         self.config = config
+        self.ticker = ticker or config.get('ticker', '?')
         self.metric = metric
         self.direction = direction
         self.use_vectorbt = use_vectorbt and backtest_vectorbt is not None
@@ -294,7 +296,8 @@ class StrategyOptimizer:
             _close_null = int(data['Close'].isna().sum()) if 'Close' in data.columns else -1
             _col_list = list(data.columns)
             logger.warning(
-                "[DEBUG StrategyOptimizer.__init__] self.data诊断: 共%d行, Close有%d个NaN, 列=%s",
+                "[DEBUG StrategyOptimizer.__init__] ticker=%s, self.data诊断: 共%d行, Close有%d个NaN, 列=%s",
+                self.ticker,
                 len(data),
                 _close_null,
                 str(_col_list),
@@ -399,7 +402,8 @@ class StrategyOptimizer:
         col_names = list(df_target.columns)
         # 始终打印诊断（WARNING级别，INFO下也可见）
         logger.warning(
-            "[DEBUG _run_multi_stock] df_target诊断: 共%d行, Close有%d个NaN(%.1f%%), dtype=%s",
+            "[DEBUG _run_multi_stock] ticker=%s, df_target诊断: 共%d行, Close有%d个NaN(%.1f%%), dtype=%s",
+            self.ticker,
             len(df_target),
             close_null_count,
             100.0 * close_null_count / len(df_target) if len(df_target) else 0,
@@ -685,6 +689,7 @@ def optimize_strategy(
     verbose: bool = True,
     study_name: Optional[str] = None,
     storage: Optional[str] = None,
+    ticker: str = None,
 ) -> Dict[str, Any]:
     """
     使用 Optuna 优化策略参数
@@ -726,6 +731,7 @@ def optimize_strategy(
         metric=metric,
         direction=direction,
         use_vectorbt=use_vectorbt,
+        ticker=ticker,
     )
 
     # 创建 study
