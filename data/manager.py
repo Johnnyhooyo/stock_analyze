@@ -297,8 +297,13 @@ class DataManager:
                 try:
                     old_data = self.storage.read(old_path)
                     old_data = normalize_columns(old_data)
-                    combined = pd.concat([old_data, data])
-                    combined = combined[~combined.index.duplicated(keep="last")]
+                    # combine_first: 新数据非 NaN 优先，NaN 时回退旧数据，
+                    # 避免下载数据列缺失/NaN 覆盖本地有效历史值
+                    if not pd.api.types.is_datetime64_any_dtype(data.index):
+                        data.index = pd.to_datetime(data.index)
+                    if not pd.api.types.is_datetime64_any_dtype(old_data.index):
+                        old_data.index = pd.to_datetime(old_data.index)
+                    combined = data.combine_first(old_data)
                     combined = combined.sort_index()
                     rows_added = len(combined) - len(old_data)
                     logger.info(

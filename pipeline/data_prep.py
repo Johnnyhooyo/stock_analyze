@@ -154,6 +154,32 @@ def step1_ensure_data(
                 "records": len(hist_data)
             })
 
+    # 校验 Close 列完整性：下载或合并失败时可能产生全 NaN Close，
+    # 此时回退到最近的本地缓存文件，避免训练流程用损坏数据运行
+    if 'Close' not in hist_data.columns or hist_data['Close'].isna().all():
+        logger.error(
+            "hist_data Close 列全为 NaN 或缺失，可能为下载/合并阶段数据损坏，尝试回退本地缓存",
+            extra={"records": len(hist_data)}
+        )
+        recovered = False
+        for candidate in (hist_files or []):
+            try:
+                fallback_df = pd.read_csv(str(candidate), index_col=0, parse_dates=True)
+                if 'Close' in fallback_df.columns and not fallback_df['Close'].isna().all():
+                    hist_data = fallback_df
+                    hist_path = str(candidate)
+                    logger.warning("已回退到本地缓存", extra={
+                        "hist_path": hist_path,
+                        "records": len(hist_data)
+                    })
+                    recovered = True
+                    break
+            except Exception as e:
+                logger.debug("回退候选文件读取失败", extra={"path": str(candidate), "error": str(e)})
+        if not recovered:
+            logger.critical("hist_data Close 列损坏且无可用本地缓存，流程终止")
+            sys.exit(1)
+
     return hist_data, hist_path
 
 
