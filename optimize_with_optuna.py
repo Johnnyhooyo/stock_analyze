@@ -375,15 +375,42 @@ class StrategyOptimizer:
             except Exception:
                 raise optuna.TrialPruned("目标股票数据日期格式错误")
 
+        if 'Close' not in df_target.columns:
+            raise optuna.TrialPruned(f"目标股票数据缺少Close列: {list(df_target.columns)}")
+
         df_target = df_target.dropna(subset=['Close'])
+
+        if df_target.empty:
+            raise optuna.TrialPruned(f"目标股票数据全为空（dropna后）: self.data行数={len(self.data)}")
 
         # 验证时间范围（与目标股票验证开始时间对齐）
         target_end_date = df_target.index.max()
+        if pd.isna(target_end_date):
+            raise optuna.TrialPruned(f"目标股票数据日期全为NaT: 行数={len(df_target)}")
+
         val_start = target_end_date - pd.DateOffset(months=lookback_months)
         val_df = df_target.loc[df_target.index >= val_start]
 
         if val_df.empty:
-            raise optuna.TrialPruned("验证数据为空")
+            # 降级：用最后 min(lookback_months×22, len) 行作为验证集
+            fallback_rows = min(lookback_months * 22, len(df_target))
+            val_df = df_target.iloc[-fallback_rows:]
+            logger.warning(
+                "_run_multi_stock val_df为空，降级使用最后%d行",
+                fallback_rows,
+                extra={
+                    "target_end_date": str(target_end_date),
+                    "val_start": str(val_start),
+                    "df_target_rows": len(df_target),
+                    "df_target_index_dtype": str(df_target.index.dtype),
+                    "df_target_tz": str(getattr(df_target.index, 'tz', None)),
+                },
+            )
+            if val_df.empty:
+                raise optuna.TrialPruned(
+                    f"验证数据为空: target_end={target_end_date}, val_start={val_start}, "
+                    f"df_target rows={len(df_target)}, index_dtype={df_target.index.dtype}"
+                )
 
         # 多股票训练数据截止时间与目标股票验证开始时间对齐
         train_end = val_start
