@@ -96,6 +96,11 @@ def step1_ensure_data(
         hist_path = str(hist_files[0])
         hist_data = pd.read_csv(hist_path, index_col=0, parse_dates=True)
         latest_date = hist_data.index.max()
+        _close_nan = int(hist_data['Close'].isna().sum()) if 'Close' in hist_data.columns else -1
+        logger.warning(
+            "[DEBUG step1_ensure_data] 缓存命中: file=%s, rows=%d, cols=%s, Close_NaN=%d",
+            hist_path, len(hist_data), list(hist_data.columns), _close_nan
+        )
         logger.info("历史日线数据已是最新", extra={
             "hist_path": hist_path,
             "records": len(hist_data),
@@ -149,6 +154,11 @@ def step1_ensure_data(
                 logger.critical("历史数据下载失败，流程终止")
                 sys.exit(1)
         else:
+            _close_nan2 = int(hist_data['Close'].isna().sum()) if 'Close' in hist_data.columns else -1
+            logger.warning(
+                "[DEBUG step1_ensure_data] 下载完成: file=%s, rows=%d, cols=%s, Close_NaN=%d",
+                hist_path, len(hist_data), list(hist_data.columns), _close_nan2
+            )
             logger.info("历史数据已更新", extra={
                 "hist_path": hist_path,
                 "records": len(hist_data)

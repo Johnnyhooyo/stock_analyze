@@ -422,7 +422,7 @@ class StrategyOptimizer:
             raise optuna.TrialPruned(
                 f"目标股票数据全为空（dropna后）: self.data行数={len(self.data)}, "
                 f"Close共{close_null_count}个NaN, dtype={close_dtype}, "
-                f"列={col_names}, close_sample={close_sample}, index_sample={index_sample}"
+                f"列={col_names}, close_head10={df_target['Close'].head(10).tolist()}"
             )
 
         # 验证时间范围（与目标股票验证开始时间对齐）
