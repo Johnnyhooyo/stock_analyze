@@ -19,6 +19,41 @@ from strategies.lightgbm_enhanced import run as run_lgbm
 _session_failures: dict[str, int] = {}
 
 
+# ── 多股票特征矩阵缓存 ─────────────────────────────────────────────
+# create_multi_stock_dataset() 在 Optuna 每个 trial 都会被调用，但其特征
+# 工程结果只依赖原始数据本身（test_days 未被使用，label_period 只影响
+# label 列）。在同一个训练窗口内所有 trial 之间缓存结果，避免重复算
+# 80 只成分股 × 1250 天的技术指标。
+_MULTI_FEATURE_CACHE: dict = {}
+_MULTI_FEATURE_CACHE_MAX = 8
+
+
+def _multi_cache_fingerprint(
+    combined_data: pd.DataFrame,
+    label_period: int,
+) -> tuple | None:
+    """根据数据轻量指纹生成缓存键，None 表示无法缓存。"""
+    try:
+        if combined_data is None or combined_data.empty:
+            return None
+        n = len(combined_data)
+        idx_min = combined_data.index.min()
+        idx_max = combined_data.index.max()
+        tickers = (
+            int(combined_data['ticker'].nunique())
+            if 'ticker' in combined_data.columns
+            else 0
+        )
+        return (n, str(idx_min), str(idx_max), tickers, int(label_period))
+    except Exception:
+        return None
+
+
+def clear_multi_feature_cache() -> None:
+    """外部可调用以清空缓存（例如切换训练数据源时）。"""
+    _MULTI_FEATURE_CACHE.clear()
+
+
 def _check_stock_quality(df: pd.DataFrame, ticker: str) -> Tuple[bool, str]:
     """
     检查单只股票的数据质量。
@@ -172,6 +207,14 @@ def create_multi_stock_dataset(
     Returns:
         X, y, feature_columns
     """
+    # ── 缓存命中检查 ──────────────────────────────────────────────
+    # 同一训练窗口 + 同一 label_period 在多个 Optuna trial 间会被反复请求，
+    # 特征本身与 trial 超参无关，直接复用上次计算结果。
+    cache_key = _multi_cache_fingerprint(combined_data, label_period)
+    if cache_key is not None and cache_key in _MULTI_FEATURE_CACHE:
+        X_c, y_c, cols_c = _MULTI_FEATURE_CACHE[cache_key]
+        return X_c.copy(), y_c.copy(), list(cols_c)
+
     # 按股票分别添加特征
     tickers = combined_data['ticker'].unique()
     all_X = []
@@ -217,6 +260,12 @@ def create_multi_stock_dataset(
 
     print(f"训练数据: {len(X)} 样本, {X.shape[1]} 特征")
     print(f"正样本比例: {y.mean():.2%}")
+
+    # ── 写入缓存（LRU 式：满则丢最早的一个）────────────────────────
+    if cache_key is not None:
+        if len(_MULTI_FEATURE_CACHE) >= _MULTI_FEATURE_CACHE_MAX:
+            _MULTI_FEATURE_CACHE.pop(next(iter(_MULTI_FEATURE_CACHE)))
+        _MULTI_FEATURE_CACHE[cache_key] = (X.copy(), y.copy(), list(feat_cols))
 
     return X, y, feat_cols
 

@@ -411,13 +411,13 @@ class DataManager:
             (DataFrame, file_path) 或 (空DataFrame, None)
         """
         out_dir = self.config.historical_dir
-        stem = f"{ticker}_{period}"
+        safe_name = ticker.replace(".", "_")
+        stem = f"{safe_name}_{period}"
         file_path = out_dir / f"{stem}{self.storage.suffix}"
 
         # ── 查找本地缓存 ─────────────────────────────────────────
         if not force:
-            # 搜索两种格式
-            candidates = self.storage.glob_all(out_dir, f"{ticker}_*")
+            candidates = self.storage.glob_all(out_dir, f"{safe_name}_*")
             if candidates:
                 cached = candidates[0]
                 if not _is_stale(cached):

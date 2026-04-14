@@ -538,6 +538,26 @@ class StrategyOptimizer:
             signal = signal.iloc[:, 0]
         signal = pd.Series(signal).astype(int)
 
+        # ── MedianPruner 中间报告：在昂贵的回测之前剪掉明显较弱的 trial ──
+        # 代理指标优先使用 meta['test_acc']，回退到 train_acc，最后兜底 0.5。
+        # 仅当这个值比同步骤中位数差时才剪枝；不会影响最终 metric 的计算。
+        try:
+            _proxy = None
+            if isinstance(meta, dict):
+                _proxy = meta.get('test_acc')
+                if _proxy is None or (isinstance(_proxy, float) and np.isnan(_proxy)):
+                    _proxy = meta.get('train_acc')
+            if _proxy is None or (isinstance(_proxy, float) and np.isnan(_proxy)):
+                _proxy = 0.5
+            trial.report(float(_proxy), step=0)
+            if trial.should_prune():
+                raise optuna.TrialPruned(f"MedianPruner: proxy_acc={_proxy:.3f} 低于中位数")
+        except optuna.TrialPruned:
+            raise
+        except Exception:
+            # 报告失败不应阻塞正常流程
+            pass
+
         # 3. 回测（使用对应的数据进行回测）
         try:
             if self.use_vectorbt:
@@ -684,7 +704,7 @@ def optimize_strategy(
     metric: str = 'sharpe_ratio',
     direction: str = 'maximize',
     timeout: Optional[int] = None,
-    n_jobs: int = -1,  # 默认使用全部 CPU 核心并行
+    n_jobs: int = 4,  # 默认 4 个并行 trial，避免与 XGBoost hist 内部多线程过度争核
     use_vectorbt: bool = True,
     verbose: bool = True,
     study_name: Optional[str] = None,
@@ -735,11 +755,19 @@ def optimize_strategy(
     )
 
     # 创建 study
+    # MedianPruner：跑完前 10 个 warmup trial 后，若中间指标低于同期中位数即剪枝。
+    # 依赖 objective 在训练结束、回测开始前调用 trial.report() + should_prune()，
+    # 作用是跳过 train_acc/test_acc 明显偏弱模型的回测阶段。
     study = optuna.create_study(
         direction=direction,
         study_name=study_name or strategy_name,
         storage=storage,
         load_if_exists=True,
+        pruner=optuna.pruners.MedianPruner(
+            n_startup_trials=10,
+            n_warmup_steps=0,
+            interval_steps=1,
+        ),
     )
 
     # 添加参数定义
