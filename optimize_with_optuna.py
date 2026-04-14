@@ -324,9 +324,11 @@ class StrategyOptimizer:
             return 'single'
         if strategy_name in train_config.get('custom', []):
             return 'custom'
-        # 默认: xgboost/lightgbm 相关的是 multi，其他是 single
-        if 'xgboost' in strategy_name or 'lightgbm' in strategy_name or \
-           'ridge' in strategy_name or 'linear' in strategy_name or 'forest' in strategy_name:
+        # 默认: 只有 xgboost/lightgbm 系列走多股票训练；
+        # ridge/linear/random_forest 的 run() 并未按 ticker 分组处理数据，
+        # 喂入多股票 concat 会把不同 ticker 的序列当成一条时序，
+        # 因此归入 single（在目标股票自身数据上训练）。
+        if 'xgboost' in strategy_name or 'lightgbm' in strategy_name:
             return 'multi'
         return 'single'
 

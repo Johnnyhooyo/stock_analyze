@@ -291,9 +291,11 @@ def _get_training_type(strategy_name: str) -> str:
 
     注意：此函数与 optimize_with_optuna._get_training_type 逻辑完全相同，
     须同步更新。若新增策略类型（如 rnn_trend），两处均需修改。
+
+    只有 xgboost/lightgbm 系列的 run() 正确处理 ticker 分组，
+    其余线性/森林类策略归入 single。
     """
-    if "xgboost" in strategy_name or "lightgbm" in strategy_name or \
-       "ridge" in strategy_name or "linear" in strategy_name or "forest" in strategy_name:
+    if "xgboost" in strategy_name or "lightgbm" in strategy_name:
         return "multi"
     return "single"
 

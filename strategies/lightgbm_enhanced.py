@@ -82,11 +82,20 @@ def run(data: pd.DataFrame, config: dict):
     # ── 多股票路径（有 ticker 列）：per-ticker 特征，避免跨 ticker 指标计算 ──
     if 'ticker' in data.columns and data['ticker'].nunique() > 1:
         from train_multi_stock import create_multi_stock_dataset
-        X, y, feat_cols = create_multi_stock_dataset(data, test_days, label_period)
+        _ts_windows = config.get('tsfresh_window_sizes', [10, 20]) if use_tsfresh else None
+        X, y, feat_cols = create_multi_stock_dataset(
+            data,
+            test_days,
+            label_period,
+            use_tsfresh=bool(use_tsfresh),
+            tsfresh_window_sizes=_ts_windows,
+        )
         if X.empty or len(X) < 10:
             raise ValueError("多股票特征数据不足: 需要 > 10 个样本")
-        tsfresh_feat_count = 0
-        selected_tsfresh_cols = []
+        import re as _re
+        _ts_re = _re.compile(r"_w\d+$")
+        selected_tsfresh_cols = [c for c in feat_cols if _ts_re.search(str(c))] if use_tsfresh else []
+        tsfresh_feat_count = len(selected_tsfresh_cols)
         no_split = False
         split_idx = len(X)
         X_train, y_train = X, y

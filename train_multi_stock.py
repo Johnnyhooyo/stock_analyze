@@ -31,6 +31,8 @@ _MULTI_FEATURE_CACHE_MAX = 8
 def _multi_cache_fingerprint(
     combined_data: pd.DataFrame,
     label_period: int,
+    use_tsfresh: bool = False,
+    tsfresh_window_sizes: tuple | None = None,
 ) -> tuple | None:
     """根据数据轻量指纹生成缓存键，None 表示无法缓存。"""
     try:
@@ -44,7 +46,15 @@ def _multi_cache_fingerprint(
             if 'ticker' in combined_data.columns
             else 0
         )
-        return (n, str(idx_min), str(idx_max), tickers, int(label_period))
+        return (
+            n,
+            str(idx_min),
+            str(idx_max),
+            tickers,
+            int(label_period),
+            bool(use_tsfresh),
+            tuple(tsfresh_window_sizes) if tsfresh_window_sizes else None,
+        )
     except Exception:
         return None
 
@@ -194,7 +204,9 @@ load_all_hsi_data = load_all_hk_data
 def create_multi_stock_dataset(
     combined_data: pd.DataFrame,
     test_days: int = 5,
-    label_period: int = 1
+    label_period: int = 1,
+    use_tsfresh: bool = False,
+    tsfresh_window_sizes: list | None = None,
 ) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
     """
     创建多股票训练数据集
@@ -203,6 +215,8 @@ def create_multi_stock_dataset(
         combined_data: 合并后的数据
         test_days: 用于预测的天数
         label_period: 预测未来第几天
+        use_tsfresh: 是否为每只股票额外提取 tsfresh 特征（不做特征选择）
+        tsfresh_window_sizes: tsfresh 滚动窗口大小列表
 
     Returns:
         X, y, feature_columns
@@ -210,10 +224,28 @@ def create_multi_stock_dataset(
     # ── 缓存命中检查 ──────────────────────────────────────────────
     # 同一训练窗口 + 同一 label_period 在多个 Optuna trial 间会被反复请求，
     # 特征本身与 trial 超参无关，直接复用上次计算结果。
-    cache_key = _multi_cache_fingerprint(combined_data, label_period)
+    _ws_key = tuple(tsfresh_window_sizes) if tsfresh_window_sizes else None
+    cache_key = _multi_cache_fingerprint(
+        combined_data, label_period, use_tsfresh=use_tsfresh, tsfresh_window_sizes=_ws_key
+    )
     if cache_key is not None and cache_key in _MULTI_FEATURE_CACHE:
         X_c, y_c, cols_c = _MULTI_FEATURE_CACHE[cache_key]
         return X_c.copy(), y_c.copy(), list(cols_c)
+
+    # 按需延迟导入 tsfresh，避免未启用时引入依赖
+    _extract_tsfresh = None
+    if use_tsfresh:
+        try:
+            from strategies.tsfresh_features import (
+                extract_tsfresh_features as _extract_tsfresh,
+                TSFRESH_AVAILABLE as _TSFRESH_OK,
+            )
+            if not _TSFRESH_OK:
+                _extract_tsfresh = None
+        except ImportError:
+            _extract_tsfresh = None
+        if _extract_tsfresh is None:
+            print("⚠️ 多股票 tsfresh 分支：tsfresh 不可用，回退到纯技术指标特征")
 
     # 按股票分别添加特征
     tickers = combined_data['ticker'].unique()
@@ -227,8 +259,24 @@ def create_multi_stock_dataset(
         if len(stock_data) < 100:
             continue
 
-        # 添加特征
+        # 添加技术指标特征
         stock_with_features = add_features(stock_data)
+
+        # ── 可选：按股票独立提取 tsfresh 特征（with_selection=False，保证列名在各 ticker 间一致）──
+        if _extract_tsfresh is not None:
+            try:
+                ts_feat, _ = _extract_tsfresh(
+                    stock_data,
+                    window_sizes=tsfresh_window_sizes or [10, 20],
+                    extraction_level='efficient',
+                    with_selection=False,
+                    y=None,
+                )
+                if ts_feat is not None and not ts_feat.empty:
+                    ts_feat = ts_feat.reindex(stock_with_features.index).fillna(0)
+                    stock_with_features = pd.concat([stock_with_features, ts_feat], axis=1)
+            except Exception as e:
+                print(f"⚠️ {ticker} tsfresh 提取失败，跳过: {e}")
 
         # ── 修复项5：截断末尾 label_period 行，消除 shift(-label_period) 边界泄露 ──
         if len(stock_with_features) > label_period:
@@ -253,7 +301,16 @@ def create_multi_stock_dataset(
     if 'ticker' in X.columns:
         X = X.drop(columns=['ticker'])
 
-    # 去除 NaN
+    # ── tsfresh 列跨 ticker 对齐：部分 ticker 可能提取失败或列集合不同，
+    # concat 的 outer join 会在这些位置留下 NaN，导致后续 dropna 误删
+    # 整行。对 tsfresh 列（带 _w<window> 后缀）统一填 0。──
+    import re
+    _ts_suffix_re = re.compile(r"_w\d+$")
+    ts_cols = [c for c in X.columns if _ts_suffix_re.search(str(c))]
+    if ts_cols:
+        X[ts_cols] = X[ts_cols].fillna(0)
+
+    # 去除 NaN（此时仅技术指标列中的合法 NaN 会被剔除）
     mask = ~(X.isna().any(axis=1) | y.isna())
     X = X[mask]
     y = y[mask]

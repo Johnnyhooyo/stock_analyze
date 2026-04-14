@@ -230,12 +230,51 @@ def _compute_features_for_timestep(
     ], dtype=np.float32)
 
 
+# ── 特征矩阵缓存 ─────────────────────────────────────────────────
+# _build_feature_matrix 是 O(N × window) 的 Python 双循环，每个时间步还要
+# 调用 pd.Series.ewm，多股票训练下单次耗时很高。Optuna 每个 trial 都会
+# 重建相同的数据 × window 组合的矩阵，在此加一层按 (数据指纹, window)
+# 键控的 LRU 缓存。cache 是进程级，外部若切换数据源请调用
+# clear_rnn_feature_cache()。
+_RNN_FEATURE_CACHE: dict = {}
+_RNN_FEATURE_CACHE_MAX = 2048
+
+
+def _rnn_cache_fingerprint(df: pd.DataFrame, window: int) -> tuple | None:
+    """轻量指纹，失败返回 None 表示不缓存。"""
+    try:
+        if df is None or df.empty or "Close" not in df.columns:
+            return None
+        close = df["Close"]
+        return (
+            len(df),
+            str(df.index.min()),
+            str(df.index.max()),
+            float(close.iloc[0]),
+            float(close.iloc[-1]),
+            int(window),
+        )
+    except Exception:
+        return None
+
+
+def clear_rnn_feature_cache() -> None:
+    _RNN_FEATURE_CACHE.clear()
+
+
 def _build_feature_matrix(df: pd.DataFrame, window: int = 30) -> np.ndarray:
     """
     构建 3D 特征矩阵 (N_samples, window, n_features)。
     每个样本对应时间 t 时刻的历史窗口 [t-window+1, t]。
     每个时间步的特征仅使用该时刻及之前的数据，严格无前视。
     """
+    cache_key = _rnn_cache_fingerprint(df, window)
+    if cache_key is not None:
+        cached = _RNN_FEATURE_CACHE.get(cache_key)
+        if cached is not None:
+            # 返回副本，避免下游原地修改污染缓存
+            return cached.copy()
+
     close = df["Close"].values
     high = df["High"].values if "High" in df.columns else close
     low = df["Low"].values if "Low" in df.columns else close
@@ -252,6 +291,11 @@ def _build_feature_matrix(df: pd.DataFrame, window: int = 30) -> np.ndarray:
             X[t, w_idx, :] = _compute_features_for_timestep(
                 close, high, low, open_price, volume, tau
             )
+
+    if cache_key is not None:
+        if len(_RNN_FEATURE_CACHE) >= _RNN_FEATURE_CACHE_MAX:
+            _RNN_FEATURE_CACHE.pop(next(iter(_RNN_FEATURE_CACHE)))
+        _RNN_FEATURE_CACHE[cache_key] = X.copy()
 
     return X
 

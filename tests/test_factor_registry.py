@@ -554,8 +554,12 @@ class TestGetTrainingType:
     def test_lightgbm_is_multi(self):
         assert _get_training_type("lightgbm_enhanced") == "multi"
 
-    def test_ridge_is_multi(self):
-        assert _get_training_type("ridge_regression") == "multi"
+    def test_linear_family_is_single(self):
+        # ridge/linear/random_forest 的 run() 不处理 ticker 分组，
+        # 强制归为 single，让它们在目标股票自身数据上训练。
+        assert _get_training_type("ridge_regression") == "single"
+        assert _get_training_type("linear_regression") == "single"
+        assert _get_training_type("random_forest") == "single"
 
     def test_rule_strategy_is_single(self):
         assert _get_training_type("macd_rsi_trend") == "single"
