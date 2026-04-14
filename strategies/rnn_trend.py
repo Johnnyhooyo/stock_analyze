@@ -262,35 +262,141 @@ def clear_rnn_feature_cache() -> None:
     _RNN_FEATURE_CACHE.clear()
 
 
+def _compute_flat_features(df: pd.DataFrame) -> np.ndarray:
+    """
+    向量化计算 (N, feat_dim) 的扁平特征矩阵。
+
+    与逐步调用 ``_compute_features_for_timestep(t)`` 在语义上等价
+    （rolling 使用 min_periods=1 对应原函数的 ``min(period, t+1)``
+    自适应窗口），但把复杂度从 O(N²) 降到 O(N)。
+
+    注意：保留了原实现中的 MACD signal 退化行为——原代码对一段
+    常数数组做 EMA，结果恒等于 macd_line。这里显式令 macd_signal
+    = macd_line 以保持训练出来的模型特征分布不变；若将来要修复
+    这个 bug，换成 ``pd.Series(macd_line).ewm(span=9).mean()``。
+    """
+    close = df["Close"].values.astype(np.float64)
+    high = df["High"].values.astype(np.float64) if "High" in df.columns else close
+    low = df["Low"].values.astype(np.float64) if "Low" in df.columns else close
+    open_p = df["Open"].values.astype(np.float64) if "Open" in df.columns else close
+    volume = (
+        df["Volume"].values.astype(np.float64)
+        if "Volume" in df.columns
+        else np.ones_like(close)
+    )
+
+    n = len(close)
+    if n == 0:
+        return np.zeros((0, len(FEATURE_COLS)), dtype=np.float32)
+
+    close_s = pd.Series(close)
+
+    # ret_1d / ret_5d
+    ret_1d = close_s.pct_change(1).fillna(0.0).to_numpy()
+    ret_5d = close_s.pct_change(5).fillna(0.0).to_numpy()
+
+    # log_hl / log_co（避免除零）
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_hl = np.where(low > 0, np.log(np.where(low > 0, high / np.where(low == 0, 1, low), 1)), 0.0)
+        log_co = np.where(open_p > 0, np.log(np.where(open_p == 0, 1, close / np.where(open_p == 0, 1, open_p))), 0.0)
+    log_hl = np.nan_to_num(log_hl, nan=0.0, posinf=0.0, neginf=0.0)
+    log_co = np.nan_to_num(log_co, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # volume_z: (v - rolling_mean_20) / rolling_std_20
+    vol_s = pd.Series(volume)
+    vol_mean = vol_s.rolling(20, min_periods=1).mean().to_numpy()
+    vol_std = vol_s.rolling(20, min_periods=1).std(ddof=0).fillna(0.0).to_numpy() + 1e-9
+    volume_z = (volume - vol_mean) / vol_std
+
+    # RSI 14（与原实现一致：delta 前补 0，rolling mean 用 min_periods=1）
+    delta = np.diff(close, prepend=close[0])
+    gain = np.maximum(delta, 0.0)
+    loss = np.maximum(-delta, 0.0)
+    avg_gain = pd.Series(gain).rolling(14, min_periods=1).mean().to_numpy()
+    avg_loss = pd.Series(loss).rolling(14, min_periods=1).mean().to_numpy()
+    rs = avg_gain / (avg_loss + 1e-9)
+    rsi_14 = np.where(avg_loss == 0.0, 50.0, 100.0 - 100.0 / (1.0 + rs))
+
+    # Bollinger 20
+    ma20 = close_s.rolling(20, min_periods=1).mean().to_numpy()
+    std20 = close_s.rolling(20, min_periods=1).std(ddof=0).fillna(0.0).to_numpy() + 1e-9
+    bb_upper = ma20 + 2.0 * std20
+    bb_lower = ma20 - 2.0 * std20
+    safe_close = np.where(close != 0, close, 1.0)
+    bb_upper_dist = np.where(close != 0, (close - bb_upper) / safe_close, 0.0)
+    bb_lower_dist = np.where(close != 0, (close - bb_lower) / safe_close, 0.0)
+
+    # EMA 12/26/20/60（对整段序列一次性计算，每个 t 的值等价于原实现的
+    # pd.Series(close[:t+1]).ewm(...).mean().iloc[-1]，因为 adjust=False
+    # 的 EWM 是递推，不依赖未来值）
+    ema12 = close_s.ewm(span=12, adjust=False).mean().to_numpy()
+    ema26 = close_s.ewm(span=26, adjust=False).mean().to_numpy()
+    ema20 = close_s.ewm(span=20, adjust=False).mean().to_numpy()
+    ema60 = close_s.ewm(span=60, adjust=False).mean().to_numpy()
+    macd_line = ema12 - ema26
+    # 原实现 bug：MACD signal 恒等于 macd_line（对常数序列做 EMA）。保留
+    macd_signal = macd_line
+
+    macd_line_norm = np.where(close != 0, macd_line / safe_close, 0.0)
+    macd_signal_norm = np.where(close != 0, macd_signal / safe_close, 0.0)
+    ema_20_dist = np.where(close != 0, (close - ema20) / safe_close, 0.0)
+    ema_60_dist = np.where(close != 0, (close - ema60) / safe_close, 0.0)
+
+    # ATR 14：TR = max(H-L, |H-prev_close|, |L-prev_close|)，rolling 14 均值
+    prev_close = np.empty_like(close)
+    prev_close[0] = close[0]
+    prev_close[1:] = close[:-1]
+    tr = np.maximum.reduce(
+        [high - low, np.abs(high - prev_close), np.abs(low - prev_close)]
+    )
+    # 原实现：t<1 时 ATR=0；1<=t<14 时 ATR=当日 TR；t>=14 时 14 日 TR 均值
+    atr = pd.Series(tr).rolling(14, min_periods=1).mean().to_numpy()
+    atr[0] = 0.0  # 原实现 t=0 时 ATR 强制为 0
+    atr_14_pct = np.where(close != 0, atr / safe_close, 0.0)
+
+    F = np.stack(
+        [
+            ret_1d, ret_5d, log_hl, log_co, volume_z,
+            rsi_14 / 100.0,
+            bb_upper_dist, bb_lower_dist,
+            macd_line_norm, macd_signal_norm,
+            ema_20_dist, ema_60_dist,
+            atr_14_pct,
+        ],
+        axis=1,
+    ).astype(np.float32)
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
+    return F
+
+
 def _build_feature_matrix(df: pd.DataFrame, window: int = 30) -> np.ndarray:
     """
     构建 3D 特征矩阵 (N_samples, window, n_features)。
     每个样本对应时间 t 时刻的历史窗口 [t-window+1, t]。
     每个时间步的特征仅使用该时刻及之前的数据，严格无前视。
+
+    向量化实现：先算出扁平 (N, feat_dim) 特征矩阵，再用滑窗索引
+    填充 3D 张量，把复杂度从 O(N² × window) 降到 O(N × window)。
     """
     cache_key = _rnn_cache_fingerprint(df, window)
     if cache_key is not None:
         cached = _RNN_FEATURE_CACHE.get(cache_key)
         if cached is not None:
-            # 返回副本，避免下游原地修改污染缓存
             return cached.copy()
-
-    close = df["Close"].values
-    high = df["High"].values if "High" in df.columns else close
-    low = df["Low"].values if "Low" in df.columns else close
-    open_price = df["Open"].values if "Open" in df.columns else close
-    volume = df["Volume"].values if "Volume" in df.columns else np.ones_like(close)
 
     n = len(df)
     feat_dim = len(FEATURE_COLS)
     X = np.zeros((n, window, feat_dim), dtype=np.float32)
 
+    if n == 0 or window <= 0:
+        return X
+
+    F = _compute_flat_features(df)  # (n, feat_dim)
+
+    # X[t, w_idx, :] = F[t - (window - 1 - w_idx)] = F[t - window + 1 + w_idx]
+    # 只在 t >= window-1 时写入，前 window-1 行保留 0（与原实现一致）
     for t in range(window - 1, n):
-        for w_idx in range(window):
-            tau = t - (window - 1 - w_idx)
-            X[t, w_idx, :] = _compute_features_for_timestep(
-                close, high, low, open_price, volume, tau
-            )
+        X[t] = F[t - window + 1 : t + 1]
 
     if cache_key is not None:
         if len(_RNN_FEATURE_CACHE) >= _RNN_FEATURE_CACHE_MAX:
