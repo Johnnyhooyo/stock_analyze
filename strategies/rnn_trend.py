@@ -66,6 +66,25 @@ except ImportError:
     nn = None
 
 
+def _get_device() -> "torch.device":
+    """优先 GPU,回退 CPU。结果缓存在函数属性上。"""
+    if not TORCH_AVAILABLE:
+        return None
+    cached = getattr(_get_device, "_cached", None)
+    if cached is not None:
+        return cached
+    if torch.cuda.is_available():
+        dev = torch.device("cuda")
+        try:
+            logger.info(f"RNN 使用 GPU: {torch.cuda.get_device_name(0)}")
+        except Exception:
+            pass
+    else:
+        dev = torch.device("cpu")
+    _get_device._cached = dev
+    return dev
+
+
 def _serialize_state_dict(model: "torch.nn.Module") -> str:
     buf = io.BytesIO()
     torch.save(model.state_dict(), buf)
@@ -436,11 +455,15 @@ def _train(
     batch_size = int(config.get("rnn_batch_size", 128))
     lr = float(config.get("rnn_lr", 0.001))
 
+    device = _get_device()
+    model = model.to(device)
+    pin = device.type == "cuda"
+
     train_dataset = _SequenceDataset(X_train, y_train)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=pin)
 
     val_dataset = _SequenceDataset(X_val, y_val)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=pin)
 
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -454,6 +477,8 @@ def _train(
         model.train()
         train_loss = 0.0
         for X_batch, y_batch in train_loader:
+            X_batch = X_batch.to(device, non_blocking=pin)
+            y_batch = y_batch.to(device, non_blocking=pin)
             optimizer.zero_grad()
             outputs = model(X_batch).squeeze(-1)
             loss = criterion(outputs, y_batch)
@@ -465,6 +490,8 @@ def _train(
         val_loss = 0.0
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
+                X_batch = X_batch.to(device, non_blocking=pin)
+                y_batch = y_batch.to(device, non_blocking=pin)
                 outputs = model(X_batch).squeeze(-1)
                 loss = criterion(outputs, y_batch)
                 val_loss += loss.item()
@@ -601,9 +628,10 @@ def run(data: pd.DataFrame, config: dict):
         all_signals = np.zeros(len(df), dtype=np.int32)
         if len(X_es) > 0:
             model.eval()
+            device = _get_device()
             with torch.no_grad():
-                X_val_tensor = torch.FloatTensor(X_es)
-                probs = np.atleast_1d(model(X_val_tensor).squeeze(-1).numpy())
+                X_val_tensor = torch.FloatTensor(X_es).to(device)
+                probs = np.atleast_1d(model(X_val_tensor).squeeze(-1).cpu().numpy())
                 val_indices = np.where(val_mask)[0]
                 upper = float(config.get("rnn_upper_threshold", 0.60))
                 lower = float(config.get("rnn_lower_threshold", 0.40))
@@ -646,6 +674,7 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
     dropout = meta.get("dropout", 0.2)
     cell_type = meta.get("model_type", "gru")
 
+    device = _get_device()
     if model is None:
         model = _GRUModel(
             input_size=input_size,
@@ -657,6 +686,7 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
         state_dict = _deserialize_state_dict(meta["state_dict_b64"])
         model.load_state_dict(state_dict)
 
+    model = model.to(device)
     model.eval()
 
     df = data.copy()
@@ -674,8 +704,8 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
 
     if X.shape[0] > 0:
         with torch.no_grad():
-            X_tensor = torch.FloatTensor(X)
-            probs = np.atleast_1d(model(X_tensor).squeeze(-1).numpy())
+            X_tensor = torch.FloatTensor(X).to(device)
+            probs = np.atleast_1d(model(X_tensor).squeeze(-1).cpu().numpy())
 
             upper = float(config.get("rnn_upper_threshold", 0.60))
             lower = float(config.get("rnn_lower_threshold", 0.40))
