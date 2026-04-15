@@ -455,7 +455,7 @@ def _train(
         train_loss = 0.0
         for X_batch, y_batch in train_loader:
             optimizer.zero_grad()
-            outputs = model(X_batch).squeeze()
+            outputs = model(X_batch).squeeze(-1)
             loss = criterion(outputs, y_batch)
             loss.backward()
             optimizer.step()
@@ -465,7 +465,7 @@ def _train(
         val_loss = 0.0
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
-                outputs = model(X_batch).squeeze()
+                outputs = model(X_batch).squeeze(-1)
                 loss = criterion(outputs, y_batch)
                 val_loss += loss.item()
 
@@ -603,7 +603,7 @@ def run(data: pd.DataFrame, config: dict):
             model.eval()
             with torch.no_grad():
                 X_val_tensor = torch.FloatTensor(X_es)
-                probs = model(X_val_tensor).squeeze().numpy()
+                probs = np.atleast_1d(model(X_val_tensor).squeeze(-1).numpy())
                 val_indices = np.where(val_mask)[0]
                 upper = float(config.get("rnn_upper_threshold", 0.60))
                 lower = float(config.get("rnn_lower_threshold", 0.40))
@@ -675,7 +675,7 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series:
     if X.shape[0] > 0:
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X)
-            probs = model(X_tensor).squeeze().numpy()
+            probs = np.atleast_1d(model(X_tensor).squeeze(-1).numpy())
 
             upper = float(config.get("rnn_upper_threshold", 0.60))
             lower = float(config.get("rnn_lower_threshold", 0.40))
