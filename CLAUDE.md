@@ -107,6 +107,26 @@ def predict(model, data: pd.DataFrame, config: dict, meta: dict) -> pd.Series
 
 Factors are saved as `data/factors/factor_*.pkl` (or in per-ticker subdirectories like `data/factors/0700_HK/`). The `FactorRegistry` (`data/factor_registry.py`) tracks TTL (single=30d, multi=60d, custom=45d), auto-expires stale factors, and archives after 90 days. `signal_aggregator.py` defaults to `use_registry=True` but falls back to all disk factors if the registry filters to empty.
 
+### Backtest Engines
+
+Selected via `config.yaml: backtest_engine` (`native` | `vectorbt`). Both engines internally apply `signal.shift(1)` — **upper layers must not shift again**.
+
+| Engine | Implementation | Fees | Sizing | Use when |
+|---|---|---|---|---|
+| `native` (默认) | `analyze_factor.py:399 backtest()`,纯 NumPy 向量化 | 买卖分开精确建模(港股 fees_rate + stamp_duty) | 整股取整 | 日常训练/验证,港股成本最准 |
+| `vectorbt` | `backtest_vectorbt.py`,基于 `vbt.Portfolio.from_signals` | 买卖单边平均(近似) | 按比例,不强制整股 | 大规模参数扫描 |
+
+`analyze_factor.py:569 _backtest_reference()` 是逐行循环参考实现,仅用于测试对照,生产路径不会调用。
+
+### Optuna Training Pipeline (Memory)
+
+`pipeline/train.py:step2_train_optuna` 在多策略循环里跑 Optuna,长跑时 RSS 会持续增长。已知泄漏源与对策:
+
+- **`strategies/rnn_trend.py:_RNN_FEATURE_CACHE`** — 进程级特征张量缓存,跨策略不会自动清。每轮策略结束后调 `clear_rnn_feature_cache()`。
+- **`optimize_with_optuna.optimize_strategy` 返回值** — dict 中含完整的 Optuna `study` 对象和 `optimizer` 引用,体积大,使用后必须 `result.pop('study'); del result`。
+- **`best_of_all` 不要持有整个 result** — 只保留下游真正用到的标量(`strategy_name` / `best_value` / `best_params`)。
+- 每轮策略末尾 `gc.collect()`。新增 ML 策略时遵循同样的释放模式;若仍 OOM,考虑用子进程隔离每个 ML 策略。
+
 ### Validation Thresholds
 
 A strategy must pass all of these to be saved:

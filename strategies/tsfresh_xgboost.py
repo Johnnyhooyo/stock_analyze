@@ -239,6 +239,7 @@ def run(data: pd.DataFrame, config: dict):
     model_name = None
     try:
         from xgboost import XGBClassifier
+        from strategies import ml_thread_budget
         _xgb_kwargs = dict(
             n_estimators=n_estimators,
             max_depth=max_depth,
@@ -248,6 +249,7 @@ def run(data: pd.DataFrame, config: dict):
             eval_metric='logloss',
             verbosity=0,
             tree_method='hist',
+            n_jobs=ml_thread_budget(),
         )
         try:
             model = XGBClassifier(**_xgb_kwargs, device='cuda')
@@ -269,6 +271,7 @@ def run(data: pd.DataFrame, config: dict):
                 learning_rate=learning_rate,
                 random_state=42,
                 verbose=-1,
+                n_jobs=ml_thread_budget(),
             )
             model_name = 'LightGBM'
         except ImportError:
@@ -281,7 +284,33 @@ def run(data: pd.DataFrame, config: dict):
             )
             model_name = 'GradientBoosting'
 
-    model.fit(X_train, y_train)
+    # ── Optuna 中途剪枝(仅 XGBoost/LightGBM 路径,有验证集时才能挂)──
+    _fit_kwargs = {}
+    _trial = config.get('_optuna_trial')
+    if _trial is not None and not no_split and len(X_test) > 0 and model_name in ('XGBoost', 'LightGBM'):
+        try:
+            if model_name == 'XGBoost':
+                from optuna.integration import XGBoostPruningCallback
+                _fit_kwargs = {
+                    'eval_set': [(X_test, y_test)],
+                    'verbose': False,
+                    'callbacks': [XGBoostPruningCallback(_trial, 'validation_0-logloss')],
+                }
+            else:
+                import lightgbm as lgb
+                from optuna.integration import LightGBMPruningCallback
+                _fit_kwargs = {
+                    'eval_set': [(X_test, y_test)],
+                    'callbacks': [
+                        lgb.early_stopping(20, verbose=False),
+                        LightGBMPruningCallback(_trial, 'binary_logloss', valid_name='valid_0'),
+                    ],
+                }
+        except Exception as _e:
+            logger.debug(f"tsfresh_xgboost PruningCallback 不可用: {_e}")
+            _fit_kwargs = {}
+
+    model.fit(X_train, y_train, **_fit_kwargs)
 
     # 生成信号（只填入测试集的预测结果）
     signal = pd.Series(0, index=data.index)

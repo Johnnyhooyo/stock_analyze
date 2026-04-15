@@ -38,11 +38,12 @@ def run(data: pd.DataFrame, config: dict):
         X_train = X.iloc[:split_idx]
         y_train = y.iloc[:split_idx]
 
+    from strategies import ml_thread_budget
     model = RandomForestClassifier(
         n_estimators=n_estimators,
         max_depth=max_depth,
         random_state=42,
-        n_jobs=-1,
+        n_jobs=ml_thread_budget(),
     )
     model.fit(X_train, y_train)
 

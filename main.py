@@ -204,8 +204,6 @@ def main():
                         help='数据源优先级（逗号分隔），例如 "yahooquery,yfinance"')
     parser.add_argument('--use-optuna', action='store_true',
                         help='使用 Optuna 贝叶斯优化替代随机搜索')
-    parser.add_argument('--optuna-trials', type=int, default=50,
-                        help='Optuna 搜索次数（默认 50）')
     parser.add_argument('--strategy-type', type=str, default=None,
                         choices=['single', 'multi', 'custom'],
                         help='只运行指定类型的策略 (single/multi/custom)')
@@ -235,7 +233,6 @@ def main():
         results = train_portfolio_tickers(
             tickers=tickers,
             use_optuna=use_optuna,
-            optuna_trials=args.optuna_trials,
             sources_override=sources_override,
             skip_download=args.skip_data_download,
         )
@@ -253,7 +250,6 @@ def main():
     factor_path, best_result, _ = step2_train(
         hist_data,
         use_optuna=use_optuna,
-        optuna_trials=args.optuna_trials,
         strategy_type=args.strategy_type,
     )
     if factor_path is None:

@@ -14,7 +14,7 @@ invest_fraction: 0.95
 lookback_months: 3
 max_tries: 300
 use_optuna: true
-optuna_trials: 100
+# optuna 每策略试验次数已硬编码在 pipeline/train.py:OPTUNA_TRIALS_PER_STRATEGY
 use_cv: false
 
 min_return: 0.10

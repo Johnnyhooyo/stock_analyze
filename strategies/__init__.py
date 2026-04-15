@@ -35,3 +35,23 @@
 #
 #   xgboost_enhanced 支持 use_ta_lib 配置项启用 ta-lib
 
+import os as _os
+
+
+def ml_thread_budget() -> int:
+    """
+    返回 ML 模型(XGBoost/LightGBM/RandomForest)应使用的线程数。
+
+    遵循环境变量 STOCK_ML_THREADS(由 optimize_with_optuna 在启动 study
+    前根据 outer n_jobs 设定);未设置时退回 os.cpu_count()。
+
+    目的:避免外层 Optuna n_jobs 与内层 GBDT 多线程相乘导致线程超订。
+    """
+    try:
+        v = _os.environ.get('STOCK_ML_THREADS')
+        if v:
+            n = int(v)
+            return n if n > 0 else 1
+    except Exception:
+        pass
+    return _os.cpu_count() or 1

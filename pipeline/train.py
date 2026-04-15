@@ -27,11 +27,17 @@ from pipeline.select import _save_factor, _latest_factor_path
 logger = get_logger(__name__)
 
 try:
-    from optimize_with_optuna import optimize_strategy
+    from optimize_with_optuna import (
+        optimize_strategy,
+        get_training_type,
+        get_optuna_trials,
+    )
     OPTUNA_AVAILABLE = True
 except ImportError:
     OPTUNA_AVAILABLE = False
     optimize_strategy = None
+    get_training_type = None
+    get_optuna_trials = None
 
 try:
     from backtest_vectorbt import backtest_vectorbt as backtest_vbt
@@ -44,14 +50,13 @@ except ImportError:
 def step2_train(
     hist_data: pd.DataFrame,
     use_optuna: bool = False,
-    optuna_trials: int = 50,
     strategy_type: str = None,
     factors_dir_override: Path = None,
     ticker: str = None,
 ) -> tuple:
     if use_optuna and OPTUNA_AVAILABLE:
         return step2_train_optuna(
-            hist_data, n_trials=optuna_trials,
+            hist_data,
             strategy_type=strategy_type,
             factors_dir_override=factors_dir_override,
             ticker=ticker,
@@ -111,15 +116,14 @@ def step2_train_native(
 
 def step2_train_optuna(
     hist_data: pd.DataFrame,
-    n_trials: int = 50,
     strategy_type: str = None,
     factors_dir_override: Path = None,
     ticker: str = None,
 ) -> tuple:
-    """使用 Optuna 贝叶斯优化进行超参搜索。"""
+    """使用 Optuna 贝叶斯优化进行超参搜索(每策略 trial 数由 get_optuna_trials 决定)。"""
     logger.info("步骤2/3: 多策略超参搜索开始", extra={
         "search_method": "optuna",
-        "n_trials_per_strategy": n_trials,
+        "trial_budget": "per-strategy via get_optuna_trials",
         "strategy_type_filter": strategy_type
     })
 
@@ -183,6 +187,28 @@ def step2_train_optuna(
         })
     optuna_data = _search_data_opt
 
+    # 预加载多股票数据:只要本批策略中存在 multi 类型,就在这里加载一次,
+    # 后续每个策略复用同一份内存,避免 StrategyOptimizer.__init__ 重复读
+    # ~80 个 CSV。
+    multi_stock_data = None
+    needs_multi = any(
+        get_training_type(m.NAME, backtest_config) == 'multi'
+        for m in strategy_mods
+    )
+    if needs_multi:
+        try:
+            from train_multi_stock import load_all_hk_data
+            multi_stock_data = load_all_hk_data(period='5y', min_days=300)
+            logger.info("多股票数据预加载完成", extra={
+                "rows": len(multi_stock_data),
+                "tickers": int(multi_stock_data['ticker'].nunique())
+                if not multi_stock_data.empty and 'ticker' in multi_stock_data.columns
+                else 0,
+            })
+        except Exception as e:
+            logger.warning("多股票数据预加载失败,回退到策略内自加载", extra={"error": str(e)})
+            multi_stock_data = None
+
     # DEBUG: 诊断 hist_data 和 optuna_data 的 Close 列
     _hd_close_nan = int(hist_data['Close'].isna().sum()) if 'Close' in hist_data.columns else -1
     _od_close_nan = int(optuna_data['Close'].isna().sum()) if 'Close' in optuna_data.columns else -1
@@ -203,7 +229,11 @@ def step2_train_optuna(
     best_value = float('-inf')
 
     for mod in strategy_mods:
-        logger.info("开始优化策略", extra={"strategy_module": mod.NAME})
+        n_trials = get_optuna_trials(mod.NAME)
+        logger.info("开始优化策略", extra={
+            "strategy_module": mod.NAME,
+            "n_trials": n_trials,
+        })
         result = optimize_strategy(
             data=optuna_data,
             strategy_mod=mod,
@@ -214,6 +244,7 @@ def step2_train_optuna(
             use_vectorbt=use_vectorbt,
             verbose=True,
             ticker=ticker,
+            multi_stock_data=multi_stock_data,
         )
         if result['best_value'] is not None and result['best_value'] > best_value:
             best_value = result['best_value']
@@ -236,11 +267,21 @@ def step2_train_optuna(
             clear_rnn_feature_cache()
         except Exception:
             pass
+        try:
+            from train_multi_stock import clear_multi_feature_cache
+            clear_multi_feature_cache()
+        except Exception:
+            pass
         collected = gc.collect()
         logger.debug("策略迭代结束已清理内存", extra={
             "strategy_module": mod.NAME,
             "gc_collected": collected,
         })
+
+    # 所有策略跑完,释放预加载的多股票数据
+    if multi_stock_data is not None:
+        del multi_stock_data
+        gc.collect()
 
     sorted_results = sorted(all_results, key=lambda x: x.get('value', float('-inf')), reverse=True)
 

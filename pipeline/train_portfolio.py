@@ -77,7 +77,6 @@ def _train_meta_model(
 def train_portfolio_tickers(
     tickers: list[str],
     use_optuna: bool = False,
-    optuna_trials: int = 50,
     sources_override: list[str] = None,
     skip_download: bool = False,
 ) -> list[dict]:
@@ -105,7 +104,6 @@ def train_portfolio_tickers(
         step2_train(
             ref_hist,
             use_optuna=use_optuna,
-            optuna_trials=optuna_trials,
             strategy_type='multi',
             factors_dir_override=None,
             ticker=ref_ticker,
@@ -137,7 +135,6 @@ def train_portfolio_tickers(
             factor_path, best_result, _ = step2_train(
                 hist_data,
                 use_optuna=use_optuna,
-                optuna_trials=optuna_trials,
                 strategy_type='single',
                 factors_dir_override=ticker_factors_dir,
                 ticker=ticker,

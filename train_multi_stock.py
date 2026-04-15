@@ -3,6 +3,8 @@
 使用所有恒生指数成分股的数据来训练模型，解决单一股票数据量不足的问题
 """
 
+from collections import OrderedDict
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -24,7 +26,7 @@ _session_failures: dict[str, int] = {}
 # 工程结果只依赖原始数据本身（test_days 未被使用，label_period 只影响
 # label 列）。在同一个训练窗口内所有 trial 之间缓存结果，避免重复算
 # 80 只成分股 × 1250 天的技术指标。
-_MULTI_FEATURE_CACHE: dict = {}
+_MULTI_FEATURE_CACHE: "OrderedDict" = OrderedDict()
 _MULTI_FEATURE_CACHE_MAX = 8
 
 
@@ -229,6 +231,8 @@ def create_multi_stock_dataset(
         combined_data, label_period, use_tsfresh=use_tsfresh, tsfresh_window_sizes=_ws_key
     )
     if cache_key is not None and cache_key in _MULTI_FEATURE_CACHE:
+        # 命中:移到队尾,真正的 LRU 行为
+        _MULTI_FEATURE_CACHE.move_to_end(cache_key)
         X_c, y_c, cols_c = _MULTI_FEATURE_CACHE[cache_key]
         return X_c.copy(), y_c.copy(), list(cols_c)
 
@@ -318,11 +322,12 @@ def create_multi_stock_dataset(
     print(f"训练数据: {len(X)} 样本, {X.shape[1]} 特征")
     print(f"正样本比例: {y.mean():.2%}")
 
-    # ── 写入缓存（LRU 式：满则丢最早的一个）────────────────────────
+    # ── 写入缓存（OrderedDict + popitem(last=False) 即 LRU）────────
     if cache_key is not None:
         if len(_MULTI_FEATURE_CACHE) >= _MULTI_FEATURE_CACHE_MAX:
-            _MULTI_FEATURE_CACHE.pop(next(iter(_MULTI_FEATURE_CACHE)))
+            _MULTI_FEATURE_CACHE.popitem(last=False)
         _MULTI_FEATURE_CACHE[cache_key] = (X.copy(), y.copy(), list(feat_cols))
+        _MULTI_FEATURE_CACHE.move_to_end(cache_key)
 
     return X, y, feat_cols
 

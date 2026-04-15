@@ -210,6 +210,7 @@ def run(data: pd.DataFrame, config: dict):
     # 训练模型
     try:
         import lightgbm as lgb
+        from strategies import ml_thread_budget
         # 正则化参数（修复项4）传入模型，使用 LightGBM 原生参数名
         _lgbm_kwargs = dict(
             n_estimators=n_estimators,
@@ -224,6 +225,7 @@ def run(data: pd.DataFrame, config: dict):
             min_child_samples=min_child_samples,
             random_state=42,
             verbose=-1,
+            n_jobs=ml_thread_budget(),
         )
         # LightGBM pip 版本未编译 CUDA，支持 OpenCL GPU（需额外驱动）
         # CPU 已足够快，直接使用
@@ -242,6 +244,7 @@ def run(data: pd.DataFrame, config: dict):
                 eval_metric='logloss',
                 verbosity=0,
                 tree_method='hist',
+                n_jobs=ml_thread_budget(),
             )
             try:
                 model = XGBClassifier(**_xgb_kwargs, device='cuda')
@@ -270,6 +273,17 @@ def run(data: pd.DataFrame, config: dict):
             'eval_set': [(X_test, y_test)],
             'callbacks': [lgb.early_stopping(20, verbose=False)],
         }
+        # ── Optuna 中途剪枝:LGBM 每轮 boosting 后报告 valid binary_logloss,
+        # 同期表现差的 trial 直接 TrialPruned。──
+        _trial = config.get('_optuna_trial')
+        if _trial is not None:
+            try:
+                from optuna.integration import LightGBMPruningCallback
+                _fit_kwargs['callbacks'].append(
+                    LightGBMPruningCallback(_trial, 'binary_logloss', valid_name='valid_0')
+                )
+            except Exception as _e:
+                logger.debug(f"LightGBMPruningCallback 不可用,跳过中途剪枝: {_e}")
 
     # ⚠️ GPU 修复：GPU 错误在 fit() 时才实际触发，在此捕获并静默回退 CPU
     try:

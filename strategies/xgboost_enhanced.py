@@ -423,6 +423,7 @@ def run(data: pd.DataFrame, config: dict):
     # 训练模型
     try:
         from xgboost import XGBClassifier
+        from strategies import ml_thread_budget
         # 正则化参数（修复项4）传入模型
         _xgb_kwargs = dict(
             n_estimators=n_estimators,
@@ -438,6 +439,7 @@ def run(data: pd.DataFrame, config: dict):
             eval_metric='logloss',
             verbosity=0,
             tree_method='hist',
+            n_jobs=ml_thread_budget(),
         )
         # 尝试使用 GPU
         try:
@@ -476,6 +478,18 @@ def run(data: pd.DataFrame, config: dict):
                 _fit_kwargs['early_stopping_rounds'] = 20
         except Exception:
             _fit_kwargs['early_stopping_rounds'] = 20
+
+        # ── Optuna 中途剪枝:每轮 boosting 后报告 valid logloss,
+        # 同期表现差的 trial 在训练中段就被 TrialPruned 抛出。──
+        _trial = config.get('_optuna_trial')
+        if _trial is not None:
+            try:
+                from optuna.integration import XGBoostPruningCallback
+                _fit_kwargs.setdefault('callbacks', []).append(
+                    XGBoostPruningCallback(_trial, 'validation_0-logloss')
+                )
+            except Exception as _e:
+                logger.debug(f"XGBoostPruningCallback 不可用,跳过中途剪枝: {_e}")
 
     model.fit(X_train, y_train, **_fit_kwargs)
 

@@ -7,6 +7,8 @@ Optuna 超参数优化模块
     best_params = optimize_strategy(data, strategy_mod, config, n_trials=100)
 """
 
+import os
+
 import optuna
 import pandas as pd
 import numpy as np
@@ -259,6 +261,44 @@ def _suggest_params(trial: optuna.Trial, param_space: dict) -> dict:
 # 优化目标函数
 # ═══════════════════════════════════════════════════════════════════
 
+def get_training_type(strategy_name: str, config: dict) -> str:
+    """
+    判断策略的训练类型(模块级,供上层提前判断是否需要预加载多股票数据)。
+    与 StrategyOptimizer._get_training_type 共享实现。
+    """
+    train_config = config.get('strategy_training', {}) or {}
+    if strategy_name in train_config.get('multi', []):
+        return 'multi'
+    if strategy_name in train_config.get('single', []):
+        return 'single'
+    if strategy_name in train_config.get('custom', []):
+        return 'custom'
+    if 'xgboost' in strategy_name or 'lightgbm' in strategy_name:
+        return 'multi'
+    return 'single'
+
+
+# 各类策略的 Optuna trial 预算。修改请直接调整这里。
+# - 规则策略(rule):3-5 维离散空间,30-50 trial 即收敛,60 留余量
+# - GBDT(xgboost/lightgbm):8-12 维连续空间,边际收益拐点 ~80,100 接近最优
+# - RNN:训练抖动大,trial 间方差高,需要 150 才稳定
+OPTUNA_TRIAL_BUDGET = {
+    'rule': 60,
+    'gbdt': 100,
+    'rnn':  150,
+}
+
+
+def get_optuna_trials(strategy_name: str) -> int:
+    """根据策略名返回 Optuna 试验次数预算。"""
+    name = (strategy_name or '').lower()
+    if 'rnn' in name:
+        return OPTUNA_TRIAL_BUDGET['rnn']
+    if 'xgboost' in name or 'lightgbm' in name:
+        return OPTUNA_TRIAL_BUDGET['gbdt']
+    return OPTUNA_TRIAL_BUDGET['rule']
+
+
 class StrategyOptimizer:
     """策略优化器"""
 
@@ -271,6 +311,7 @@ class StrategyOptimizer:
         direction: str = 'maximize',
         use_vectorbt: bool = True,
         ticker: str = None,
+        multi_stock_data: Optional[pd.DataFrame] = None,
     ):
         self.data = data
         self.strategy_mod = strategy_mod
@@ -288,10 +329,13 @@ class StrategyOptimizer:
         # 判断是否为多股票策略
         self.train_type = self._get_training_type(strategy_name)
 
-        # 多股票训练数据（按需加载）
+        # 多股票训练数据：优先使用上层注入的预加载结果，避免每个策略都重读 80 个 CSV
         self.multi_stock_data = None
         if self.train_type == 'multi':
-            self.multi_stock_data = self._load_multi_stock_data()
+            if multi_stock_data is not None and not multi_stock_data.empty:
+                self.multi_stock_data = multi_stock_data
+            else:
+                self.multi_stock_data = self._load_multi_stock_data()
             # DEBUG: 打印 self.data 的基本结构，帮助诊断 Close 全 NaN 问题
             _close_null = int(data['Close'].isna().sum()) if 'Close' in data.columns else -1
             _col_list = list(data.columns)
@@ -317,20 +361,7 @@ class StrategyOptimizer:
 
     def _get_training_type(self, strategy_name: str) -> str:
         """获取策略的训练类型"""
-        train_config = self.config.get('strategy_training', {})
-        if strategy_name in train_config.get('multi', []):
-            return 'multi'
-        if strategy_name in train_config.get('single', []):
-            return 'single'
-        if strategy_name in train_config.get('custom', []):
-            return 'custom'
-        # 默认: 只有 xgboost/lightgbm 系列走多股票训练；
-        # ridge/linear/random_forest 的 run() 并未按 ticker 分组处理数据，
-        # 喂入多股票 concat 会把不同 ticker 的序列当成一条时序，
-        # 因此归入 single（在目标股票自身数据上训练）。
-        if 'xgboost' in strategy_name or 'lightgbm' in strategy_name:
-            return 'multi'
-        return 'single'
+        return get_training_type(strategy_name, self.config)
 
     def _load_multi_stock_data(self) -> pd.DataFrame:
         """加载多股票训练数据"""
@@ -496,6 +527,11 @@ class StrategyOptimizer:
 
         # 2. 合并 ML 策略专用配置
         trial_cfg = self._merge_ml_strategy_config(trial_cfg)
+
+        # 注入 trial 引用,供 ML 策略接 XGBoost/LightGBM 的 PruningCallback。
+        # 普通策略不读这个 key,无副作用。注意:trial 对象不可 pickle,
+        # 所以这只能存在于 trial_cfg(本次 trial 临时副本),不能写回 self.config。
+        trial_cfg['_optuna_trial'] = trial
 
         # 3. 根据训练类型运行策略
         try:
@@ -712,6 +748,7 @@ def optimize_strategy(
     study_name: Optional[str] = None,
     storage: Optional[str] = None,
     ticker: str = None,
+    multi_stock_data: Optional[pd.DataFrame] = None,
 ) -> Dict[str, Any]:
     """
     使用 Optuna 优化策略参数
@@ -754,6 +791,37 @@ def optimize_strategy(
         direction=direction,
         use_vectorbt=use_vectorbt,
         ticker=ticker,
+        multi_stock_data=multi_stock_data,
+    )
+
+    # ── 线程预算自适应:消除 outer Optuna n_jobs × inner GBDT 多线程的超订 ──
+    # ML(multi)策略:GBDT 内部多线程能吃满核,outer trial 强制串行,
+    #               inner 线程 = 全部物理核
+    # 规则(single)策略:几乎无内部并行,outer 可以保留请求的 n_jobs,
+    #                 inner 线程 = 1(防御性,即使是 RF/逻辑回归也不会爆)
+    n_cores = os.cpu_count() or 1
+    if optimizer.train_type == 'multi':
+        outer_n_jobs = 1
+        inner_threads = n_cores
+    else:
+        outer_n_jobs = max(1, min(n_jobs, n_cores))
+        inner_threads = max(1, n_cores // outer_n_jobs)
+
+    # 通过环境变量传给 ML 策略(strategies.ml_thread_budget 读取)
+    _saved_ml_threads = os.environ.get('STOCK_ML_THREADS')
+    os.environ['STOCK_ML_THREADS'] = str(inner_threads)
+    if verbose:
+        print(f"  线程预算: outer_trials={outer_n_jobs}, inner_threads={inner_threads} "
+              f"(train_type={optimizer.train_type}, cores={n_cores})")
+
+    # Sampler:multivariate=True 让 TPE 联合建模相关超参(XGBoost/LightGBM
+    # 的 lr / depth / n_estimators / 正则项之间相关性强);constant_liar
+    # 在 n_jobs>1 时减少并发 trial 的重复采样;group=True 与 multivariate
+    # 协同处理条件参数空间。
+    sampler = optuna.samplers.TPESampler(
+        multivariate=True,
+        group=True,
+        constant_liar=True,
     )
 
     # 创建 study
@@ -762,6 +830,7 @@ def optimize_strategy(
     # 作用是跳过 train_acc/test_acc 明显偏弱模型的回测阶段。
     study = optuna.create_study(
         direction=direction,
+        sampler=sampler,
         study_name=study_name or strategy_name,
         storage=storage,
         load_if_exists=True,
@@ -777,13 +846,20 @@ def optimize_strategy(
         return optimizer.objective(trial)
 
     # 运行优化
-    study.optimize(
-        objective_wrapper,
-        n_trials=n_trials,
-        timeout=timeout,
-        n_jobs=n_jobs,
-        show_progress_bar=verbose and n_jobs == 1,
-    )
+    try:
+        study.optimize(
+            objective_wrapper,
+            n_trials=n_trials,
+            timeout=timeout,
+            n_jobs=outer_n_jobs,
+            show_progress_bar=verbose and outer_n_jobs == 1,
+        )
+    finally:
+        # 还原环境变量,避免污染同进程的后续策略
+        if _saved_ml_threads is None:
+            os.environ.pop('STOCK_ML_THREADS', None)
+        else:
+            os.environ['STOCK_ML_THREADS'] = _saved_ml_threads
 
     # 获取结果
     try:
@@ -910,9 +986,14 @@ def optimize_multiobjective(
         print(f"  目标: {metrics}")
         print(f"{'='*56}")
 
-    # 创建多目标 study
+    # 创建多目标 study(同样启用 multivariate TPE)
     study = optuna.create_study(
         directions=['maximize' if m != 'max_drawdown' else 'minimize' for m in metrics],
+        sampler=optuna.samplers.TPESampler(
+            multivariate=True,
+            group=True,
+            constant_liar=True,
+        ),
         study_name=f"{strategy_name}_multi",
     )
 
