@@ -9,6 +9,8 @@ pipeline/train.py — 多策略超参搜索
 
 from __future__ import annotations
 
+import gc
+
 import pandas as pd
 from pathlib import Path
 
@@ -215,10 +217,30 @@ def step2_train_optuna(
         )
         if result['best_value'] is not None and result['best_value'] > best_value:
             best_value = result['best_value']
-            best_of_all = result
+            # 只保留下游真正需要的标量字段,避免长期持有 study/optimizer 引用
+            best_of_all = {
+                'strategy_name': result.get('strategy_name', mod.NAME),
+                'best_value': result['best_value'],
+                'best_params': result.get('best_params', {}),
+            }
         for r in result.get('all_results', []):
             r['strategy_name'] = mod.NAME
             all_results.append(r)
+
+        # 释放本轮策略相关的内存:Optuna study、optimizer.all_results
+        # 引用、ML 策略的进程级特征缓存
+        result.pop('study', None)
+        del result
+        try:
+            from strategies.rnn_trend import clear_rnn_feature_cache
+            clear_rnn_feature_cache()
+        except Exception:
+            pass
+        collected = gc.collect()
+        logger.debug("策略迭代结束已清理内存", extra={
+            "strategy_module": mod.NAME,
+            "gc_collected": collected,
+        })
 
     sorted_results = sorted(all_results, key=lambda x: x.get('value', float('-inf')), reverse=True)
 
