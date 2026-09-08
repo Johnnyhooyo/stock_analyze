@@ -111,6 +111,48 @@ def _save_metadata(path: Path, ticker: str, source: str, rows: int, file_hash: s
 
 # ── 缓存过期判断 ────────────────────────────────────────────────
 
+def _get_last_bar_date(file_path: Path) -> Optional[datetime]:
+    """
+    读取本地文件的最后一条记录日期，用于增量下载的 since 参数。
+    优先读 .meta.json（O(1)），fallback 到读文件尾行。
+    返回 datetime 对象，失败返回 None（触发全量下载）。
+    """
+    from datetime import date as _date
+    # 快速路径: meta.json
+    meta_path = file_path.with_suffix(".meta.json")
+    if meta_path.exists():
+        try:
+            import json as _json
+            meta = _json.loads(meta_path.read_text(encoding="utf-8"))
+            last_bar = meta.get("last_bar_date")
+            if last_bar:
+                return datetime.combine(_date.fromisoformat(str(last_bar)), datetime.min.time())
+        except Exception:
+            pass
+    # 慢速路径: 读文件尾行
+    try:
+        if file_path.suffix == ".parquet":
+            df = pd.read_parquet(file_path, columns=[])
+            if not df.empty:
+                last = df.index.max()
+                if hasattr(last, "tzinfo") and last.tzinfo is not None:
+                    last = last.tz_convert(None)
+                return last.to_pydatetime()
+        else:
+            with open(file_path, "rb") as f:
+                f.seek(0, 2)
+                fsize = f.tell()
+                f.seek(max(0, fsize - 2048))
+                tail = f.read().decode("utf-8", errors="replace")
+            lines = [l for l in tail.strip().splitlines() if l]
+            if len(lines) >= 2:
+                date_str = lines[-1].split(",")[0].strip().strip('"')
+                return pd.Timestamp(date_str).to_pydatetime()
+    except Exception as e:
+        logger.debug(f"读取 last_bar_date 失败，将全量下载: {e}")
+    return None
+
+
 def _is_stale(file_path: Path) -> bool:
     """
     判断本地数据文件是否过期。
@@ -222,16 +264,26 @@ class DataManager:
         ticker: str,
         period: str,
         sources_override: Optional[List[str]] = None,
+        since: Optional["datetime"] = None,
     ) -> Tuple[Optional[pd.DataFrame], str]:
         """
         通过 vendor 链尝试下载数据。
 
+        Args:
+            since: 若提供，则只请求 since 到今天的增量数据（本地已有历史时使用）。
+                   若为 None，则按 period 计算完整起始日期（首次下载或 force 模式）。
+
         Returns:
             (DataFrame | None, source_name)
         """
-        days = parse_period_to_days(period)
         end_date = datetime.today()
-        start_date = end_date - timedelta(days=days)
+        if since is not None:
+            # 增量模式：从本地最后一条数据的次日开始请求
+            start_date = since + timedelta(days=1)
+            logger.debug(f"增量下载 {ticker}: {start_date.date()} → {end_date.date()}")
+        else:
+            days = parse_period_to_days(period)
+            start_date = end_date - timedelta(days=days)
 
         for vendor in self._ordered_vendors(sources_override):
             logger.info(f"尝试数据源: {vendor.name} for {ticker}")
@@ -416,6 +468,7 @@ class DataManager:
         file_path = out_dir / f"{stem}{self.storage.suffix}"
 
         # ── 查找本地缓存 ─────────────────────────────────────────
+        since: Optional[datetime] = None
         if not force:
             candidates = self.storage.glob_all(out_dir, f"{safe_name}_*")
             if candidates:
@@ -428,9 +481,11 @@ class DataManager:
                 else:
                     logger.info(f"本地缓存过期: {cached.name}，需要更新")
                     file_path = cached  # 使用已有文件路径以便合并
+                    # 读取本地最后一条记录日期，用于增量下载
+                    since = _get_last_bar_date(cached)
 
         # ── 网络下载 ─────────────────────────────────────────────
-        new_data, source = self._fetch_from_vendors(ticker, period, sources_override)
+        new_data, source = self._fetch_from_vendors(ticker, period, sources_override, since=since)
 
         if new_data is None or new_data.empty:
             logger.warning(f"所有数据源均未获取到 {ticker} 的数据")
@@ -491,7 +546,7 @@ class DataManager:
         failed: list[str] = []
 
         # ── 第一步：过滤出需要更新的股票 ─────────────────────────
-        need_update: list[Tuple[str, Path]] = []
+        need_update: list[Tuple[str, Path, Optional[datetime]]] = []
         for ticker in stocks:
             safe_name = ticker.replace(".", "_")
             stem = f"{safe_name}_{period}"
@@ -501,7 +556,9 @@ class DataManager:
                 skipped += 1
                 continue
             file_path = found or (out_dir / f"{stem}{self.storage.suffix}")
-            need_update.append((ticker, file_path))
+            # 已有文件但过期：读取 last_bar_date 用于增量下载
+            since = _get_last_bar_date(found) if found is not None else None
+            need_update.append((ticker, file_path, since))
 
         logger.info(
             f"[HK增量] 总计 {total} 只, 跳过 {skipped} 只(已是最新), 待更新 {len(need_update)} 只 (workers={workers})"
@@ -511,9 +568,9 @@ class DataManager:
             return {"total": total, "skipped": skipped, "updated": 0, "failed": []}
 
         # ── 第二步：下载（并发或串行）───────────────────────────
-        def _process_one(ticker: str, file_path: Path) -> Optional[str]:
+        def _process_one(ticker: str, file_path: Path, since: Optional[datetime] = None) -> Optional[str]:
             """处理单只股票，返回 None=成功, str=失败原因"""
-            new_data, source = self._fetch_from_vendors(ticker, period)
+            new_data, source = self._fetch_from_vendors(ticker, period, since=since)
             if new_data is None or new_data.empty:
                 return f"{ticker}: 无数据"
             try:
@@ -524,9 +581,9 @@ class DataManager:
 
         if workers <= 1:
             # 串行模式
-            for i, (ticker, file_path) in enumerate(need_update, 1):
+            for i, (ticker, file_path, since) in enumerate(need_update, 1):
                 logger.info(f"[{skipped + i}/{total}] ⬇ 更新 {ticker}…")
-                err = _process_one(ticker, file_path)
+                err = _process_one(ticker, file_path, since)
                 if err:
                     logger.warning(f"[{skipped + i}/{total}] ❌ {err}")
                     failed.append(ticker)
@@ -538,8 +595,8 @@ class DataManager:
             # 并发模式（rate limiter 在 vendor 层自动控制频率）
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 future_map = {
-                    executor.submit(_process_one, ticker, fp): ticker
-                    for ticker, fp in need_update
+                    executor.submit(_process_one, ticker, fp, since): ticker
+                    for ticker, fp, since in need_update
                 }
                 for i, future in enumerate(as_completed(future_map), 1):
                     ticker = future_map[future]

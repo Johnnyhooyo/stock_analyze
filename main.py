@@ -66,6 +66,72 @@ logger = get_logger(__name__)
 _ensure_hsi_data = _ensure_hk_data
 
 
+def _select_portfolio_training_tickers(portfolio_state, config: dict) -> list[str]:
+    """Select a bounded, high-quality universe for the expensive portfolio run.
+
+    Held positions are always included. Remaining slots are filled by the
+    current screener ranking based on locally cached market data. The full
+    watchlist remains intact for the much cheaper daily scan.
+    """
+    all_tickers = portfolio_state.all_tickers()
+    training_cfg = config.get("strategy_training", {}) or {}
+    try:
+        max_tickers = int(training_cfg.get("portfolio_max_tickers", 0) or 0)
+    except (TypeError, ValueError):
+        max_tickers = 0
+
+    if max_tickers <= 0 or len(all_tickers) <= max_tickers:
+        return all_tickers
+
+    held = list(dict.fromkeys(t.upper() for t in portfolio_state.held_tickers()))
+    held_set = set(held)
+    slots = max(0, max_tickers - len(held))
+    ranked: list[str] = []
+
+    if slots:
+        try:
+            from data.manager import DataManager
+            from engine.stock_screener import StockScreener
+
+            data_mgr = DataManager()
+            data_dict = {}
+            for ticker in all_tickers:
+                try:
+                    frame = data_mgr.load(ticker, period=config.get("period", "5y"))
+                    if frame is not None and len(frame) > 60:
+                        data_dict[ticker] = frame
+                except Exception:
+                    continue
+
+            screen_results = StockScreener(config).screen(list(data_dict), data_dict)
+            ranked = [r.ticker.upper() for r in screen_results if r.ticker.upper() not in held_set]
+        except Exception as exc:
+            logger.warning("训练股票池评分失败，使用观察列表顺序兜底", extra={"error": str(exc)})
+
+    selected = held[:]
+    selected_set = set(selected)
+    for ticker in ranked + all_tickers:
+        ticker = ticker.upper()
+        if ticker in selected_set:
+            continue
+        selected.append(ticker)
+        selected_set.add(ticker)
+        if len(selected) >= max(max_tickers, len(held)):
+            break
+
+    logger.info(
+        "组合训练股票池已限制",
+        extra={
+            "portfolio_total": len(all_tickers),
+            "training_count": len(selected),
+            "configured_limit": max_tickers,
+            "held_count": len(held),
+            "tickers": selected,
+        },
+    )
+    return selected
+
+
 def _last_trading_day(ref: datetime | None = None) -> datetime:
     d = (ref or datetime.now()).date()
     d = _prev_hk_trading_day(d)
@@ -221,7 +287,7 @@ def main():
     if args.portfolio:
         from engine.portfolio_state import load_portfolio
         portfolio_state = load_portfolio()
-        tickers = portfolio_state.all_tickers()
+        tickers = _select_portfolio_training_tickers(portfolio_state, config)
         if not tickers:
             default_ticker = config.get('ticker', '0700.HK').upper()
             tickers = [default_ticker]
