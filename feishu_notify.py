@@ -288,15 +288,16 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
 
     # ── 构建 Markdown 内容 ──────────────────────────────────────
     lines = [
-        f"## 📊 每日量化操作建议  {run_date}",
+        f"**📊 每日量化操作建议  {run_date}**",
         "",
-        f"市场状态: {market_str}",
+        f"**市场状态：** {market_str}",
         "",
-        "### 💼 投资组合概况",
+        "**💼 投资组合概况**",
         "",
-        f"| 总资产 | 持仓市值 | 可用现金 | 持仓盈亏 |",
-        f"|--------|---------|---------|---------|",
-        f"| {pv:,.0f} | {mv:,.2f} | {cash:,.2f}({cash_pct:.1f}%) | {pnl_emoji}{pnl:+,.2f}({pnl_pct:+.2f}%) |",
+        f"总资产：**{pv:,.0f}**",
+        f"持仓市值：{mv:,.2f}",
+        f"可用现金：{cash:,.2f}（{cash_pct:.1f}%）",
+        f"持仓盈亏：{pnl_emoji} {pnl:+,.2f}（{pnl_pct:+.2f}%）",
         "",
     ]
 
@@ -308,10 +309,8 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         lines.append("")
 
     lines.extend([
-        "### 📋 操作建议明细",
+        "**📋 操作建议明细**",
         "",
-        "| 标的 | 建议 | 收盘价 | 持仓 | 盈亏 | 止损 | 置信 |",
-        "|------|------|--------|------|------|------|------|",
     ])
 
     for r in recs:
@@ -319,33 +318,28 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         pnl_str = f"{r['profit_pct']:+.1f}%" if r["has_position"] else "—"
         stop_str = f"{r['stop_price']:.2f}" if r["stop_price"] > 0 else "—"
         conf_str = f"{r['confidence_label']}({r['confidence_pct']:.0%})"
-        lines.append(
-            f"| {r['ticker']} "
-            f"| {r['action_emoji']} {r['action']} "
-            f"| {r['last_close']:.2f} "
-            f"| {pos_str} "
-            f"| {pnl_str} "
-            f"| {stop_str} "
-            f"| {conf_str} |"
-        )
+        lines.extend([
+            f"**{r['ticker']}**  {r['action_emoji']} {r['action']}  ·  置信 {conf_str}",
+            f"收盘 {r['last_close']:.2f}  ·  持仓 {pos_str}  ·  盈亏 {pnl_str}  ·  止损 {stop_str}",
+            "",
+        ])
 
-    lines.append("")
-    lines.append("---")
     lines.append("⚠️ 以上建议由量化模型自动生成，仅供参考，不构成投资建议。")
 
     # 逐条详细推送（只推送有操作信号的股票，减少消息长度）
     action_recs = [r for r in recs if r["action"] not in ("观望",)]
     if action_recs:
-        lines.extend(["", "### 🎯 今日操作详情", ""])
+        lines.extend(["", "**🎯 今日操作详情**", ""])
         for r in action_recs:
             cb_str = f"⚠️ 熔断触发" if r["circuit_breaker"] else ""
             kelly_str = (
                 f"建议仓位 {r['kelly_shares']} 股（≈{r['kelly_amount']:.0f}港元）"
                 if r["kelly_shares"] > 0 else ""
             )
+            _stop = f"{r['stop_price']:.2f}" if r['stop_price'] > 0 else '—'
             lines.extend([
                 f"**{r['action_emoji']} {r['ticker']}  {r['action']}**",
-                f"- 收盘价: {r['last_close']:.2f}  止损: {r['stop_price']:.2f if r['stop_price'] > 0 else '—'}",
+                f"- 收盘价: {r['last_close']:.2f}  止损: {_stop}",
                 f"- 原因: {r['reason']}",
             ])
             if kelly_str:
@@ -365,7 +359,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         return send_feishu_message(webhook_url, message, msg_type="markdown")
     else:
         # 分两段发送：摘要 + 详情
-        summary_end = message.find("### 🎯 今日操作详情")
+        summary_end = message.find("**🎯 今日操作详情**")
         if summary_end == -1:
             summary_end = MAX_LEN
         ok1 = send_feishu_message(webhook_url, message[:summary_end], msg_type="markdown")
