@@ -116,3 +116,41 @@ class TestPortfolioStateUpdatePosition:
         assert "0700.HK" in held
         assert "0011.HK" in held
         assert "0005.HK" not in held
+
+
+class TestPortfolioCashAccounting:
+    def test_buy_sell_and_mark_to_market(self, tmp_path):
+        state = PortfolioState(
+            portfolio_value=100_000.0,
+            cash=100_000.0,
+            initial_capital=100_000.0,
+            path=tmp_path / "p.yaml",
+        )
+        state.buy("0700.HK", 100, 400.0, fee=40.0)
+        assert state.cash == pytest.approx(59_960.0)
+        assert state.get_position("0700.HK").avg_cost == pytest.approx(400.4)
+
+        state.mark_to_market({"0700.HK": 420.0}, "2026-09-04")
+        assert state.portfolio_value == pytest.approx(101_960.0)
+
+        realized = state.sell("0700.HK", 100, 420.0, fee=42.0)
+        assert realized == pytest.approx(1_918.0)
+        assert state.cash == pytest.approx(101_918.0)
+        assert state.held_tickers() == []
+
+    def test_cash_fields_round_trip(self, tmp_path):
+        path = tmp_path / "portfolio.yaml"
+        state = PortfolioState(
+            portfolio_value=101_000.0,
+            cash=61_000.0,
+            initial_capital=100_000.0,
+            realized_pnl=500.0,
+            last_valuation_date="2026-09-04",
+            path=path,
+        )
+        state.save()
+        loaded = load_portfolio(path)
+        assert loaded.cash == 61_000.0
+        assert loaded.initial_capital == 100_000.0
+        assert loaded.realized_pnl == 500.0
+        assert loaded.last_valuation_date == "2026-09-04"

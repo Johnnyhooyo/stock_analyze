@@ -146,6 +146,9 @@ def _build_daily_report(
     screener_results: list = None,
     sector_ranking: list = None,
     portfolio_risk=None,
+    cash_value: float = None,
+    executed_trades: list = None,
+    initial_capital: float = None,
 ) -> dict:
     """
     将所有 RecommendationResult 汇总为 daily_report 字典，
@@ -218,8 +221,15 @@ def _build_daily_report(
 
     total_pnl = total_market_value - total_cost_basis
     total_pnl_pct = (total_pnl / total_cost_basis * 100) if total_cost_basis > 0 else 0.0
-    cash_value = portfolio_value - total_market_value
+    if cash_value is None:
+        cash_value = portfolio_value - total_market_value
+    else:
+        portfolio_value = cash_value + total_market_value
     cash_pct = (cash_value / portfolio_value * 100) if portfolio_value > 0 else 100.0
+    base_capital = initial_capital if initial_capital and initial_capital > 0 else portfolio_value
+    total_return_pct = (
+        (portfolio_value / base_capital - 1.0) * 100 if base_capital > 0 else 0.0
+    )
 
     return {
         "run_date": run_date,
@@ -231,10 +241,15 @@ def _build_daily_report(
         "total_pnl_pct": total_pnl_pct,
         "cash_value": cash_value,
         "cash_pct": cash_pct,
+        "initial_capital": base_capital,
+        "total_return_pct": total_return_pct,
         "held_count": held_count,
         "total_tickers": len(recommendations),
         "buy_signals": buy_signals,
         "sell_signals": sell_signals,
+        "executed_trades": [
+            t.to_dict() if hasattr(t, "to_dict") else t for t in (executed_trades or [])
+        ],
         "recommendations": recommendations,
         "screener_results": [
             r.to_dict() if hasattr(r, "to_dict") else r for r in (screener_results or [])
@@ -262,6 +277,7 @@ def _build_markdown_report(daily_report: dict) -> str:
     pnl_pct = daily_report["total_pnl_pct"]
     cash = daily_report["cash_value"]
     cash_pct = daily_report["cash_pct"]
+    total_return_pct = daily_report.get("total_return_pct", 0.0)
     buy_sigs = daily_report["buy_signals"]
     sell_sigs = daily_report["sell_signals"]
     market_str = "✅ 交易日" if daily_report["market_is_open"] else "❌ 非交易日"
@@ -278,6 +294,7 @@ def _build_markdown_report(daily_report: dict) -> str:
         f"| 总资产 | {pv:,.0f} 港元 |",
         f"| 持仓市值 | {mv:,.2f} 港元 |",
         f"| 可用现金 | {cash:,.2f} 港元（{cash_pct:.1f}%） |",
+        f"| 累计收益率 | {total_return_pct:+.2f}% |",
         f"| 持仓盈亏 | {pnl:+,.2f} 港元（{pnl_pct:+.2f}%） |",
         f"| 持仓股票数 | {daily_report['held_count']} 只 |",
         "",
@@ -288,6 +305,22 @@ def _build_markdown_report(daily_report: dict) -> str:
     if sell_sigs:
         lines.append(f"🔴 **今日卖出信号**: {', '.join(sell_sigs)}")
     if buy_sigs or sell_sigs:
+        lines.append("")
+
+    executed_trades = daily_report.get("executed_trades", [])
+    if executed_trades:
+        lines.extend([
+            "## 纸面成交",
+            "",
+            "| 标的 | 方向 | 数量 | 成交价 | 成交额 | 费用 | 已实现盈亏 |",
+            "|------|------|------|--------|--------|------|------------|",
+        ])
+        for trade in executed_trades:
+            lines.append(
+                f"| {trade['ticker']} | {trade['action']} | {trade['shares']} | "
+                f"{trade['price']:.3f} | {trade['gross_amount']:,.2f} | "
+                f"{trade['fee']:.2f} | {trade.get('realized_pnl', 0.0):+,.2f} |"
+            )
         lines.append("")
 
     lines.extend([
@@ -813,6 +846,27 @@ def main():
         logger.warning("组合风控检查失败（已跳过）: %s", _e)
 
     # ── 汇总报告 ──────────────────────────────────────────────────
+    executed_trades = []
+    paper_cfg = config.get("paper_trading", {})
+    if paper_cfg.get("enabled", False):
+        if args.dry_run:
+            logger.info("纸面交易已跳过：dry-run 模式")
+        elif not market_is_open:
+            logger.info("纸面交易已跳过：当日非港股交易日")
+        else:
+            try:
+                from engine.paper_trader import PaperTradingEngine
+                trader = PaperTradingEngine(config)
+                executed_trades = trader.execute(results, portfolio_state, run_date)
+                logger.info("纸面交易执行完成", extra={
+                    "trade_count": len(executed_trades),
+                    "cash": portfolio_state.cash,
+                    "portfolio_value": portfolio_state.portfolio_value,
+                })
+            except Exception as _e:
+                logger.error("纸面交易执行失败，持仓未保存: %s", _e, exc_info=True)
+                raise
+
     daily_report = _build_daily_report(
         results=results,
         portfolio_value=portfolio_state.portfolio_value,
@@ -822,6 +876,9 @@ def main():
         screener_results=screener_results,
         sector_ranking=sector_ranking,
         portfolio_risk=portfolio_risk,
+        cash_value=portfolio_state.cash,
+        executed_trades=executed_trades,
+        initial_capital=portfolio_state.initial_capital,
     )
 
     # 记录汇总信息
@@ -835,14 +892,20 @@ def main():
     })
 
     # ── PnL 追踪：T+1 回填 + 当日快照 ───────────────────────────
+    # 时序说明：
+    #   今日 (T) 运行时，数据最新一行是 T-1 收盘价（last_close）。
+    #   需要回填的是 T-2 日写入的快照（那天建议的 T+1 = T-1）。
+    #   所以 prev_date = T-2，price_map 中的 last_close（T-1 价格）即为其 t1_close。
     if not args.dry_run and market_is_open:
         from data.calendar import prev_trading_day
         tracker = PnLTracker()
         price_map = {r["ticker"]: r["last_close"] for r in daily_report["recommendations"]}
-        prev_date = prev_trading_day(datetime.now().date())
+        t_minus_1 = prev_trading_day(datetime.now().date())   # T-1（数据最新日）
+        t_minus_2 = prev_trading_day(t_minus_1)               # T-2（待回填快照日）
         if price_map:
-            tracker.fill_t1_returns(prev_date.strftime("%Y-%m-%d"), price_map)
-        tracker.record_daily(run_date, results)
+            tracker.fill_t1_returns(t_minus_2.strftime("%Y-%m-%d"), price_map)
+        # 快照日期用 T-1（与 last_close 对应的交易日一致），而非今日 T
+        tracker.record_daily(t_minus_1.strftime("%Y-%m-%d"), results)
 
     for r in results:
         pos_str = f"{r.shares}股@{r.avg_cost:.0f}" if r.has_position else "空仓"
@@ -909,4 +972,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

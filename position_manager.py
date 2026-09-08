@@ -428,13 +428,15 @@ class PositionManager:
             result["kelly_shares"] = kelly_shares
             result["kelly_amount"] = round(kelly_shares * price, 2)
         else:
-            # 即使不用 Kelly，也做仓位上限校验（使用 max_position_pct 计算建议仓位）
-            if self.position and price > 0:
+            # 即使不用 Kelly，也为空仓计算可建仓数量。
+            # 旧逻辑要求 self.position 存在，导致空仓买入永远建议 0 股。
+            if price > 0:
                 proposed = int(self.max_position_pct * capital / price)
-                result["kelly_shares"] = self.validate_position_size(
+                kelly_shares = self.validate_position_size(
                     proposed, price, capital
                 )
-                result["kelly_amount"] = round(result["kelly_shares"] * price, 2)
+                result["kelly_shares"] = kelly_shares
+                result["kelly_amount"] = round(kelly_shares * price, 2)
 
         # 4. 原始信号透传
         result["signal"] = signal
@@ -463,11 +465,15 @@ class PositionManager:
         # ── 可选：通过 OMS 提交订单 ──────────────────────────────
         if oms is not None and result["action"] in ("买入", "卖出", "止损卖出"):
             try:
-                shares_to_trade = result.get("kelly_shares", 0)
-                if shares_to_trade <= 0 and self.position:
-                    shares_to_trade = self.position.shares
+                is_sell = result["action"] in ("卖出", "止损卖出")
+                # 卖出始终使用实际持仓数，不能误用建议建仓数量。
+                shares_to_trade = (
+                    self.position.shares
+                    if is_sell and self.position
+                    else result.get("kelly_shares", 0)
+                )
                 if shares_to_trade > 0:
-                    oms_action = "卖出" if result["action"] in ("卖出", "止损卖出") else "买入"
+                    oms_action = "卖出" if is_sell else "买入"
                     oms.submit_order(
                         ticker=ticker or "UNKNOWN",
                         action=oms_action,

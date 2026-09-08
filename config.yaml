@@ -3,6 +3,7 @@ period: 5y
 train_years: 5
 backtest_engine: native
 data_sources:
+  - tickflow
   - yahooquery
   - yfinance
 storage_format: csv
@@ -55,13 +56,23 @@ risk_management:
   daily_loss_limit: 0.05
   max_consecutive_loss_days: 3
 
+# 纸面交易：只更新本地模拟持仓，不连接券商、不下实盘订单
+paper_trading:
+  enabled: true
+  min_confidence: 0.55
+  max_new_positions_per_day: 3
+  reserve_cash_pct: 0.05
+  lot_size: 1
+
 strategy_training:
+  # 每日组合训练最多处理 30 只；实际持仓始终优先且不会因上限被排除
+  portfolio_max_tickers: 30
   custom: []
   multi:
     - xgboost_enhanced
     - lightgbm_enhanced
-    - rnn_trend
   single:
+    - rnn_trend
     - bollinger_rsi_trend
     - macd_rsi_trend
     - rsi_divergence

@@ -113,8 +113,21 @@ class PortfolioState:
         path            — portfolio.yaml 文件路径（保存时用）
     """
     portfolio_value: float = 200_000.0
+    cash: Optional[float] = None
+    initial_capital: Optional[float] = None
+    realized_pnl: float = 0.0
+    last_valuation_date: str = ""
     positions: dict[str, PortfolioPosition] = field(default_factory=dict)
     path: Path = field(default_factory=lambda: _DEFAULT_PORTFOLIO_PATH)
+
+    def __post_init__(self) -> None:
+        if self.initial_capital is None:
+            self.initial_capital = float(self.portfolio_value)
+        if self.cash is None:
+            invested_cost = sum(
+                p.shares * p.avg_cost for p in self.positions.values() if p.has_position
+            )
+            self.cash = max(0.0, float(self.portfolio_value) - invested_cost)
 
     # ── 持仓查询 ──────────────────────────────────────────────────
 
@@ -183,6 +196,58 @@ class PortfolioState:
         if avg_cost is not None:
             pos.avg_cost = float(avg_cost)
 
+    def buy(self, ticker: str, shares: int, price: float, fee: float = 0.0) -> None:
+        """记录一笔纸面买入并扣减现金。"""
+        if shares <= 0 or price <= 0:
+            raise ValueError("买入数量和价格必须大于 0")
+        total = shares * price + fee
+        if total > float(self.cash) + 1e-8:
+            raise ValueError(f"可用现金不足: 需要 {total:.2f}，可用 {self.cash:.2f}")
+
+        ticker = ticker.upper()
+        pos = self.positions.get(ticker) or PortfolioPosition(ticker=ticker)
+        old_cost = pos.shares * pos.avg_cost
+        pos.shares += int(shares)
+        pos.avg_cost = (old_cost + total) / pos.shares
+        pos.peak_price = max(pos.peak_price, float(price))
+        pos.trailing_peak = max(pos.trailing_peak or 0.0, float(price))
+        self.positions[ticker] = pos
+        self.cash = round(float(self.cash) - total, 8)
+
+    def sell(self, ticker: str, shares: int, price: float, fee: float = 0.0) -> float:
+        """记录一笔纸面卖出，返回已实现盈亏。"""
+        ticker = ticker.upper()
+        pos = self.positions.get(ticker)
+        if pos is None or not pos.has_position:
+            raise ValueError(f"{ticker} 当前没有可卖持仓")
+        if shares <= 0 or shares > pos.shares or price <= 0:
+            raise ValueError(f"无效卖出数量: {shares}，当前持仓 {pos.shares}")
+
+        proceeds = shares * price - fee
+        realized = proceeds - shares * pos.avg_cost
+        pos.shares -= int(shares)
+        self.cash = round(float(self.cash) + proceeds, 8)
+        self.realized_pnl = round(self.realized_pnl + realized, 8)
+        if pos.shares == 0:
+            pos.avg_cost = 0.0
+            pos.peak_price = 0.0
+            pos.consecutive_loss_days = 0
+            pos.trailing_peak = None
+        return realized
+
+    def mark_to_market(self, prices: dict[str, float], valuation_date: str = "") -> float:
+        """用最新价格更新总资产（现金 + 持仓市值）。"""
+        market_value = 0.0
+        for ticker, pos in self.positions.items():
+            if not pos.has_position:
+                continue
+            price = float(prices.get(ticker, pos.avg_cost))
+            market_value += pos.shares * price
+        self.portfolio_value = round(float(self.cash) + market_value, 8)
+        if valuation_date:
+            self.last_valuation_date = valuation_date
+        return self.portfolio_value
+
     # ── 汇总信息 ──────────────────────────────────────────────────
 
     def summary(self) -> str:
@@ -224,6 +289,10 @@ class PortfolioState:
 
         data = {
             "portfolio_value": self.portfolio_value,
+            "cash": self.cash,
+            "initial_capital": self.initial_capital,
+            "realized_pnl": self.realized_pnl,
+            "last_valuation_date": self.last_valuation_date,
             "positions": positions_yaml,
         }
 
@@ -314,7 +383,14 @@ def load_portfolio(path: Optional[Path] = None) -> PortfolioState:
 
     return PortfolioState(
         portfolio_value=portfolio_value,
+        cash=(float(raw["cash"]) if raw.get("cash") is not None else None),
+        initial_capital=(
+            float(raw["initial_capital"])
+            if raw.get("initial_capital") is not None
+            else portfolio_value
+        ),
+        realized_pnl=float(raw.get("realized_pnl", 0.0)),
+        last_valuation_date=str(raw.get("last_valuation_date", "")),
         positions=positions,
         path=target,
     )
-
