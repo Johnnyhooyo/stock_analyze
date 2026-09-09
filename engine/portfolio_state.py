@@ -42,6 +42,7 @@ class PortfolioPosition:
         ticker                — 股票代码，如 "0700.HK"
         shares                — 持股数量（0 = 空仓/观察）
         avg_cost              — 平均持仓成本（港元/股）
+        buy_fees              — 当前持仓尚未摊销的买入费用总额
         peak_price            — 持仓期间最高价（ATR 移动止损基准，0 = 用入场价代替）
         consecutive_loss_days — 连续亏损天数（系统自动维护）
         trailing_peak         — TrailingStop 记录的移动峰值（系统自动维护，None = 未初始化）
@@ -49,6 +50,7 @@ class PortfolioPosition:
     ticker: str
     shares: int = 0
     avg_cost: float = 0.0
+    buy_fees: float = 0.0
     peak_price: float = 0.0
     consecutive_loss_days: int = 0
     trailing_peak: Optional[float] = None
@@ -88,6 +90,7 @@ class PortfolioPosition:
             "ticker": self.ticker,
             "shares": self.shares,
             "avg_cost": self.avg_cost,
+            "buy_fees": self.buy_fees,
             "peak_price": self.peak_price,
             "consecutive_loss_days": self.consecutive_loss_days,
             "trailing_peak": self.trailing_peak,
@@ -167,6 +170,7 @@ class PortfolioState:
         trailing_peak: Optional[float] = None,
         shares: Optional[int] = None,
         avg_cost: Optional[float] = None,
+        buy_fees: Optional[float] = None,
     ) -> None:
         """
         更新指定股票的持仓字段（只更新传入的非 None 字段）。
@@ -195,6 +199,8 @@ class PortfolioState:
             pos.shares = int(shares)
         if avg_cost is not None:
             pos.avg_cost = float(avg_cost)
+        if buy_fees is not None:
+            pos.buy_fees = float(buy_fees)
 
     def buy(self, ticker: str, shares: int, price: float, fee: float = 0.0) -> None:
         """记录一笔纸面买入并扣减现金。"""
@@ -208,7 +214,8 @@ class PortfolioState:
         pos = self.positions.get(ticker) or PortfolioPosition(ticker=ticker)
         old_cost = pos.shares * pos.avg_cost
         pos.shares += int(shares)
-        pos.avg_cost = (old_cost + total) / pos.shares
+        pos.avg_cost = (old_cost + shares * price) / pos.shares
+        pos.buy_fees = round(pos.buy_fees + fee, 8)
         pos.peak_price = max(pos.peak_price, float(price))
         pos.trailing_peak = max(pos.trailing_peak or 0.0, float(price))
         self.positions[ticker] = pos
@@ -223,13 +230,17 @@ class PortfolioState:
         if shares <= 0 or shares > pos.shares or price <= 0:
             raise ValueError(f"无效卖出数量: {shares}，当前持仓 {pos.shares}")
 
+        original_shares = pos.shares
+        allocated_buy_fee = pos.buy_fees * shares / original_shares
         proceeds = shares * price - fee
-        realized = proceeds - shares * pos.avg_cost
+        realized = proceeds - shares * pos.avg_cost - allocated_buy_fee
         pos.shares -= int(shares)
+        pos.buy_fees = round(pos.buy_fees - allocated_buy_fee, 8)
         self.cash = round(float(self.cash) + proceeds, 8)
         self.realized_pnl = round(self.realized_pnl + realized, 8)
         if pos.shares == 0:
             pos.avg_cost = 0.0
+            pos.buy_fees = 0.0
             pos.peak_price = 0.0
             pos.consecutive_loss_days = 0
             pos.trailing_peak = None
@@ -371,6 +382,7 @@ def load_portfolio(path: Optional[Path] = None) -> PortfolioState:
             ticker=ticker,
             shares=int(entry.get("shares", 0)),
             avg_cost=float(entry.get("avg_cost", 0.0)),
+            buy_fees=float(entry.get("buy_fees", 0.0)),
             peak_price=float(entry.get("peak_price", 0.0)),
             consecutive_loss_days=int(entry.get("consecutive_loss_days", 0)),
             trailing_peak=(

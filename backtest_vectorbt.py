@@ -9,6 +9,8 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any
 
+from engine.hk_fees import calculate_hk_stock_fees
+
 # 抑制 Vectorbt 的某些警告
 warnings.filterwarnings('ignore', module='vectorbt')
 
@@ -24,17 +26,15 @@ def backtest_vectorbt(
     # 获取配置
     initial_capital = float(config.get('initial_capital', 100000.0))
 
-    # 港股费率设置（从 config 读取，与原生引擎保持一致）
-    # 买入：佣金 ~0.08% + 征费0.005% + 交易费0.0027% ≈ 0.088%
-    # 卖出：买入费率 + 印花税0.1% ≈ 0.188%
-    fees_rate = float(config.get('fees_rate', 0.00088))   # 买入费率
-    stamp_duty = float(config.get('stamp_duty', 0.001))   # 印花税（仅卖出）
     slippage = float(config.get('slippage', 0.001))        # 滑点：与原生引擎统一，从 config 读取
     invest_fraction = float(config.get('invest_fraction', 0.95))  # 仓位比例，与原生引擎保持一致
 
-    # 港股往返费率：买入~0.088% + 卖出~0.188%（含印花税）
-    # 精确做法：买卖分别设置，此处用单向平均值作为 vectorbt 的 fees 参数
-    avg_fees = (fees_rate + fees_rate + stamp_duty) / 2  # ~0.0013 (0.13%)
+    # vectorbt 只接受比例费率，用预计单笔金额将取整/固定费用折算为有效费率。
+    ticker = str(config.get('ticker', '0700.HK')).upper()
+    reference_notional = max(initial_capital * invest_fraction, 1.0)
+    avg_fees = calculate_hk_stock_fees(
+        reference_notional, ticker, config
+    ).total / reference_notional
 
     # 准备数据
     close = data['Close'].copy()

@@ -10,6 +10,18 @@ storage_format: csv
 batch_max_workers: 4
 
 fees_rate: 0.00088
+# 港股现货交易费用（2026 年口径）。券商佣金和平台费请按实际账户调整。
+hk_trading_fees:
+  stamp_duty_rate: 0.001
+  sfc_levy_rate: 0.000027
+  afrc_levy_rate: 0.0000015
+  hkex_trading_fee_rate: 0.0000565
+  settlement_fee_rate: 0.000042
+  broker_commission_rate: 0.0008
+  broker_commission_min: 0.0
+  platform_fee: 0.0
+  # ETF 等印花税豁免证券必须显式列在这里，不根据代码臆测。
+  stamp_duty_exempt_tickers: []
 initial_capital: 100000.0
 invest_fraction: 0.95
 lookback_months: 3

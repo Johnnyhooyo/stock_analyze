@@ -85,6 +85,12 @@ def test_sells_before_buying_and_sells_full_position(tmp_path):
 
     assert [t.action for t in trades] == ["卖出", "买入"]
     assert trades[0].shares == 100
+    assert trades[0].avg_cost == pytest.approx(500.0)
     assert state.get_position("0700.HK").shares == 0
     assert state.get_position("0005.HK").shares > 0
-    assert state.realized_pnl == pytest.approx(1000 - 51000 * 0.002)
+    assert trades[0].fee_breakdown["stamp_duty"] > 0
+    assert trades[0].fee == pytest.approx(sum(
+        value for key, value in trades[0].fee_breakdown.items()
+        if key not in ("gross_amount", "total")
+    ))
+    assert state.realized_pnl == pytest.approx(1000 - trades[0].fee)

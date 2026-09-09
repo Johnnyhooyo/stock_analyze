@@ -60,6 +60,7 @@ class RecommendationResult:
     has_position: bool = False
     shares: int = 0
     avg_cost: float = 0.0
+    buy_fees: float = 0.0
     market_value: float = 0.0
     profit: float = 0.0
     profit_pct: float = 0.0
@@ -211,6 +212,7 @@ class PositionAnalyzer:
         has_position = portfolio_pos is not None and portfolio_pos.has_position
         shares = portfolio_pos.shares if has_position else 0
         avg_cost = portfolio_pos.avg_cost if has_position else 0.0
+        buy_fees = portfolio_pos.buy_fees if has_position else 0.0
         peak_price = portfolio_pos.peak_price if has_position else 0.0
 
         market_value = shares * last_close if has_position else 0.0
@@ -310,6 +312,7 @@ class PositionAnalyzer:
             has_position=has_position,
             shares=shares,
             avg_cost=avg_cost,
+            buy_fees=buy_fees,
             market_value=market_value,
             profit=profit,
             profit_pct=profit_pct,

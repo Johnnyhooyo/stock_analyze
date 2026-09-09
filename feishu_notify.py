@@ -282,6 +282,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
     sell_sigs = daily_report.get("sell_signals", [])
     recs = daily_report.get("recommendations", [])
     market_is_open = daily_report.get("market_is_open", True)
+    fee_config = {"hk_trading_fees": daily_report.get("hk_trading_fees", {})}
 
     market_str = "✅ 交易日" if market_is_open else "⛔ 非交易日"
     pnl_emoji = "🟢" if pnl >= 0 else "🔴"
@@ -300,6 +301,78 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         f"持仓盈亏：{pnl_emoji} {pnl:+,.2f}（{pnl_pct:+.2f}%）",
         "",
     ]
+
+    held_recs = [r for r in recs if r.get("has_position")]
+    held_tickers = {r["ticker"].upper() for r in held_recs}
+    sold_today = [
+        trade for trade in daily_report.get("executed_trades", [])
+        if trade.get("action") == "卖出"
+        and trade.get("ticker", "").upper() not in held_tickers
+    ]
+    if held_recs or sold_today:
+        from engine.hk_fees import calculate_hk_stock_fees
+
+        lines.extend(["**📌 持仓与当日卖出**", ""])
+        for r in held_recs:
+            shares = int(r.get("shares", 0) or 0)
+            avg_cost = float(r.get("avg_cost", 0) or 0)
+            current_price = float(r.get("last_close", 0) or 0)
+            buy_fee = float(r.get("buy_fees", 0) or 0)
+            if buy_fee <= 0 and shares > 0:
+                buy_fee = calculate_hk_stock_fees(
+                    avg_cost * shares, r["ticker"], fee_config
+                ).total
+            buy_cost_per_share = buy_fee / shares if shares > 0 else 0.0
+            current_gross = current_price * shares
+            estimated_sell_fee = calculate_hk_stock_fees(
+                current_gross, r["ticker"], fee_config
+            ).total
+            sell_cost_per_share = estimated_sell_fee / shares if shares > 0 else 0.0
+            gross_profit = (current_price - avg_cost) * shares
+            gross_profit_pct = gross_profit / (avg_cost * shares) * 100 if avg_cost > 0 else 0.0
+            invested = avg_cost * shares + buy_fee
+            net_profit = current_gross - estimated_sell_fee - invested
+            net_profit_pct = net_profit / invested * 100 if invested > 0 else 0.0
+            profit_emoji = "🟢" if net_profit >= 0 else "🔴"
+            lines.extend([
+                f"**{r['ticker']} × {shares}股**  {profit_emoji}",
+                f"买入价 {avg_cost:.2f}  ·  当前价 {current_price:.2f}  ·  卖出价 —",
+                f"收益金额 {gross_profit:+,.2f}  ·  收益率 {gross_profit_pct:+.2f}%",
+                f"买入成本/股 {buy_cost_per_share:.4f}  ·  卖出成本/股（预估）{sell_cost_per_share:.4f}",
+                f"真实收益金额 {net_profit:+,.2f}  ·  真实收益率 {net_profit_pct:+.2f}%",
+                "",
+            ])
+        rec_by_ticker = {r["ticker"].upper(): r for r in recs}
+        for trade in sold_today:
+            ticker = trade.get("ticker", "").upper()
+            rec = rec_by_ticker.get(ticker, {})
+            avg_cost = float(trade.get("avg_cost", 0) or 0)
+            sell_price = float(trade.get("price", 0) or 0)
+            current_price = float(rec.get("last_close", sell_price) or sell_price)
+            realized_pnl = float(trade.get("realized_pnl", 0) or 0)
+            sell_fee = float(trade.get("fee", 0) or 0)
+            buy_fee = float(trade.get("buy_fee", 0) or 0)
+            shares = int(trade.get("shares", 0) or 0)
+            if avg_cost <= 0 and shares > 0:
+                # 兼容旧版成交记录：由到账金额和已实现盈亏反算成本。
+                proceeds = float(trade.get("gross_amount", 0) or 0) - sell_fee
+                avg_cost = (proceeds - realized_pnl) / shares
+            cost_basis = avg_cost * shares
+            invested = cost_basis + buy_fee
+            gross_profit = (sell_price - avg_cost) * shares
+            gross_profit_pct = gross_profit / cost_basis * 100 if cost_basis > 0 else 0.0
+            realized_pct = realized_pnl / invested * 100 if invested > 0 else 0.0
+            buy_cost_per_share = buy_fee / shares if shares > 0 else 0.0
+            sell_cost_per_share = sell_fee / shares if shares > 0 else 0.0
+            profit_emoji = "🟢" if realized_pnl >= 0 else "🔴"
+            lines.extend([
+                f"**{ticker} × {shares}股**  当日已卖出 {profit_emoji}",
+                f"买入价 {avg_cost:.2f}  ·  当前价 {current_price:.2f}  ·  卖出价 {sell_price:.2f}",
+                f"收益金额 {gross_profit:+,.2f}  ·  收益率 {gross_profit_pct:+.2f}%",
+                f"买入成本/股 {buy_cost_per_share:.4f}  ·  卖出成本/股 {sell_cost_per_share:.4f}",
+                f"真实收益金额 {realized_pnl:+,.2f}  ·  真实收益率 {realized_pct:+.2f}%",
+                "",
+            ])
 
     if buy_sigs:
         lines.append(f"🟢 **今日买入信号**: {', '.join(buy_sigs)}")

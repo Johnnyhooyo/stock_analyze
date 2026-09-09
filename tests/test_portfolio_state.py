@@ -128,7 +128,8 @@ class TestPortfolioCashAccounting:
         )
         state.buy("0700.HK", 100, 400.0, fee=40.0)
         assert state.cash == pytest.approx(59_960.0)
-        assert state.get_position("0700.HK").avg_cost == pytest.approx(400.4)
+        assert state.get_position("0700.HK").avg_cost == pytest.approx(400.0)
+        assert state.get_position("0700.HK").buy_fees == pytest.approx(40.0)
 
         state.mark_to_market({"0700.HK": 420.0}, "2026-09-04")
         assert state.portfolio_value == pytest.approx(101_960.0)

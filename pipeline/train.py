@@ -148,6 +148,7 @@ def step2_train_optuna(
         'initial_capital': cfg.get('initial_capital', 100000),
         'fees_rate': cfg.get('fees_rate', 0.00088),
         'stamp_duty': cfg.get('stamp_duty', 0.001),
+        'hk_trading_fees': cfg.get('hk_trading_fees', {}),
         'test_days': cfg.get('test_days', 5),
         'drawdown_pct': cfg.get('drawdown_pct', 0.02),
         'min_return': cfg.get('min_return', 0.10),

@@ -185,6 +185,7 @@ def _build_daily_report(
             "has_position": r.has_position,
             "shares": r.shares,
             "avg_cost": r.avg_cost,
+            "buy_fees": r.buy_fees,
             "market_value": r.market_value,
             "profit": r.profit,
             "profit_pct": r.profit_pct,
@@ -250,6 +251,7 @@ def _build_daily_report(
         "executed_trades": [
             t.to_dict() if hasattr(t, "to_dict") else t for t in (executed_trades or [])
         ],
+        "hk_trading_fees": config.get("hk_trading_fees", {}),
         "recommendations": recommendations,
         "screener_results": [
             r.to_dict() if hasattr(r, "to_dict") else r for r in (screener_results or [])

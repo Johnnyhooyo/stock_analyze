@@ -414,8 +414,8 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
     initial_capital = float(config.get('initial_capital', 100_000.0))
     invest_fraction = float(config.get('invest_fraction', 0.95))
     slippage        = float(config.get('slippage', 0.001))
-    fees_rate       = float(config.get('fees_rate', 0.00088))
-    stamp_duty      = float(config.get('stamp_duty', 0.001))
+    from engine.hk_fees import affordable_hk_shares, calculate_hk_stock_fees
+    ticker          = str(config.get('ticker', '0700.HK')).upper()
 
     # ATR 止损信号预处理（保持现状，不向量化）
     risk_cfg = config.get('risk_management', {})
@@ -464,11 +464,14 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
     for entry_b, exit_b in pairs:
         # 买入：收盘价 + 滑点，扣手续费
         buy_price = closes[entry_b] * (1.0 + slippage)
-        available = cash / (1.0 + fees_rate)
-        shares    = int(available * invest_fraction // buy_price)
+        shares = affordable_hk_shares(
+            cash * invest_fraction, buy_price, ticker, config
+        )
         if shares <= 0:
             continue
-        cash_after_buy = cash - shares * buy_price - shares * buy_price * fees_rate
+        buy_gross = shares * buy_price
+        buy_fee = calculate_hk_stock_fees(buy_gross, ticker, config).total
+        cash_after_buy = cash - buy_gross - buy_fee
         trade_arr[entry_b] = 1
         entry_close = closes[entry_b]
 
@@ -484,7 +487,7 @@ def backtest(data: pd.DataFrame, signal: pd.Series, config: dict) -> dict:
             # 卖出：收盘价 - 滑点，扣手续费+印花税
             sell_price      = closes[exit_b] * (1.0 - slippage)
             proceeds        = shares * sell_price
-            fees_sell       = proceeds * (fees_rate + stamp_duty)
+            fees_sell       = calculate_hk_stock_fees(proceeds, ticker, config).total
             cash_after_sell = cash_after_buy + proceeds - fees_sell
 
             pv[exit_b]        = cash_after_sell
@@ -576,9 +579,8 @@ def _backtest_reference(data: pd.DataFrame, signal: pd.Series, config: dict) -> 
     lookback_months = int(config.get('lookback_months', 3))
     slippage        = float(config.get('slippage', 0.001))          # 滑点，与 vectorbt 引擎统一
 
-    # 港股费率设置
-    fees_rate = float(config.get('fees_rate', 0.00088))  # 买入费率 ~0.088%
-    stamp_duty = float(config.get('stamp_duty', 0.001))   # 印花税 ~0.1%（仅卖出）
+    from engine.hk_fees import affordable_hk_shares, calculate_hk_stock_fees
+    ticker = str(config.get('ticker', '0700.HK')).upper()
 
     # ── ATR 止损回测模拟（Issue #9 修复） ──────────────────────────
     risk_cfg = config.get('risk_management', {})
@@ -618,11 +620,12 @@ def _backtest_reference(data: pd.DataFrame, signal: pd.Series, config: dict) -> 
         if desired == 1 and position == 0:
             # 买入：价格加滑点，扣除手续费
             exec_price = price * (1 + slippage)
-            available_cash = cash / (1 + fees_rate)
-            n = int(available_cash * invest_fraction // exec_price)
+            n = affordable_hk_shares(
+                cash * invest_fraction, exec_price, ticker, config
+            )
             if n > 0:
                 cost = n * exec_price
-                fees = cost * fees_rate
+                fees = calculate_hk_stock_fees(cost, ticker, config).total
                 cash = cash - cost - fees
                 shares += n
                 position = 1
@@ -631,7 +634,7 @@ def _backtest_reference(data: pd.DataFrame, signal: pd.Series, config: dict) -> 
             # 卖出：价格减滑点，扣除手续费和印花税
             exec_price = price * (1 - slippage)
             proceeds = shares * exec_price
-            fees = proceeds * (fees_rate + stamp_duty)
+            fees = calculate_hk_stock_fees(proceeds, ticker, config).total
             cash = cash + proceeds - fees
             shares = 0
             position = 0
@@ -1597,5 +1600,4 @@ if __name__ == "__main__":
                 logger.warning("因子注册失败（非阻塞）", extra={"error": str(_re)})
         except Exception as _e:
             logger.warning("因子保存失败", extra={"error": str(_e)})
-
 
