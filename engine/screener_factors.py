@@ -187,7 +187,11 @@ class ScreenerFactors:
 
         macd_line, signal_line, hist = macd(close)
         macd_hist = hist.iloc[-1]
-        macd_score = (macd_hist + 0.02) / 0.04 * 100 if macd_hist > 0 else (macd_hist + 0.02) / 0.04 * 100
+        # MACD is an absolute-price indicator. Normalize it so a $0.5 stock and
+        # a $500 stock are scored on the same relative scale (-0.5% .. +0.5%).
+        close_last = close.iloc[-1]
+        macd_ratio = macd_hist / close_last if close_last > 0 else 0.0
+        macd_score = (macd_ratio + 0.005) / 0.01 * 100
         scores.append((max(0.0, min(100.0, macd_score)), 0.35))
 
         if not scores:

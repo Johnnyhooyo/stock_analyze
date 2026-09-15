@@ -334,8 +334,13 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
             net_profit = current_gross - estimated_sell_fee - invested
             net_profit_pct = net_profit / invested * 100 if invested > 0 else 0.0
             profit_emoji = "🟢" if net_profit >= 0 else "🔴"
+            holding_text = (
+                f"建仓 {r.get('entry_date')}  ·  持仓第{r.get('holding_days', 0)}天"
+                if r.get("entry_date") else "建仓日期未知"
+            )
             lines.extend([
                 f"**{r['ticker']} × {shares}股**  {profit_emoji}",
+                holding_text,
                 f"买入价 {avg_cost:.2f}  ·  当前价 {current_price:.2f}  ·  卖出价 —",
                 f"收益金额 {gross_profit:+,.2f}  ·  收益率 {gross_profit_pct:+.2f}%",
                 f"买入成本/股 {buy_cost_per_share:.4f}  ·  卖出成本/股（预估）{sell_cost_per_share:.4f}",
@@ -365,8 +370,13 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
             buy_cost_per_share = buy_fee / shares if shares > 0 else 0.0
             sell_cost_per_share = sell_fee / shares if shares > 0 else 0.0
             profit_emoji = "🟢" if realized_pnl >= 0 else "🔴"
+            holding_text = (
+                f"建仓 {trade.get('entry_date')}  ·  持有{trade.get('holding_days', 0)}天"
+                if trade.get("entry_date") else "建仓日期未知"
+            )
             lines.extend([
                 f"**{ticker} × {shares}股**  当日已卖出 {profit_emoji}",
+                holding_text,
                 f"买入价 {avg_cost:.2f}  ·  当前价 {current_price:.2f}  ·  卖出价 {sell_price:.2f}",
                 f"收益金额 {gross_profit:+,.2f}  ·  收益率 {gross_profit_pct:+.2f}%",
                 f"买入成本/股 {buy_cost_per_share:.4f}  ·  卖出成本/股 {sell_cost_per_share:.4f}",
@@ -391,9 +401,13 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         pnl_str = f"{r['profit_pct']:+.1f}%" if r["has_position"] else "—"
         stop_str = f"{r['stop_price']:.2f}" if r["stop_price"] > 0 else "—"
         conf_str = f"{r['confidence_label']}({r['confidence_pct']:.0%})"
+        holding_str = (
+            f"  ·  持仓第{r.get('holding_days', 0)}天"
+            if r["has_position"] and r.get("entry_date") else ""
+        )
         lines.extend([
             f"**{r['ticker']}**  {r['action_emoji']} {r['action']}  ·  置信 {conf_str}",
-            f"收盘 {r['last_close']:.2f}  ·  持仓 {pos_str}  ·  盈亏 {pnl_str}  ·  止损 {stop_str}",
+            f"收盘 {r['last_close']:.2f}  ·  持仓 {pos_str}{holding_str}  ·  盈亏 {pnl_str}  ·  止损 {stop_str}",
             "",
         ])
 

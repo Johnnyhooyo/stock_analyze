@@ -94,3 +94,47 @@ def test_sells_before_buying_and_sells_full_position(tmp_path):
         if key not in ("gross_amount", "total")
     ))
     assert state.realized_pnl == pytest.approx(1000 - trades[0].fee)
+
+
+def test_buy_uses_ticker_specific_board_lot(tmp_path):
+    config = _config()
+    config["board_lots"] = {
+        "enabled": True,
+        "required": True,
+        "overrides": {"0700.HK": 100},
+    }
+    state = PortfolioState(portfolio_value=100_000, cash=100_000, initial_capital=100_000)
+    result = _result("0700.HK", "买入", 500.0)
+    engine = PaperTradingEngine(
+        config,
+        orders_file=tmp_path / "orders.jsonl",
+        assets_file=tmp_path / "assets.jsonl",
+    )
+
+    trades = engine.execute([result], state, "2026-09-09")
+
+    assert trades == []
+    assert result.action == "观望"
+    assert state.get_position("0700.HK") is None
+
+
+def test_buy_quantity_is_a_whole_number_of_board_lots(tmp_path):
+    config = _config()
+    config["board_lots"] = {
+        "enabled": True,
+        "required": True,
+        "overrides": {"0005.HK": 400},
+    }
+    state = PortfolioState(portfolio_value=500_000, cash=500_000, initial_capital=500_000)
+    result = _result("0005.HK", "买入", 160.0)
+    engine = PaperTradingEngine(
+        config,
+        orders_file=tmp_path / "orders.jsonl",
+        assets_file=tmp_path / "assets.jsonl",
+    )
+
+    trades = engine.execute([result], state, "2026-09-09")
+
+    assert len(trades) == 1
+    assert trades[0].shares == 400
+    assert trades[0].shares % 400 == 0

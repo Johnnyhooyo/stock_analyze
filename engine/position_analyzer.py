@@ -61,6 +61,8 @@ class RecommendationResult:
     shares: int = 0
     avg_cost: float = 0.0
     buy_fees: float = 0.0
+    entry_date: str = ""
+    holding_days: int = 0
     market_value: float = 0.0
     profit: float = 0.0
     profit_pct: float = 0.0
@@ -213,6 +215,13 @@ class PositionAnalyzer:
         shares = portfolio_pos.shares if has_position else 0
         avg_cost = portfolio_pos.avg_cost if has_position else 0.0
         buy_fees = portfolio_pos.buy_fees if has_position else 0.0
+        entry_date = portfolio_pos.entry_date if has_position else ""
+        if has_position:
+            from engine.portfolio_state import holding_days
+
+            position_holding_days = holding_days(entry_date, last_date)
+        else:
+            position_holding_days = 0
         peak_price = portfolio_pos.peak_price if has_position else 0.0
 
         market_value = shares * last_close if has_position else 0.0
@@ -313,6 +322,8 @@ class PositionAnalyzer:
             shares=shares,
             avg_cost=avg_cost,
             buy_fees=buy_fees,
+            entry_date=entry_date,
+            holding_days=position_holding_days,
             market_value=market_value,
             profit=profit,
             profit_pct=profit_pct,

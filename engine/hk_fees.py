@@ -81,11 +81,28 @@ def affordable_hk_shares(
     price: float,
     ticker: str,
     config: dict | None = None,
-    lot_size: int = 1,
+    lot_size: int | None = None,
 ) -> int:
     """Return the largest board-lot quantity whose gross plus fees fits cash."""
     if cash_limit <= 0 or price <= 0:
         return 0
+    if lot_size is None:
+        root = config or {}
+        board_cfg = root.get("board_lots", {})
+        fallback = max(1, int(board_cfg.get("fallback_lot_size", 1)))
+        if board_cfg.get("enabled", False):
+            overrides = {
+                str(key).upper(): int(value)
+                for key, value in board_cfg.get("overrides", {}).items()
+            }
+            lot_size = overrides.get(ticker.upper())
+            if lot_size is None:
+                from data.hk_board_lots import get_board_lot
+
+                lot_size = get_board_lot(ticker)
+            if lot_size is None and board_cfg.get("required", False):
+                return 0
+        lot_size = lot_size or fallback
     lot_size = max(1, int(lot_size))
     shares = int(cash_limit // price) // lot_size * lot_size
     while shares > 0:

@@ -174,6 +174,12 @@ def _build_daily_report(
         if r is None:
             continue
         agg = r.agg_signal
+        from engine.portfolio_state import holding_days
+
+        report_holding_days = (
+            holding_days(r.entry_date, run_date)
+            if r.has_position and r.entry_date else 0
+        )
         rec_entry = {
             "ticker": r.ticker,
             "last_date": r.last_date,
@@ -186,6 +192,8 @@ def _build_daily_report(
             "shares": r.shares,
             "avg_cost": r.avg_cost,
             "buy_fees": r.buy_fees,
+            "entry_date": r.entry_date,
+            "holding_days": report_holding_days,
             "market_value": r.market_value,
             "profit": r.profit,
             "profit_pct": r.profit_pct,
@@ -260,6 +268,7 @@ def _build_daily_report(
             "momentum": config.get("screener", {}).get("weight_momentum", 0.35),
             "trend": config.get("screener", {}).get("weight_trend", 0.35),
             "volume": config.get("screener", {}).get("weight_volume", 0.30),
+            "liquidity": config.get("screener", {}).get("weight_liquidity", 0.00),
         },
         "sector_ranking": sector_ranking or [],
         "portfolio_risk": portfolio_risk.to_dict() if portfolio_risk is not None else {},
@@ -332,8 +341,8 @@ def _build_markdown_report(daily_report: dict) -> str:
         "> **止损位**：基于 ATR（平均真实波幅）动态计算的建议离场价，触及时建议卖出控损。  ",
         "> **Kelly 建议仓位**：凯利公式根据历史胜率与盈亏比推算的最优买入股数，以最大化长期收益。  ",
         "",
-        "| 标的 | 操作 | 收盘价 | 持仓 | 盈亏 | 止损位 | 策略共识 | 置信度 |",
-        "|------|------|--------|------|------|--------|---------|--------|",
+        "| 标的 | 操作 | 收盘价 | 持仓 | 持仓时间 | 盈亏 | 止损位 | 策略共识 | 置信度 |",
+        "|------|------|--------|------|---------|------|--------|---------|--------|",
     ])
 
     for r in daily_report["recommendations"]:
@@ -341,11 +350,16 @@ def _build_markdown_report(daily_report: dict) -> str:
         pnl_str = f"{r['profit_pct']:+.1f}%" if r["has_position"] else "—"
         stop_str = f"{r['stop_price']:.2f}" if r["stop_price"] > 0 else "—"
         consensus_str = f"{r['bullish_count']}↑/{r['bearish_count']}↓"
+        holding_str = (
+            f"{r.get('entry_date', '')}（第{r.get('holding_days', 0)}天）"
+            if r["has_position"] and r.get("entry_date") else "—"
+        )
         lines.append(
             f"| {r['ticker']} "
             f"| {r['action_emoji']} {r['action']} "
             f"| {r['last_close']:.2f} "
             f"| {pos_str} "
+            f"| {holding_str} "
             f"| {pnl_str} "
             f"| {stop_str} "
             f"| {consensus_str} "
@@ -370,6 +384,8 @@ def _build_markdown_report(daily_report: dict) -> str:
         if r["has_position"]:
             lines.extend([
                 f"- **持仓**: {r['shares']} 股 @ {r['avg_cost']:.2f}",
+                f"- **持仓时间**: {r.get('entry_date') or '未知'}"
+                + (f"（第{r.get('holding_days', 0)}天）" if r.get('entry_date') else ""),
                 f"- **市值**: {r['market_value']:.2f} 港元",
                 f"- **盈亏**: {r['profit']:+.2f} 港元（{r['profit_pct']:+.2f}%）",
             ])
@@ -439,16 +455,17 @@ def _build_markdown_report(daily_report: dict) -> str:
         w_mom = sw.get("momentum", 0.35)
         w_trend = sw.get("trend", 0.35)
         w_vol = sw.get("volume", 0.30)
+        w_liq = sw.get("liquidity", 0.00)
 
         lines.extend([
             "---",
             "",
             "## 今日选股推荐",
             "",
-            f"> 基于量化多因子评分（动量{int(w_mom*100)}% + 趋势{int(w_trend*100)}% + 量价{int(w_vol*100)}%）",
+            f"> 基于量化多因子评分（动量{int(w_mom*100)}% + 趋势{int(w_trend*100)}% + 量价{int(w_vol*100)}% + 流动性{int(w_liq*100)}%）",
             "",
-            "| 排名 | 标的 | 综合评分 | 动量 | 趋势 | 量价 | 5日涨幅 | 20日涨幅 | 选股信号 |",
-            "|------|------|---------|------|------|------|---------|---------|----------|",
+            "| 排名 | 标的 | 综合评分 | 动量 | 趋势 | 量价 | 流动性 | 成交额中位数 | 5日涨幅 | 20日涨幅 | 选股信号 |",
+            "|------|------|---------|------|------|------|--------|-------------|---------|---------|----------|",
         ])
 
         for r in screener_results:
@@ -460,6 +477,8 @@ def _build_markdown_report(daily_report: dict) -> str:
                 f"| {r.get('momentum_score', 0):.0f} "
                 f"| {r.get('trend_score', 0):.0f} "
                 f"| {r.get('volume_score', 0):.0f} "
+                f"| {r.get('liquidity_score', 0):.0f} "
+                f"| {r.get('median_turnover', 0) / 1000000:.1f}M "
                 f"| {r.get('change_pct_5d', 0):+.1f}% "
                 f"| {r.get('change_pct_20d', 0):+.1f}% "
                 f"| {sig_str} |"

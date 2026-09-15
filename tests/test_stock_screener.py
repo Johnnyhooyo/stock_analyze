@@ -77,6 +77,13 @@ class TestScreenerFactorsSignals:
         result = factors.calc_all(df)
         assert isinstance(result.signals, list)
 
+    def test_trend_score_is_price_scale_invariant(self):
+        low_price = make_ohlcv(n=100, start_price=1.0, trend=0.001, seed=7)
+        high_price = make_ohlcv(n=100, start_price=500.0, trend=0.001, seed=7)
+        low_score = ScreenerFactors().calc_all(low_price).trend_score
+        high_score = ScreenerFactors().calc_all(high_price).trend_score
+        assert low_score == pytest.approx(high_score)
+
     def test_detect_signals_breakout(self):
         df = make_ohlcv(n=100)
         df.iloc[-1, df.columns.get_loc("Close")] = df["High"].rolling(20).max().iloc[-1] * 1.01
@@ -160,6 +167,80 @@ class TestStockScreenerScreen:
         if len(results) > 1:
             ranks = [r.rank for r in results]
             assert ranks == list(range(1, len(results) + 1))
+
+    def test_market_filters_reject_price_below_minimum(self):
+        screener = StockScreener({"screener": {"min_price": 1.0}})
+        df = make_ohlcv(n=100, start_price=0.8, trend=0.003)
+        df.loc[df.index[-1], "Close"] = 0.99
+        assert screener.screen(["0001.HK"], {"0001.HK": df}) == []
+
+    def test_market_filters_reject_low_median_turnover(self):
+        config = {"screener": {"min_median_turnover": 5_000_000}}
+        screener = StockScreener(config)
+        df = make_ohlcv(n=100, start_price=2.0, trend=0.003)
+        df.loc[df.index[-20:], "Volume"] = 100_000
+        assert screener.screen(["0001.HK"], {"0001.HK": df}) == []
+
+    def test_market_filters_reject_too_few_trading_days(self):
+        config = {
+            "screener": {"liquidity_window": 20, "min_trading_days": 18}
+        }
+        screener = StockScreener(config)
+        df = make_ohlcv(n=100, trend=0.003)
+        df.loc[df.index[-3:], "Volume"] = 0
+        assert screener.screen(["0001.HK"], {"0001.HK": df}) == []
+
+    def test_market_filters_accept_liquid_stock_at_boundaries(self):
+        config = {
+            "screener": {
+                "min_price": 1.0,
+                "liquidity_window": 20,
+                "min_median_turnover": 5_000_000,
+                "min_trading_days": 18,
+                "min_score": 0,
+            }
+        }
+        screener = StockScreener(config)
+        df = make_ohlcv(n=100, start_price=10.0)
+        df.loc[df.index[-20:], "Close"] = 10.0
+        df.loc[df.index[-20:], "Volume"] = 500_000
+        df.loc[df.index[-2:], "Volume"] = 0
+        results = screener.screen(["0001.HK"], {"0001.HK": df})
+        assert len(results) == 1
+
+    def test_market_filters_median_resists_one_day_volume_spike(self):
+        config = {"screener": {"min_median_turnover": 10_000_000}}
+        screener = StockScreener(config)
+        df = make_ohlcv(n=100, start_price=2.0, trend=0.001)
+        df.loc[df.index[-20:], "Volume"] = 100_000
+        df.loc[df.index[-1], "Volume"] = 100_000_000
+        assert screener.screen(["0001.HK"], {"0001.HK": df}) == []
+
+    def test_market_filters_reject_abnormal_latest_move(self):
+        config = {"screener": {"max_abs_return_1d": 0.30}}
+        screener = StockScreener(config)
+        df = make_ohlcv(n=100, trend=0.001)
+        df.loc[df.index[-1], "Close"] = df["Close"].iloc[-2] * 1.31
+        assert screener.screen(["0001.HK"], {"0001.HK": df}) == []
+
+    def test_market_filters_reject_consecutive_no_trade_days(self):
+        config = {"screener": {"max_consecutive_no_trade_days": 2}}
+        screener = StockScreener(config)
+        df = make_ohlcv(n=100, trend=0.001)
+        df.loc[df.index[-30:-27], "Volume"] = 0
+        assert screener.screen(["0001.HK"], {"0001.HK": df}) == []
+
+    def test_market_filters_reject_stale_ticker_relative_to_market(self):
+        config = {"screener": {"max_data_lag_days": 7, "min_score": 0}}
+        screener = StockScreener(config)
+        fresh = make_ohlcv(n=100, trend=0.001)
+        stale = fresh.copy()
+        stale.index = stale.index - pd.Timedelta(days=10)
+        results = screener.screen(
+            ["FRESH.HK", "STALE.HK"],
+            {"FRESH.HK": fresh, "STALE.HK": stale},
+        )
+        assert [r.ticker for r in results] == ["FRESH.HK"]
 
 
 class TestStockScreenerTopN:

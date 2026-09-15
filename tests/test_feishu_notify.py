@@ -18,6 +18,7 @@ def test_daily_advisory_uses_feishu_compatible_markdown():
             "ticker": "0005.HK", "action": "持有", "action_emoji": "🟡",
             "last_close": 167.60, "has_position": True, "shares": 299,
             "avg_cost": 167.01, "profit": 176.41, "profit_pct": 0.4,
+            "entry_date": "2026-09-01", "holding_days": 8,
             "stop_price": 162.14,
             "confidence_label": "中", "confidence_pct": 0.67,
             "circuit_breaker": False, "kelly_shares": 0, "kelly_amount": 0,
@@ -35,6 +36,7 @@ def test_daily_advisory_uses_feishu_compatible_markdown():
     assert "**📌 持仓与当日卖出**" in content
     assert "**0005.HK × 299股**  🟢" in content
     assert "买入价 167.01  ·  当前价 167.60  ·  卖出价 —" in content
+    assert "建仓 2026-09-01  ·  持仓第8天" in content
     assert "收益金额 +176.41  ·  收益率 +0.35%" in content
     assert "买入成本/股 0.1884  ·  卖出成本/股（预估）0.1918" in content
     assert "真实收益金额" in content

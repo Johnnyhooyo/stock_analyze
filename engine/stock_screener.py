@@ -50,6 +50,9 @@ class ScreenerResult:
     rsi_14: float = 50.0
     macd_hist: float = 0.0
     obv_slope: float = 0.0
+    liquidity_score: float = 0.0
+    median_turnover: float = 0.0
+    trading_days: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -59,6 +62,7 @@ class ScreenerResult:
             "momentum_score": round(self.momentum_score, 1),
             "trend_score": round(self.trend_score, 1),
             "volume_score": round(self.volume_score, 1),
+            "liquidity_score": round(self.liquidity_score, 1),
             "valuation_score": round(self.valuation_score, 1),
             "sentiment_score": round(self.sentiment_score, 1),
             "signals": self.signals,
@@ -67,6 +71,8 @@ class ScreenerResult:
             "change_pct_5d": round(self.change_pct_5d, 2),
             "change_pct_20d": round(self.change_pct_20d, 2),
             "avg_volume_ratio": round(self.avg_volume_ratio, 2),
+            "median_turnover": round(self.median_turnover, 2),
+            "trading_days": self.trading_days,
         }
 
 
@@ -85,6 +91,7 @@ class StockScreener:
             "momentum": scr_cfg.get("weight_momentum", 0.35),
             "trend": scr_cfg.get("weight_trend", 0.35),
             "volume": scr_cfg.get("weight_volume", 0.30),
+            "liquidity": scr_cfg.get("weight_liquidity", 0.00),
             "valuation": scr_cfg.get("weight_valuation", 0.00),
             "sentiment": scr_cfg.get("weight_sentiment", 0.00),
         }
@@ -92,6 +99,26 @@ class StockScreener:
         self.enable_sentiment = scr_cfg.get("enable_sentiment", False)
         self.top_n_count = scr_cfg.get("top_n", 10)
         self.min_score = scr_cfg.get("min_score", 50.0)
+        self.min_price = max(0.0, float(scr_cfg.get("min_price", 0.0)))
+        self.liquidity_window = max(1, int(scr_cfg.get("liquidity_window", 20)))
+        # min_avg_turnover is retained as a compatibility fallback for old configs.
+        self.min_median_turnover = max(
+            0.0,
+            float(scr_cfg.get(
+                "min_median_turnover", scr_cfg.get("min_avg_turnover", 0.0)
+            )),
+        )
+        self.min_trading_days = max(0, int(scr_cfg.get("min_trading_days", 0)))
+        self.stability_window = max(
+            self.liquidity_window, int(scr_cfg.get("stability_window", 60))
+        )
+        self.max_consecutive_no_trade_days = max(0, int(
+            scr_cfg.get("max_consecutive_no_trade_days", 0)
+        ))
+        self.max_abs_return_1d = max(
+            0.0, float(scr_cfg.get("max_abs_return_1d", 0.0))
+        )
+        self.max_data_lag_days = max(0, int(scr_cfg.get("max_data_lag_days", 0)))
         self.universe = scr_cfg.get("universe", "hk")
         self.sectors = scr_cfg.get("sectors", {})
         self._factors = ScreenerFactors()
@@ -123,6 +150,18 @@ class StockScreener:
             按 composite_score 降序排列的 ScreenerResult 列表
         """
         results: list[ScreenerResult] = []
+        latest_dates = [
+            self._as_naive_timestamp(df.index[-1])
+            for df in data_dict.values()
+            if df is not None and len(df) and isinstance(df.index, pd.DatetimeIndex)
+        ]
+        valid_latest_dates = [d for d in latest_dates if d is not None]
+        if valid_latest_dates:
+            date_counts = pd.Series(valid_latest_dates).value_counts()
+            most_common = date_counts[date_counts == date_counts.max()].index
+            market_date = max(most_common)
+        else:
+            market_date = None
 
         for ticker in tickers:
             df = data_dict.get(ticker)
@@ -130,8 +169,14 @@ class StockScreener:
                 logger.debug(f"[Screener] {ticker}: 数据不足，跳过")
                 continue
 
+            metrics = self._market_metrics(df)
+            passed, reason = self._passes_market_filters(metrics, market_date)
+            if not passed:
+                logger.debug(f"[Screener] {ticker}: {reason}，跳过")
+                continue
+
             try:
-                result = self._evaluate_ticker(ticker, df)
+                result = self._evaluate_ticker(ticker, df, metrics)
                 if result is not None and result.composite_score >= self.min_score:
                     results.append(result)
             except Exception as e:
@@ -148,7 +193,143 @@ class StockScreener:
         )
         return results
 
-    def _evaluate_ticker(self, ticker: str, df: pd.DataFrame) -> Optional[ScreenerResult]:
+    @staticmethod
+    def _as_naive_timestamp(value) -> Optional[pd.Timestamp]:
+        try:
+            ts = pd.Timestamp(value)
+            return ts.tz_localize(None) if ts.tzinfo is not None else ts
+        except (TypeError, ValueError):
+            return None
+
+    def _market_metrics(self, df: pd.DataFrame) -> dict:
+        """计算流动性指标；零成交日计入窗口，防止偶发爆量掩盖风险。"""
+        if "Close" not in df.columns or "Volume" not in df.columns:
+            return {}
+
+        history = df[["Close", "Volume"]].tail(
+            max(self.liquidity_window, self.stability_window)
+        ).apply(
+            pd.to_numeric, errors="coerce"
+        )
+        recent = history.tail(self.liquidity_window)
+        if recent.empty:
+            return {}
+
+        valid = (
+            np.isfinite(recent["Close"])
+            & np.isfinite(recent["Volume"])
+            & (recent["Close"] > 0)
+            & (recent["Volume"] > 0)
+        )
+        turnover = (recent["Close"] * recent["Volume"]).where(valid, 0.0)
+        positive_turnover = turnover[turnover > 0]
+        median_turnover = float(turnover.median())
+        q25_turnover = float(turnover.quantile(0.25))
+        trading_days = int(valid.sum())
+
+        history_valid = (
+            np.isfinite(history["Close"])
+            & np.isfinite(history["Volume"])
+            & (history["Close"] > 0)
+            & (history["Volume"] > 0)
+        )
+        max_no_trade_run = 0
+        current_run = 0
+        for is_valid in history_valid.tolist():
+            current_run = 0 if is_valid else current_run + 1
+            max_no_trade_run = max(max_no_trade_run, current_run)
+
+        last_close = float(recent["Close"].iloc[-1])
+        prev_close = float(recent["Close"].iloc[-2]) if len(recent) >= 2 else np.nan
+        return_1d = (
+            last_close / prev_close - 1.0
+            if np.isfinite(last_close) and np.isfinite(prev_close) and prev_close > 0
+            else np.nan
+        )
+
+        # 100万到1亿港元映射为0到100分，并奖励持续有成交、成交额稳定。
+        turnover_score = float(np.clip(
+            (np.log10(max(median_turnover, 1_000_000)) - 6) / 2 * 100,
+            0,
+            100,
+        ))
+        activity_score = trading_days / max(len(recent), 1) * 100
+        consistency_score = (
+            float(np.clip(q25_turnover / median_turnover * 100, 0, 100))
+            if median_turnover > 0 else 0.0
+        )
+        liquidity_score = (
+            turnover_score * 0.50
+            + activity_score * 0.30
+            + consistency_score * 0.20
+        )
+
+        return {
+            "last_date": self._as_naive_timestamp(recent.index[-1]),
+            "last_close": last_close,
+            "median_turnover": median_turnover,
+            "avg_turnover": float(positive_turnover.mean()) if len(positive_turnover) else 0.0,
+            "trading_days": trading_days,
+            "max_no_trade_run": max_no_trade_run,
+            "return_1d": float(return_1d),
+            "liquidity_score": float(np.clip(liquidity_score, 0, 100)),
+        }
+
+    def _passes_market_filters(
+        self, metrics: dict, market_date: Optional[pd.Timestamp] = None
+    ) -> tuple[bool, str]:
+        """在因子评分前检查价格、成交连续性和异常单日波动。"""
+        if not metrics:
+            return False, "缺少 Close/Volume 列或无近期行情"
+
+        last_date = metrics.get("last_date")
+        if (
+            self.max_data_lag_days > 0
+            and market_date is not None
+            and last_date is not None
+        ):
+            lag_days = (market_date.normalize() - last_date.normalize()).days
+            if lag_days > self.max_data_lag_days:
+                return False, f"行情落后市场最新日期 {lag_days} 天"
+
+        last_close = metrics["last_close"]
+        if not np.isfinite(last_close) or last_close <= 0:
+            return False, "最新收盘价无效"
+        if last_close < self.min_price:
+            return False, f"最新收盘价 {last_close:.3f} 低于 {self.min_price:.3f}"
+
+        trading_days = int(metrics["trading_days"])
+        if trading_days < self.min_trading_days:
+            return False, f"近{self.liquidity_window}日有效成交仅 {trading_days} 天"
+
+        median_turnover = metrics["median_turnover"]
+        if not np.isfinite(median_turnover) or median_turnover < self.min_median_turnover:
+            return False, (
+                f"近{self.liquidity_window}日成交额中位数 {median_turnover:.0f} "
+                f"低于 {self.min_median_turnover:.0f}"
+            )
+
+        max_no_trade_run = int(metrics["max_no_trade_run"])
+        if (
+            self.max_consecutive_no_trade_days > 0
+            and max_no_trade_run > self.max_consecutive_no_trade_days
+        ):
+            return False, f"近期最长连续无成交 {max_no_trade_run} 天"
+
+        return_1d = metrics["return_1d"]
+        if (
+            self.max_abs_return_1d > 0
+            and np.isfinite(return_1d)
+            and abs(return_1d) > self.max_abs_return_1d
+        ):
+            return False, f"最新单日涨跌 {return_1d:+.1%} 超过异常波动阈值"
+
+        return True, ""
+
+    def _evaluate_ticker(
+        self, ticker: str, df: pd.DataFrame, metrics: Optional[dict] = None
+    ) -> Optional[ScreenerResult]:
+        metrics = metrics or self._market_metrics(df)
         factor_result: FactorResult = self._factors.calc_all(
             df,
             enable_valuation=self.enable_valuation,
@@ -159,6 +340,7 @@ class StockScreener:
         momentum = factor_result.momentum_score
         trend = factor_result.trend_score
         volume = factor_result.volume_score
+        liquidity = metrics.get("liquidity_score", 0.0)
         valuation = factor_result.valuation_score
         sentiment = factor_result.sentiment_score
 
@@ -166,6 +348,7 @@ class StockScreener:
             momentum * self.weights["momentum"]
             + trend * self.weights["trend"]
             + volume * self.weights["volume"]
+            + liquidity * self.weights["liquidity"]
             + valuation * self.weights["valuation"]
             + sentiment * self.weights["sentiment"]
         )
@@ -181,6 +364,7 @@ class StockScreener:
             momentum_score=momentum,
             trend_score=trend,
             volume_score=volume,
+            liquidity_score=liquidity,
             valuation_score=valuation,
             sentiment_score=sentiment,
             signals=factor_result.signals,
@@ -192,6 +376,8 @@ class StockScreener:
             rsi_14=factor_result.rsi_14,
             macd_hist=factor_result.macd_hist,
             obv_slope=factor_result.obv_slope,
+            median_turnover=metrics.get("median_turnover", 0.0),
+            trading_days=int(metrics.get("trading_days", 0)),
         )
 
     def _get_sector(self, ticker: str) -> str:

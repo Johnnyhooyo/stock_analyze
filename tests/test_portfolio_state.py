@@ -10,6 +10,7 @@ from engine.portfolio_state import (
     PortfolioPosition,
     PortfolioState,
     load_portfolio,
+    holding_days,
 )
 
 
@@ -41,6 +42,10 @@ class TestPortfolioPosition:
         assert d["peak_price"] == 400.0
         assert d["consecutive_loss_days"] == 2
 
+    def test_holding_days_counts_entry_as_day_one(self):
+        assert holding_days("2026-09-14", "2026-09-15") == 2
+        assert holding_days("", "2026-09-15") == 0
+
 
 class TestPortfolioStateSaveLoad:
     def test_save_load_round_trip(self, tmp_path):
@@ -58,6 +63,15 @@ class TestPortfolioStateSaveLoad:
         assert "0700.HK" in loaded.positions
         assert loaded.positions["0700.HK"].shares == 200
         assert loaded.positions["0700.HK"].avg_cost == 380.0
+
+    def test_entry_date_round_trip(self, tmp_path):
+        path = tmp_path / "portfolio.yaml"
+        state = PortfolioState(path=path)
+        state.buy("0700.HK", 100, 400.0, trade_date="2026-09-14")
+        state.save()
+
+        loaded = load_portfolio(path)
+        assert loaded.get_position("0700.HK").entry_date == "2026-09-14"
 
     def test_load_portfolio_missing_file(self, tmp_path):
         missing = tmp_path / "nonexistent.yaml"
@@ -126,10 +140,11 @@ class TestPortfolioCashAccounting:
             initial_capital=100_000.0,
             path=tmp_path / "p.yaml",
         )
-        state.buy("0700.HK", 100, 400.0, fee=40.0)
+        state.buy("0700.HK", 100, 400.0, fee=40.0, trade_date="2026-09-04")
         assert state.cash == pytest.approx(59_960.0)
         assert state.get_position("0700.HK").avg_cost == pytest.approx(400.0)
         assert state.get_position("0700.HK").buy_fees == pytest.approx(40.0)
+        assert state.get_position("0700.HK").entry_date == "2026-09-04"
 
         state.mark_to_market({"0700.HK": 420.0}, "2026-09-04")
         assert state.portfolio_value == pytest.approx(101_960.0)
@@ -138,6 +153,7 @@ class TestPortfolioCashAccounting:
         assert realized == pytest.approx(1_918.0)
         assert state.cash == pytest.approx(101_918.0)
         assert state.held_tickers() == []
+        assert state.get_position("0700.HK").entry_date == ""
 
     def test_cash_fields_round_trip(self, tmp_path):
         path = tmp_path / "portfolio.yaml"

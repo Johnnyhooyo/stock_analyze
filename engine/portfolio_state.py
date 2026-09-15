@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +28,18 @@ logger = get_logger(__name__)
 
 # portfolio.yaml 默认路径
 _DEFAULT_PORTFOLIO_PATH = Path(__file__).parent.parent / "data" / "portfolio.yaml"
+
+
+def holding_days(entry_date: str, as_of_date: str) -> int:
+    """Return calendar holding days, counting the entry date as day one."""
+    if not entry_date or not as_of_date:
+        return 0
+    try:
+        start = date.fromisoformat(str(entry_date)[:10])
+        end = date.fromisoformat(str(as_of_date)[:10])
+    except ValueError:
+        return 0
+    return max(0, (end - start).days + 1)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -51,6 +64,7 @@ class PortfolioPosition:
     shares: int = 0
     avg_cost: float = 0.0
     buy_fees: float = 0.0
+    entry_date: str = ""
     peak_price: float = 0.0
     consecutive_loss_days: int = 0
     trailing_peak: Optional[float] = None
@@ -91,6 +105,7 @@ class PortfolioPosition:
             "shares": self.shares,
             "avg_cost": self.avg_cost,
             "buy_fees": self.buy_fees,
+            "entry_date": self.entry_date,
             "peak_price": self.peak_price,
             "consecutive_loss_days": self.consecutive_loss_days,
             "trailing_peak": self.trailing_peak,
@@ -171,6 +186,7 @@ class PortfolioState:
         shares: Optional[int] = None,
         avg_cost: Optional[float] = None,
         buy_fees: Optional[float] = None,
+        entry_date: Optional[str] = None,
     ) -> None:
         """
         更新指定股票的持仓字段（只更新传入的非 None 字段）。
@@ -201,8 +217,17 @@ class PortfolioState:
             pos.avg_cost = float(avg_cost)
         if buy_fees is not None:
             pos.buy_fees = float(buy_fees)
+        if entry_date is not None:
+            pos.entry_date = str(entry_date)[:10]
 
-    def buy(self, ticker: str, shares: int, price: float, fee: float = 0.0) -> None:
+    def buy(
+        self,
+        ticker: str,
+        shares: int,
+        price: float,
+        fee: float = 0.0,
+        trade_date: str = "",
+    ) -> None:
         """记录一笔纸面买入并扣减现金。"""
         if shares <= 0 or price <= 0:
             raise ValueError("买入数量和价格必须大于 0")
@@ -212,12 +237,15 @@ class PortfolioState:
 
         ticker = ticker.upper()
         pos = self.positions.get(ticker) or PortfolioPosition(ticker=ticker)
+        was_flat = not pos.has_position
         old_cost = pos.shares * pos.avg_cost
         pos.shares += int(shares)
         pos.avg_cost = (old_cost + shares * price) / pos.shares
         pos.buy_fees = round(pos.buy_fees + fee, 8)
         pos.peak_price = max(pos.peak_price, float(price))
         pos.trailing_peak = max(pos.trailing_peak or 0.0, float(price))
+        if was_flat and trade_date:
+            pos.entry_date = str(trade_date)[:10]
         self.positions[ticker] = pos
         self.cash = round(float(self.cash) - total, 8)
 
@@ -244,6 +272,7 @@ class PortfolioState:
             pos.peak_price = 0.0
             pos.consecutive_loss_days = 0
             pos.trailing_peak = None
+            pos.entry_date = ""
         return realized
 
     def mark_to_market(self, prices: dict[str, float], valuation_date: str = "") -> float:
@@ -383,6 +412,7 @@ def load_portfolio(path: Optional[Path] = None) -> PortfolioState:
             shares=int(entry.get("shares", 0)),
             avg_cost=float(entry.get("avg_cost", 0.0)),
             buy_fees=float(entry.get("buy_fees", 0.0)),
+            entry_date=str(entry.get("entry_date", "") or "")[:10],
             peak_price=float(entry.get("peak_price", 0.0)),
             consecutive_loss_days=int(entry.get("consecutive_loss_days", 0)),
             trailing_peak=(

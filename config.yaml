@@ -45,6 +45,24 @@ wf_pruning_step_months: 2     # WF 滑动步长（月）
 
 sentiment_weight: 0.03
 
+# 全市场选股：先做可交易性过滤，再按动量、趋势、量价评分。
+screener:
+  universe: hk
+  top_n: 10
+  min_score: 50.0
+  min_price: 1.0               # 最新收盘价至少 1 港元
+  liquidity_window: 20
+  min_median_turnover: 10000000 # 近20日成交额中位数至少 1000 万港元
+  min_trading_days: 19          # 近20日至少 19 天有有效成交
+  stability_window: 60
+  max_consecutive_no_trade_days: 2
+  max_abs_return_1d: 0.30       # 单日绝对涨跌超过30%时暂不进入候选
+  max_data_lag_days: 7           # 相对全市场最新行情最多落后7个自然日
+  weight_momentum: 0.30
+  weight_trend: 0.30
+  weight_volume: 0.25
+  weight_liquidity: 0.15
+
 stacking:
   aggregation_method: vote    # "vote" | "stacking"
   meta_dir: data/meta
@@ -75,6 +93,13 @@ paper_trading:
   max_new_positions_per_day: 3
   reserve_cash_pct: 0.05
   lot_size: 1
+
+# 港交所官方每手股数。买入必须按整手；卖出已有持仓时允许整仓卖出碎股。
+board_lots:
+  enabled: true
+  required: true
+  fallback_lot_size: 1
+  overrides: {}
 
 strategy_training:
   # 每日组合训练最多处理 30 只；实际持仓始终优先且不会因上限被排除
