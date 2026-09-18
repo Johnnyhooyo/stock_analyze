@@ -281,6 +281,12 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
     buy_sigs = daily_report.get("buy_signals", [])
     sell_sigs = daily_report.get("sell_signals", [])
     recs = daily_report.get("recommendations", [])
+    # 飞书只展示实际持仓或需要操作的标的。空仓“观望”数量可能达到数百只，
+    # 不但没有决策价值，还会让消息超过飞书卡片长度限制，导致持仓摘要发送失败。
+    visible_recs = [
+        r for r in recs
+        if r.get("has_position") or not str(r.get("action", "观望")).endswith("观望")
+    ]
     market_is_open = daily_report.get("market_is_open", True)
     fee_config = {"hk_trading_fees": daily_report.get("hk_trading_fees", {})}
 
@@ -302,7 +308,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         "",
     ]
 
-    held_recs = [r for r in recs if r.get("has_position")]
+    held_recs = [r for r in visible_recs if r.get("has_position")]
     held_tickers = {r["ticker"].upper() for r in held_recs}
     sold_today = [
         trade for trade in daily_report.get("executed_trades", [])
@@ -396,7 +402,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         "",
     ])
 
-    for r in recs:
+    for r in visible_recs:
         pos_str = f"{r['shares']}股@{r['avg_cost']:.2f}" if r["has_position"] else "空仓"
         pnl_str = f"{r['profit_pct']:+.1f}%" if r["has_position"] else "—"
         stop_str = f"{r['stop_price']:.2f}" if r["stop_price"] > 0 else "—"
@@ -414,7 +420,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
     lines.append("⚠️ 以上建议由量化模型自动生成，仅供参考，不构成投资建议。")
 
     # 逐条详细推送（只推送有操作信号的股票，减少消息长度）
-    action_recs = [r for r in recs if r["action"] not in ("观望",)]
+    action_recs = [r for r in visible_recs if not str(r.get("action", "观望")).endswith("观望")]
     if action_recs:
         lines.extend(["", "**🎯 今日操作详情**", ""])
         for r in action_recs:

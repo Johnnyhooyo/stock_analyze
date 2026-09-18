@@ -49,3 +49,38 @@ def test_daily_advisory_uses_feishu_compatible_markdown():
     assert "**0005.HK**  🟡 持有" in content
     assert not any(line.startswith("#") for line in content.splitlines())
     assert not any(line.startswith("|") for line in content.splitlines())
+
+
+def test_daily_advisory_keeps_held_watch_but_omits_flat_watch():
+    base = {
+        "action_emoji": "⚪", "last_close": 10.0, "shares": 0,
+        "avg_cost": 0.0, "profit_pct": 0.0, "entry_date": "",
+        "holding_days": 0, "stop_price": 9.0, "confidence_label": "低",
+        "confidence_pct": 0.5, "circuit_breaker": False,
+        "kelly_shares": 0, "kelly_amount": 0, "reason": "暂无信号",
+        "risk_flags": [], "buy_fees": 0.0,
+    }
+    held_watch = {
+        **base, "ticker": "0023.HK", "action": "观望", "has_position": True,
+        "shares": 2400, "avg_cost": 19.0, "last_close": 19.25,
+        "entry_date": "2026-09-16", "holding_days": 3,
+    }
+    flat_watch = {
+        **base, "ticker": "0700.HK", "action": "观望", "has_position": False,
+    }
+    report = {
+        "run_date": "2026-09-18", "portfolio_value": 100_000,
+        "total_market_value": 46_200, "cash_value": 53_800,
+        "cash_pct": 53.8, "total_pnl": 600, "total_pnl_pct": 1.3,
+        "market_is_open": True, "buy_signals": [], "sell_signals": [],
+        "recommendations": [held_watch, flat_watch],
+    }
+    response = Mock(status_code=200)
+    response.json.return_value = {"code": 0}
+
+    with patch("feishu_notify.requests.post", return_value=response) as post:
+        assert send_daily_advisory("https://example.invalid/hook", report)
+
+    content = post.call_args.kwargs["json"]["card"]["elements"][0]["content"]
+    assert "0023.HK" in content
+    assert "0700.HK" not in content
