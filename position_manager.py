@@ -215,14 +215,15 @@ class PositionManager:
     ) -> bool:
         """
         检查是否触发 ATR 止损。
-        触发条件: close < max(peak_price - multiplier * atr, entry_price - multiplier * atr)
-        使用 entry_price 作为止损价下限，防止止损位低于入场成本保护线。
+        移动止损：close < max(peak_price, entry_price) - multiplier * atr。
+        trailing_stop=False 时改用 entry_price；ATR 无效时不触发。
         Returns:
             True 表示应退出持仓
         """
-        trailing_stop = peak_price - self.atr_multiplier * atr
-        entry_stop = entry_price - self.atr_multiplier * atr
-        stop_price = max(trailing_stop, entry_stop)
+        if atr <= 0:
+            return False
+        stop_basis = max(peak_price, entry_price) if self.trailing_stop else entry_price
+        stop_price = stop_basis - self.atr_multiplier * atr
         return close_price < stop_price
 
     # ── Kelly 仓位公式 ────────────────────────────────────────────
@@ -385,7 +386,8 @@ class PositionManager:
             kelly_shares / circuit_breaker 等字段
         """
         capital = capital or self.portfolio_value
-        stop_price = peak_price - self.atr_multiplier * atr if atr > 0 else 0.0
+        stop_basis = max(peak_price, entry_price) if self.trailing_stop else entry_price
+        stop_price = stop_basis - self.atr_multiplier * atr if atr > 0 else 0.0
         result = {
             "signal":           signal,
             "action":           "",
@@ -403,7 +405,7 @@ class PositionManager:
                 result.update({
                     "signal":  0,
                     "action":  "止损卖出",
-                    "reason":  f"价格 {price:.2f} 跌破 ATR 止损位 {stop_price:.2f}（峰值 {peak_price:.2f} - {self.atr_multiplier}×ATR {atr:.2f}）",
+                    "reason":  f"价格 {price:.2f} 跌破 ATR 止损位 {stop_price:.2f}（基准 {stop_basis:.2f} - {self.atr_multiplier}×ATR {atr:.2f}）",
                 })
                 return result
 
@@ -411,7 +413,8 @@ class PositionManager:
         cb = self.check_circuit_breaker(today_pnl_pct, trade_date)
         result["circuit_breaker"] = cb["tripped"]
         result["consecutive_loss_days"] = cb["consecutive_loss_days"]
-        if cb["tripped"]:
+        has_position = self.position is not None and self.position.shares > 0
+        if cb["tripped"] and not (signal == 0 and has_position):
             result.update({
                 "signal": 0,
                 "action": "熔断观望",

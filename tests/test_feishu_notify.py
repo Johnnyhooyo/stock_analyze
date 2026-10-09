@@ -33,7 +33,7 @@ def test_daily_advisory_uses_feishu_compatible_markdown():
 
     content = post.call_args.kwargs["json"]["card"]["elements"][0]["content"]
     assert "**📊 每日量化操作建议  2026-09-08**" in content
-    assert "**📌 持仓与当日卖出**" in content
+    assert "**📌 持仓与已结算卖出**" in content
     assert "**0005.HK × 299股**  🟢" in content
     assert "买入价 167.01  ·  当前价 167.60  ·  卖出价 —" in content
     assert "建仓 2026-09-01  ·  持仓第8天" in content
@@ -41,7 +41,7 @@ def test_daily_advisory_uses_feishu_compatible_markdown():
     assert "买入成本/股 0.1884  ·  卖出成本/股（预估）0.1918" in content
     assert "真实收益金额" in content
     assert "真实收益率" in content
-    assert "**0428.HK × 100股**  当日已卖出 🟢" in content
+    assert "**0428.HK × 100股**  已卖出（2026-09-08）🟢" in content
     assert "买入价 1.00  ·  当前价 1.20  ·  卖出价 1.20" in content
     assert "收益金额 +20.00  ·  收益率 +20.00%" in content
     assert "买入成本/股 0.0000  ·  卖出成本/股 0.0050" in content

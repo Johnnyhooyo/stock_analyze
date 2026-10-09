@@ -128,6 +128,15 @@ class TestSectorConcentration:
 
 
 class TestPortfolioStoploss:
+    def test_realized_losses_count_toward_portfolio_stop(self):
+        results = [_Rec("0700.HK", has_position=True,
+                        shares=100, avg_cost=100.0, market_value=10_000)]
+        risk = PortfolioRiskChecker(_make_config()).check(
+            results, portfolio_value=89_000, initial_capital=100_000
+        )
+        assert risk.total_pnl_pct == pytest.approx(-0.11)
+        assert risk.should_deleverage
+
     def test_deleverage_triggered(self):
         # 成本 100_000，市值 88_000 → 亏损 12% > 阈值 10%
         results = [_Rec("0700.HK", has_position=True,

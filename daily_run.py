@@ -137,6 +137,35 @@ def _analyze_one_ticker(
 #  汇总报告生成
 # ══════════════════════════════════════════════════════════════════
 
+def _apply_portfolio_risk(results: list, portfolio_risk) -> None:
+    """组合止损清仓并封锁新买入；仓位超限只封锁新买入。"""
+    if portfolio_risk.should_deleverage:
+        reason = "[组合风控] 累计亏损触发清仓"
+        for result in results:
+            if result.has_position:
+                result.action = "止损卖出"
+                result.signal = 0
+                result.reason = reason
+                result.risk_flags = list(result.risk_flags) + portfolio_risk.flags
+            elif result.action == "买入":
+                result.action = "观望"
+                result.signal = 0
+                result.reason = reason
+                result.risk_flags = list(result.risk_flags) + portfolio_risk.flags
+    elif portfolio_risk.position_breach:
+        reason = "[组合风控] " + (portfolio_risk.flags[0] if portfolio_risk.flags else "仓位超限")
+        for result in results:
+            if result.action == "买入":
+                result.action = "观望"
+                result.signal = 0
+                result.reason = reason
+                result.risk_flags = list(result.risk_flags) + portfolio_risk.flags
+    elif portfolio_risk.has_warnings:
+        for result in results:
+            if result.has_position:
+                result.risk_flags = list(result.risk_flags) + portfolio_risk.flags
+
+
 def _build_daily_report(
     results: list,
     portfolio_value: float,
@@ -256,6 +285,7 @@ def _build_daily_report(
         "total_tickers": len(recommendations),
         "buy_signals": buy_signals,
         "sell_signals": sell_signals,
+        "paper_trading_enabled": config.get("paper_trading", {}).get("enabled", False),
         "executed_trades": [
             t.to_dict() if hasattr(t, "to_dict") else t for t in (executed_trades or [])
         ],
@@ -317,18 +347,20 @@ def _build_markdown_report(daily_report: dict) -> str:
         lines.append(f"🔴 **今日卖出信号**: {', '.join(sell_sigs)}")
     if buy_sigs or sell_sigs:
         lines.append("")
+    if daily_report.get("paper_trading_enabled"):
+        lines.extend(["纸面信号在下一条交易日 K 线出现后，按该日开盘价结算。", ""])
 
     executed_trades = daily_report.get("executed_trades", [])
     if executed_trades:
         lines.extend([
             "## 纸面成交",
             "",
-            "| 标的 | 方向 | 数量 | 成交价 | 成交额 | 费用 | 已实现盈亏 |",
-            "|------|------|------|--------|--------|------|------------|",
+            "| 成交日期 | 标的 | 方向 | 数量 | 成交价 | 成交额 | 费用 | 已实现盈亏 |",
+            "|----------|------|------|------|--------|--------|------|------------|",
         ])
         for trade in executed_trades:
             lines.append(
-                f"| {trade['ticker']} | {trade['action']} | {trade['shares']} | "
+                f"| {trade.get('trade_date', '')} | {trade['ticker']} | {trade['action']} | {trade['shares']} | "
                 f"{trade['price']:.3f} | {trade['gross_amount']:,.2f} | "
                 f"{trade['fee']:.2f} | {trade.get('realized_pnl', 0.0):+,.2f} |"
             )
@@ -659,6 +691,11 @@ def main():
             tickers = [default_ticker]
             portfolio_state.add_watchlist_ticker(default_ticker)
 
+    # 组合清仓必须覆盖全部实际持仓，即使 CLI 仅指定了部分观察标的。
+    for held_ticker in portfolio_state.held_tickers():
+        if held_ticker not in tickers:
+            tickers.append(held_ticker)
+
     logger.info("分析目标", extra={
         "ticker_count": len(tickers),
         "tickers": tickers
@@ -722,6 +759,16 @@ def main():
             })
         except Exception as e:
             logger.warning("批量数据更新失败", extra={"error": str(e)})
+
+    # 先结算此前收盘后产生的信号，只使用信号之后第一根 K 线的开盘价。
+    paper_cfg = config.get("paper_trading", {})
+    executed_trades = []
+    if paper_cfg.get("enabled", False) and not args.dry_run:
+        from engine.paper_execution import settle_paper_signals
+
+        executed_trades = settle_paper_signals(
+            config, portfolio_state, data_mgr, args.period
+        )
 
     # ── [Step 2] 选股模块 ─────────────────────────────────────────
     screener_results = []
@@ -844,49 +891,55 @@ def main():
     portfolio_risk = None
     try:
         from engine.portfolio_risk import PortfolioRiskChecker
+        portfolio_state.mark_to_market({
+            r.ticker: r.last_close for r in results if r.last_close > 0
+        })
         checker = PortfolioRiskChecker(config)
         portfolio_risk = checker.check(
             results=results,
             portfolio_value=portfolio_state.portfolio_value,
+            initial_capital=portfolio_state.initial_capital,
         )
-        # 买入阻断：总仓位超限 或 触发去杠杆时，将 "买入" 覆盖为 "观望"
-        if portfolio_risk.position_breach or portfolio_risk.should_deleverage:
-            block_reason = "[组合风控] " + (portfolio_risk.flags[0] if portfolio_risk.flags else "仓位超限")
-            for r in results:
-                if r.action == "买入":
-                    r.action = "观望"
-                    r.signal = 0
-                    r.reason = block_reason
-                    r.risk_flags = list(r.risk_flags) + portfolio_risk.flags
-        elif portfolio_risk.has_warnings:
-            # 非阻断性警告：仅追加风控标志到个股，不覆盖建议
-            for r in results:
-                if r.has_position:
-                    r.risk_flags = list(r.risk_flags) + portfolio_risk.flags
+        _apply_portfolio_risk(results, portfolio_risk)
     except Exception as _e:
         logger.warning("组合风控检查失败（已跳过）: %s", _e)
 
+    if portfolio_risk and portfolio_risk.should_deleverage and paper_cfg.get("enabled", False) and not args.dry_run:
+        from engine.paper_execution import cancel_pending_buys
+
+        canceled = cancel_pending_buys()
+        if canceled:
+            logger.info("组合止损已撤销待结算买入", extra={"count": canceled})
+
     # ── 汇总报告 ──────────────────────────────────────────────────
-    executed_trades = []
-    paper_cfg = config.get("paper_trading", {})
     if paper_cfg.get("enabled", False):
         if args.dry_run:
             logger.info("纸面交易已跳过：dry-run 模式")
-        elif not market_is_open:
-            logger.info("纸面交易已跳过：当日非港股交易日")
         else:
-            try:
-                from engine.paper_trader import PaperTradingEngine
-                trader = PaperTradingEngine(config)
-                executed_trades = trader.execute(results, portfolio_state, run_date)
-                logger.info("纸面交易执行完成", extra={
-                    "trade_count": len(executed_trades),
-                    "cash": portfolio_state.cash,
-                    "portfolio_value": portfolio_state.portfolio_value,
-                })
-            except Exception as _e:
-                logger.error("纸面交易执行失败，持仓未保存: %s", _e, exc_info=True)
-                raise
+            from engine.paper_execution import queue_paper_signals
+
+            pending_results = list(results)
+            if portfolio_risk and portfolio_risk.should_deleverage:
+                from types import SimpleNamespace
+                from data.calendar import latest_expected_trading_day
+
+                analyzed = {r.ticker for r in results}
+                signal_date = latest_expected_trading_day().isoformat()
+                for ticker in portfolio_state.held_tickers():
+                    if ticker not in analyzed:
+                        pending_results.append(SimpleNamespace(
+                            ticker=ticker,
+                            action="止损卖出",
+                            reason="[组合风控] 累计亏损触发清仓；个股行情暂缺",
+                            confidence_pct=1.0,
+                            last_date=signal_date,
+                        ))
+                        logger.warning("组合止损已排队，等待行情后卖出: %s", ticker)
+            queued = queue_paper_signals(pending_results)
+            logger.info("纸面信号已排队，待下一交易日开盘价结算", extra={
+                "queued": queued,
+                "settled_trade_count": len(executed_trades),
+            })
 
     daily_report = _build_daily_report(
         results=results,
@@ -965,6 +1018,7 @@ def main():
                 portfolio_state.update_position(
                     r.ticker,
                     peak_price=r.peak_price,
+                    trailing_peak=r.peak_price,
                     consecutive_loss_days=r.consecutive_loss_days,
                 )
         portfolio_state.save()

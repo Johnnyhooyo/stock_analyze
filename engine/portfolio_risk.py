@@ -6,7 +6,7 @@ engine/portfolio_risk.py — 组合级风控检查器
     1. 总仓位上限     : 持仓市值 / 总资产 > max_position_ratio (默认 0.80)  → 买入前阻断
     2. 行业集中度限制 : 同板块持仓 / 总资产 > max_sector_ratio (默认 0.40)   → 买入前阻断
     3. 持仓相关性监控 : 20 日滚动相关系数 > max_correlation (默认 0.80)       → 警告
-    4. 组合级止损     : 总亏损 < loss_threshold (默认 -0.10)                  → 触发去杠杆
+    4. 组合级止损     : 总资产相对初始本金跌破 loss_threshold（默认 -0.10）→ 清仓并暂停买入
     5. VaR 预警       : 95% 历史 VaR < var_threshold (默认 -0.05)             → 警告
 
 日常用法 (daily_run.py)::
@@ -54,7 +54,7 @@ class PortfolioRiskResult:
     high_corr_pairs: list[tuple[str, str, float]] = field(default_factory=list)
 
     # ── 4. 组合止损 ──────────────────────────────────────────────
-    total_pnl_pct: float = 0.0           # 全仓位加权亏损（负值表示亏损）
+    total_pnl_pct: float = 0.0           # 总资产相对初始本金的收益率（未提供本金时退回持仓盈亏）
     should_deleverage: bool = False      # True → 触发全面减仓
 
     # ── 5. VaR ───────────────────────────────────────────────────
@@ -120,6 +120,7 @@ class PortfolioRiskChecker:
         results: list,
         portfolio_value: float,
         price_data: Optional[dict[str, pd.DataFrame]] = None,
+        initial_capital: Optional[float] = None,
     ) -> PortfolioRiskResult:
         """
         执行全部组合风控检查。
@@ -128,6 +129,7 @@ class PortfolioRiskChecker:
             results        : list[RecommendationResult]
             portfolio_value: 总资产（港元）
             price_data     : {ticker: OHLCV DataFrame}，传入时启用相关性 & VaR 检查
+            initial_capital: 初始本金；提供时组合止损包含已实现盈亏
 
         Returns:
             PortfolioRiskResult
@@ -140,7 +142,7 @@ class PortfolioRiskChecker:
 
         self._check_position_ratio(res, held, portfolio_value)
         self._check_sector_concentration(res, held, portfolio_value)
-        self._check_portfolio_stoploss(res, held)
+        self._check_portfolio_stoploss(res, held, portfolio_value, initial_capital)
         if price_data:
             self._check_correlation(res, held, price_data)
             self._check_var(res, held, price_data, portfolio_value)
@@ -220,15 +222,19 @@ class PortfolioRiskChecker:
         res.high_corr_pairs = sorted(pairs, key=lambda x: -abs(x[2]))
 
     def _check_portfolio_stoploss(
-        self, res: PortfolioRiskResult, held: list
+        self,
+        res: PortfolioRiskResult,
+        held: list,
+        portfolio_value: float,
+        initial_capital: Optional[float],
     ) -> None:
-        """基于持仓成本与当前市值计算组合总盈亏率。"""
-        total_cost = sum(r.avg_cost * r.shares for r in held)
-        total_mv   = sum(r.market_value for r in held)
-        if total_cost > 0:
-            res.total_pnl_pct = (total_mv - total_cost) / total_cost
+        """优先用总资产与初始本金计算组合止损，包含已实现亏损。"""
+        if initial_capital is not None and initial_capital > 0:
+            res.total_pnl_pct = portfolio_value / initial_capital - 1.0
         else:
-            res.total_pnl_pct = 0.0
+            total_cost = sum(r.avg_cost * r.shares for r in held)
+            total_mv = sum(r.market_value for r in held)
+            res.total_pnl_pct = (total_mv - total_cost) / total_cost if total_cost > 0 else 0.0
         res.should_deleverage = res.total_pnl_pct < self._loss_threshold
 
     def _check_var(

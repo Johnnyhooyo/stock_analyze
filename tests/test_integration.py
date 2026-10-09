@@ -11,6 +11,21 @@ from engine.portfolio_state import PortfolioPosition, PortfolioState
 from position_manager import PositionManager, Position
 
 
+def test_portfolio_stop_sells_all_holdings_and_blocks_buy():
+    from daily_run import _apply_portfolio_risk
+    from engine.portfolio_risk import PortfolioRiskResult
+    from engine.position_analyzer import RecommendationResult
+
+    held = RecommendationResult("0700.HK", "2026-01-01", 100.0, action="持有", has_position=True)
+    candidate = RecommendationResult("0005.HK", "2026-01-01", 50.0, action="买入")
+    risk = PortfolioRiskResult(should_deleverage=True, flags=["组合总亏损 -11% 触发减仓"])
+    _apply_portfolio_risk([held, candidate], risk)
+
+    assert held.action == "止损卖出"
+    assert candidate.action == "观望"
+    assert "累计亏损" in held.reason
+
+
 class TestAnalyzeFactorPipelineNoNetwork:
     def test_analyze_factor_pipeline_no_network(self, synthetic_ohlcv):
         """Full pipeline: strategy signal → factor analysis → backtest, no network."""

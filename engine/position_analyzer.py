@@ -234,8 +234,18 @@ class PositionAnalyzer:
         atr_val = calc_atr(df, period=atr_period)
 
         entry_price = avg_cost if has_position else last_close
-        if peak_price <= 0:
-            peak_price = max(entry_price, last_close)
+        if has_position:
+            # 旧持仓的 peak_price 可能未随上涨更新；从入场日起重建最高收盘价。
+            if entry_date:
+                try:
+                    held_closes = df.loc[df.index.date >= pd.Timestamp(entry_date).date(), "Close"]
+                    if not held_closes.empty:
+                        peak_price = max(peak_price, float(held_closes.max()))
+                except (TypeError, ValueError):
+                    logger.warning("%s 入场日期无效，沿用已保存峰值: %s", ticker, entry_date)
+            peak_price = max(peak_price, entry_price, last_close)
+        else:
+            peak_price = last_close
 
         # 当日盈亏率（昨收 vs 今收）
         if len(df) >= 2:
@@ -247,6 +257,14 @@ class PositionAnalyzer:
         # ── 多策略共识信号 ────────────────────────────────────────
         ticker_config = {**self.config, "ticker": ticker}
         agg = self._aggregator.aggregate(ticker, df, ticker_config)
+        min_sell_strategies = int(self.risk_cfg.get("min_sell_strategies", 3))
+        min_sell_confidence = float(self.risk_cfg.get("min_sell_confidence", 0.55))
+        weak_sell = (
+            has_position and agg.consensus_signal == 0
+            and (agg.total_strategies < min_sell_strategies
+                 or agg.confidence_pct < min_sell_confidence)
+        )
+        effective_signal = 1 if weak_sell else agg.consensus_signal
 
         # ── 风控层（PositionManager）─────────────────────────────
         pm_position = portfolio_pos.to_position_manager_position(last_close) if has_position else None
@@ -260,7 +278,7 @@ class PositionAnalyzer:
             pm._trailing._peak = portfolio_pos.trailing_peak
 
         rec = pm.apply_risk_controls(
-            signal=agg.consensus_signal,
+            signal=effective_signal,
             price=last_close,
             atr=atr_val,
             entry_price=entry_price,
@@ -278,6 +296,12 @@ class PositionAnalyzer:
             risk_flags.append(f"熔断触发（连续亏损 {rec.get('consecutive_loss_days', 0)} 天）")
         if rec.get("action") in ("止损卖出",):
             risk_flags.append(f"ATR 止损触发（止损位 {rec.get('stop_price', 0):.2f}）")
+        if weak_sell and rec.get("action") == "持有":
+            rec["reason"] = (
+                f"看跌信号暂缓卖出：有效因子 {agg.total_strategies}/{min_sell_strategies}，"
+                f"置信度 {agg.confidence_pct:.0%}/{min_sell_confidence:.0%}"
+            )
+            risk_flags.append("卖出信号样本或置信度不足")
         if agg.confidence_pct < 0.55:
             risk_flags.append("信号置信度偏低（策略分歧大）")
 

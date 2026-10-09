@@ -102,12 +102,20 @@ class PaperTradingEngine:
         )
         tmp.replace(self.assets_file)
 
-    def execute(self, results: list, portfolio_state, trade_date: str) -> list[ExecutedTrade]:
+    def execute(
+        self,
+        results: list,
+        portfolio_state,
+        trade_date: str,
+        valuation_prices: dict[str, float] | None = None,
+    ) -> list[ExecutedTrade]:
         if not self.enabled:
             return []
 
         by_ticker = {r.ticker.upper(): r for r in results}
         prices = {ticker: float(r.last_close) for ticker, r in by_ticker.items() if r.last_close > 0}
+        if valuation_prices:
+            prices.update({ticker.upper(): float(price) for ticker, price in valuation_prices.items() if price > 0})
         portfolio_state.mark_to_market(prices, trade_date)
         trades: list[ExecutedTrade] = []
 

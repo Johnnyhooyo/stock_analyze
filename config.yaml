@@ -77,6 +77,8 @@ risk_management:
   atr_period: 14
   atr_multiplier: 2.0
   trailing_stop: true
+  min_sell_strategies: 3       # 普通卖出至少需要 3 个有效因子；ATR/组合止损不受限
+  min_sell_confidence: 0.55   # 普通卖出的加权共识置信度下限
   simulate_in_backtest: true
   cooldown_bars: 0
   use_kelly: false
@@ -85,6 +87,9 @@ risk_management:
   portfolio_value: 200000.0
   daily_loss_limit: 0.05
   max_consecutive_loss_days: 3
+
+portfolio_risk:
+  loss_threshold: -0.10       # 总资产较初始本金亏损超过 10% 时清仓并暂停新买入
 
 # 纸面交易：只更新本地模拟持仓，不连接券商、不下实盘订单
 paper_trading:

@@ -318,7 +318,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
     if held_recs or sold_today:
         from engine.hk_fees import calculate_hk_stock_fees
 
-        lines.extend(["**📌 持仓与当日卖出**", ""])
+        lines.extend(["**📌 持仓与已结算卖出**", ""])
         for r in held_recs:
             shares = int(r.get("shares", 0) or 0)
             avg_cost = float(r.get("avg_cost", 0) or 0)
@@ -381,7 +381,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
                 if trade.get("entry_date") else "建仓日期未知"
             )
             lines.extend([
-                f"**{ticker} × {shares}股**  当日已卖出 {profit_emoji}",
+                f"**{ticker} × {shares}股**  已卖出（{trade.get('trade_date', run_date)}）{profit_emoji}",
                 holding_text,
                 f"买入价 {avg_cost:.2f}  ·  当前价 {current_price:.2f}  ·  卖出价 {sell_price:.2f}",
                 f"收益金额 {gross_profit:+,.2f}  ·  收益率 {gross_profit_pct:+.2f}%",
@@ -396,6 +396,8 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         lines.append(f"🔴 **今日卖出信号**: {', '.join(sell_sigs)}")
     if buy_sigs or sell_sigs:
         lines.append("")
+    if daily_report.get("paper_trading_enabled"):
+        lines.extend(["纸面信号将在下一交易日开盘价可用后结算。", ""])
 
     lines.extend([
         "**📋 操作建议明细**",

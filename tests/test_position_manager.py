@@ -138,6 +138,34 @@ class TestApplyRiskControls:
         )
         assert result["action"] == "止损卖出"
 
+    def test_missing_atr_does_not_trigger_stop(self, monkeypatch, tmp_path):
+        import position_manager
+        monkeypatch.setattr(position_manager, "_STATE_DIR", str(tmp_path))
+        pm = PositionManager(ticker="ATR_MISSING.HK")
+        pm.set_position(shares=100, avg_cost=10.0, current_price=9.9)
+        result = pm.apply_risk_controls(
+            signal=1, price=9.9, atr=0.0, entry_price=10.0,
+            peak_price=10.0, today_pnl_pct=-0.01, trade_date="2099-02-01",
+        )
+        assert result["action"] == "持有"
+        assert result["stop_price"] == 0.0
+
+    def test_circuit_breaker_does_not_block_bearish_exit(self, monkeypatch, tmp_path):
+        import position_manager
+        monkeypatch.setattr(position_manager, "_STATE_DIR", str(tmp_path))
+        pm = PositionManager(ticker="CB_EXIT.HK")
+        pm.set_position(shares=100, avg_cost=10.0, current_price=9.4)
+        result = pm.apply_risk_controls(
+            signal=0, price=9.4, atr=1.0, entry_price=10.0,
+            peak_price=10.0, today_pnl_pct=-0.06, trade_date="2099-02-01",
+        )
+        assert result["circuit_breaker"] is True
+        assert result["action"] == "卖出"
+
+    def test_fixed_atr_stop_uses_entry_price_when_trailing_disabled(self):
+        pm = PositionManager(risk_config={"trailing_stop": False})
+        assert not pm.check_atr_stop(11.0, entry_price=10.0, peak_price=15.0, atr=1.0)
+
     def test_no_position_bull_signal(self):
         pm = PositionManager(portfolio_value=100_000)
         pm.set_position(shares=0, avg_cost=0, current_price=65.0)
