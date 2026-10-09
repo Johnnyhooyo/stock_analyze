@@ -19,9 +19,13 @@ env/
 
 # Data
 data/factors/*.pkl
+data/factors/**/*.pkl
 data/factors/.run_id_counter
+data/factors/**/.run_id_counter
 data/factors/factor_registry.json
 data/factors/archive/
+data/meta/*.pkl
+data/portfolio.before_*.yaml
 data/timekline/*.csv
 data/plots/*.png
 data/logs/*
@@ -35,6 +39,7 @@ data/trends/*.csv
 data/sentiment/*.csv
 data/cache/
 cache/hk_board_lots_*.json
+cache/hk_stocks_*.json
 
 # Keys and secrets
 keys.yaml

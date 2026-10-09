@@ -155,7 +155,7 @@ class TestRegister:
         assert rec.sharpe_ratio == 1.5
 
         assert tmp_registry._path.exists()
-        data = json.loads(tmp_registry._path.read_text())
+        data = json.loads(tmp_registry._path.read_text(encoding="utf-8"))
         assert len(data["factors"]) == 1
         assert data["factors"][0]["status"] == "active"
 
@@ -425,7 +425,37 @@ class TestArchiveOld:
         assert tmp_registry._data["factors"][0]["status"] == "archived"
         assert tmp_registry._data["factors"][0]["archived_at"] is not None
         assert not pkl_path.exists()
-        assert (tmp_factors_dir / "archive" / "factor_0001.pkl").exists()
+        assert (tmp_factors_dir / "archive" / "0700_HK" / "factor_0001.pkl").exists()
+
+    def test_archive_keeps_same_filename_from_different_tickers(self, tmp_registry, tmp_factors_dir):
+        past = (datetime.now() - timedelta(days=100)).isoformat()
+        for ticker, content in (("0700_HK", b"first"), ("0005_HK", b"second")):
+            ticker_dir = tmp_factors_dir / ticker
+            ticker_dir.mkdir()
+            (ticker_dir / "factor_0001.pkl").write_bytes(content)
+            tmp_registry.register(
+                factor_id=1, filename="factor_0001.pkl", subdir=ticker,
+                strategy_name="ma_crossover", ticker=ticker.replace("_", "."),
+                training_type="single", sharpe_ratio=1.0, cum_return=0.1,
+                max_drawdown=-0.1, total_trades=5,
+            )
+            tmp_registry._data["factors"][-1].update(status="expired", valid_until=past)
+
+        assert tmp_registry.archive_old(tmp_factors_dir) == 2
+        assert (tmp_factors_dir / "archive" / "0700_HK" / "factor_0001.pkl").read_bytes() == b"first"
+        assert (tmp_factors_dir / "archive" / "0005_HK" / "factor_0001.pkl").read_bytes() == b"second"
+
+    def test_missing_file_remains_expired(self, tmp_registry, tmp_factors_dir):
+        past = (datetime.now() - timedelta(days=100)).isoformat()
+        tmp_registry.register(
+            factor_id=1, filename="factor_0001.pkl", subdir="0700_HK",
+            strategy_name="ma_crossover", ticker="0700.HK",
+            training_type="single", sharpe_ratio=1.0, cum_return=0.1,
+            max_drawdown=-0.1, total_trades=5,
+        )
+        tmp_registry._data["factors"][0].update(status="expired", valid_until=past)
+        assert tmp_registry.archive_old(tmp_factors_dir) == 0
+        assert tmp_registry._data["factors"][0]["status"] == "expired"
 
     def test_archive_not_yet_90_days(self, tmp_registry, tmp_factors_dir):
         past = (datetime.now() - timedelta(days=60)).isoformat()
@@ -581,7 +611,7 @@ class TestMigrationScript:
         )
         n = _migrate_existing_factors(tmp_factors_dir, registry_path=tmp_registry._path)
         assert n == 2
-        data = json.loads(tmp_registry._path.read_text())
+        data = json.loads(tmp_registry._path.read_text(encoding="utf-8"))
         assert len(data["factors"]) == 2
 
     def test_migrate_skips_already_registered(self, tmp_registry, tmp_factors_dir):
@@ -603,3 +633,11 @@ class TestMigrationScript:
         )
         n = _migrate_existing_factors(tmp_factors_dir, registry_path=tmp_registry._path)
         assert n == 0
+
+    def test_migrate_same_run_id_in_two_directories(self, tmp_registry, tmp_factors_dir):
+        for ticker in ("0700_HK", "0005_HK"):
+            subdir = tmp_factors_dir / ticker
+            subdir.mkdir()
+            joblib.dump(_make_artifact(1, ticker=ticker.replace("_", ".")),
+                        subdir / "factor_0001.pkl")
+        assert _migrate_existing_factors(tmp_factors_dir, tmp_registry._path) == 2

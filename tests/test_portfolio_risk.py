@@ -201,6 +201,20 @@ class TestCorrelation:
 
 
 class TestVaR:
+    def test_var_needs_overlapping_history_for_all_holdings(self):
+        first = _make_ohlcv([-0.03] * 60)
+        second = _make_ohlcv([-0.03] * 60)
+        second.index = second.index + pd.Timedelta(days=365)
+        results = [
+            _Rec("A", has_position=True, market_value=50_000),
+            _Rec("B", has_position=True, market_value=50_000),
+        ]
+        risk = PortfolioRiskChecker(_make_config()).check(
+            results, 100_000, price_data={"A": first, "B": second}
+        )
+        assert risk.var_95 == 0.0
+        assert not risk.var_breach
+
     def test_var_breach(self):
         # 每天 -3% 收益率 → VaR 远超阈值
         bad_rets = [-0.03] * 60

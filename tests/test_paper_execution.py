@@ -70,3 +70,26 @@ def test_portfolio_stop_cancels_queued_buys_but_keeps_sells(tmp_path):
     assert [(item["ticker"], item["action"]) for item in remaining] == [
         ("0700.HK", "止损卖出")
     ]
+
+
+def test_settlement_waits_when_existing_holding_has_no_valuation(tmp_path):
+    class _PartialDataManager:
+        def load(self, ticker, period):
+            if ticker == "0005.HK":
+                raise FileNotFoundError(ticker)
+            return _data(True)
+
+    config = {"paper_trading": {"enabled": True}}
+    state = PortfolioState(portfolio_value=100_000, cash=80_000,
+                           path=tmp_path / "portfolio.yaml")
+    state.update_position("0005.HK", shares=100, avg_cost=100.0)
+    state.update_position("0700.HK", shares=100, avg_cost=100.0)
+    path = tmp_path / "pending.json"
+    buy = RecommendationResult("0012.HK", "2026-01-05", 100.0,
+                               action="买入", confidence_pct=0.8)
+    queue_paper_signals([buy], path)
+    trader = PaperTradingEngine(config, orders_file=tmp_path / "orders.jsonl",
+                                assets_file=tmp_path / "assets.jsonl")
+
+    assert settle_paper_signals(config, state, _PartialDataManager(), "5y", path, trader) == []
+    assert len(json.loads(path.read_text(encoding="utf-8"))) == 1

@@ -33,6 +33,12 @@ class TestBuildFeatureVector:
 
 
 class TestSaveLoadPredict:
+    def test_old_model_without_validation_version_is_rejected(self, tmp_path):
+        import joblib
+        joblib.dump({"model": None, "scaler": None, "strategy_names": ["s1"]},
+                    tmp_path / "meta_model_0700_HK.pkl")
+        assert MetaAggregator.load("0700.HK", tmp_path) is None
+
     def _make_trained_meta(self, tmp_path, synthetic_ohlcv):
         """Helper: create a MetaAggregator with a minimal fitted model."""
         from sklearn.linear_model import LogisticRegression
@@ -93,6 +99,17 @@ class TestTrain:
             "sharpe_ratio": 1.2,
             "config": {},
         }
+
+    def test_pretrained_ml_factor_is_excluded_from_historical_training(self, synthetic_ohlcv, tmp_path):
+        ma = MetaAggregator(meta_dir=tmp_path)
+        artifacts = [
+            self._make_rule_artifact("ma_crossover"),
+            {"meta": {"name": "xgboost_enhanced", "feat_cols": ["rsi"]},
+             "model": object(), "config": {}},
+        ]
+        names, signals = ma._build_historical_signals(synthetic_ohlcv, artifacts)
+        assert names == ["ma_crossover"]
+        assert signals.shape[1] == 1
 
     def test_train_returns_expected_keys(self, synthetic_ohlcv, tmp_path):
         """train() returns dict with accuracy, n_samples, n_features."""

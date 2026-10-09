@@ -27,11 +27,12 @@ import argparse
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
 import yaml
+import pandas as pd
 
 from config_loader import load_config
 from log_config import get_logger
@@ -103,6 +104,8 @@ def _analyze_one_ticker(
     portfolio_state,  # PortfolioState 实例
     data_mgr,       # DataManager 实例
     period: str = "5y",
+    expected_bar_date: Optional[date] = None,
+    price_data: Optional[dict] = None,
 ) -> Optional[object]:
     """
     下载 / 加载单只股票数据，运行 PositionAnalyzer，返回 RecommendationResult。
@@ -110,16 +113,19 @@ def _analyze_one_ticker(
     """
 
     try:
-        # 加载历史数据
-        try:
-            df = data_mgr.load(ticker, period=period)
-        except FileNotFoundError:
-            df = None
-        if df is None or df.empty:
-            df, _ = data_mgr.download(ticker, period=period)
+        # download() 自带缓存新鲜度检查，旧缓存会尝试增量更新。
+        df, _ = data_mgr.download(ticker, period=period)
         if df is None or df.empty:
             logger.warning("%s: 无法获取历史数据，跳过", ticker, extra={"ticker": ticker})
             return None
+        if expected_bar_date is not None:
+            bar_dates = pd.to_datetime(df.index).date
+            df = df.loc[bar_dates <= expected_bar_date]
+            if df.empty or pd.Timestamp(df.index.max()).date() < expected_bar_date:
+                logger.error("%s: 行情未更新到预期交易日 %s，跳过建议", ticker, expected_bar_date)
+                return None
+        if price_data is not None:
+            price_data[ticker] = df
 
         # 获取持仓状态
         pos = portfolio_state.get_position(ticker)
@@ -265,8 +271,9 @@ def _build_daily_report(
         portfolio_value = cash_value + total_market_value
     cash_pct = (cash_value / portfolio_value * 100) if portfolio_value > 0 else 100.0
     base_capital = initial_capital if initial_capital and initial_capital > 0 else portfolio_value
+    cumulative_pnl = portfolio_value - base_capital
     total_return_pct = (
-        (portfolio_value / base_capital - 1.0) * 100 if base_capital > 0 else 0.0
+        cumulative_pnl / base_capital * 100 if base_capital > 0 else 0.0
     )
 
     return {
@@ -280,6 +287,7 @@ def _build_daily_report(
         "cash_value": cash_value,
         "cash_pct": cash_pct,
         "initial_capital": base_capital,
+        "cumulative_pnl": cumulative_pnl,
         "total_return_pct": total_return_pct,
         "held_count": held_count,
         "total_tickers": len(recommendations),
@@ -318,6 +326,10 @@ def _build_markdown_report(daily_report: dict) -> str:
     pnl_pct = daily_report["total_pnl_pct"]
     cash = daily_report["cash_value"]
     cash_pct = daily_report["cash_pct"]
+    cumulative_pnl = daily_report.get(
+        "cumulative_pnl",
+        pv - daily_report.get("initial_capital", pv),
+    )
     total_return_pct = daily_report.get("total_return_pct", 0.0)
     buy_sigs = daily_report["buy_signals"]
     sell_sigs = daily_report["sell_signals"]
@@ -335,7 +347,7 @@ def _build_markdown_report(daily_report: dict) -> str:
         f"| 总资产 | {pv:,.0f} 港元 |",
         f"| 持仓市值 | {mv:,.2f} 港元 |",
         f"| 可用现金 | {cash:,.2f} 港元（{cash_pct:.1f}%） |",
-        f"| 累计收益率 | {total_return_pct:+.2f}% |",
+        f"| 累计盈亏（总收益） | {cumulative_pnl:+,.2f} 港元（{total_return_pct:+.2f}%） |",
         f"| 持仓盈亏 | {pnl:+,.2f} 港元（{pnl_pct:+.2f}%） |",
         f"| 持仓股票数 | {daily_report['held_count']} 只 |",
         "",
@@ -638,29 +650,32 @@ def main():
 
     # ── 因子注册表每日维护 ─────────────────────────────────────────
     factors_dir = Path(__file__).parent / "data" / "factors"
-    try:
-        from data.factor_registry import FactorRegistry
-        registry = FactorRegistry()
-        expired = registry.expire_stale()
-        archived = registry.archive_old(factors_dir=factors_dir)
-        summary = registry.summary()
-        logger.info(
-            "因子注册表状态",
-            extra={
-                "active": summary["active"],
-                "newly_expired": expired,
-                "newly_archived": archived,
-                "total_archived": summary["archived"],
-            },
-        )
-    except Exception as e:
-        logger.warning("因子注册表维护失败（非阻塞）: %s", e)
+    if not args.dry_run:
+        try:
+            from data.factor_registry import FactorRegistry
+            registry = FactorRegistry()
+            expired = registry.expire_stale()
+            archived = registry.archive_old(factors_dir=factors_dir)
+            summary = registry.summary()
+            logger.info(
+                "因子注册表状态",
+                extra={
+                    "active": summary["active"],
+                    "newly_expired": expired,
+                    "newly_archived": archived,
+                    "total_archived": summary["archived"],
+                },
+            )
+        except Exception as e:
+            logger.warning("因子注册表维护失败（非阻塞）: %s", e)
 
     # ── 检查港股交易日 ────────────────────────────────────────────
     from data.calendar import is_trading_day as _is_hk_trading_day
     from datetime import date as _date
     today = _date.today()
     market_is_open = _is_hk_trading_day(today)
+    from data.calendar import latest_expected_trading_day
+    expected_bar_date = latest_expected_trading_day()
     if not market_is_open:
         logger.info("非港股交易日，继续生成昨日收盘后建议", extra={"today": str(today)})
 
@@ -788,13 +803,19 @@ def main():
 
         candidate_tickers = get_all_hk_stocks()
         data_dict = {}
+        stale_candidates = 0
         for t in candidate_tickers:
             try:
                 df = data_mgr.load(t, period=config.get("period", "5y"))
-                if df is not None and len(df) > 60:
+                if df is not None and len(df) > 60 and pd.Timestamp(df.index.max()).date() >= expected_bar_date:
                     data_dict[t] = df
+                elif df is not None and len(df) > 60:
+                    stale_candidates += 1
             except Exception as e:
                 logger.debug("选股数据加载失败，跳过该标的", extra={"ticker": t, "error": str(e)})
+        if stale_candidates:
+            logger.warning("选股跳过过期行情", extra={"count": stale_candidates,
+                                                "expected_date": str(expected_bar_date)})
 
         screen_all = screener.screen(list(data_dict.keys()), data_dict)
         top_picks = screener.top_n(
@@ -849,6 +870,7 @@ def main():
     logger.info("开始股票分析", extra={"max_workers": max_workers, "ticker_count": len(tickers)})
 
     results = []
+    price_data = {}
 
     def _analyze_with_log(ticker: str):
         res = _analyze_one_ticker(
@@ -858,6 +880,8 @@ def main():
             portfolio_state=portfolio_state,
             data_mgr=data_mgr,
             period=args.period,
+            expected_bar_date=expected_bar_date,
+            price_data=price_data,
         )
         if res:
             logger.debug("单只股票分析完成", extra={
@@ -886,6 +910,10 @@ def main():
         "completed": len(results),
         "total": len(tickers)
     })
+    missing_held = set(portfolio_state.held_tickers()) - {r.ticker for r in results}
+    if missing_held:
+        logger.error("持仓行情缺失，停止生成交易建议: %s", sorted(missing_held))
+        sys.exit(1)
 
     # ── 组合级风控检查 ────────────────────────────────────────────
     portfolio_risk = None
@@ -898,11 +926,13 @@ def main():
         portfolio_risk = checker.check(
             results=results,
             portfolio_value=portfolio_state.portfolio_value,
+            price_data=price_data,
             initial_capital=portfolio_state.initial_capital,
         )
         _apply_portfolio_risk(results, portfolio_risk)
     except Exception as _e:
-        logger.warning("组合风控检查失败（已跳过）: %s", _e)
+        logger.exception("组合风控检查失败，停止生成交易建议: %s", _e)
+        sys.exit(1)
 
     if portfolio_risk and portfolio_risk.should_deleverage and paper_cfg.get("enabled", False) and not args.dry_run:
         from engine.paper_execution import cancel_pending_buys
@@ -965,21 +995,16 @@ def main():
         "sell_signals": daily_report['sell_signals'],
     })
 
-    # ── PnL 追踪：T+1 回填 + 当日快照 ───────────────────────────
-    # 时序说明：
-    #   今日 (T) 运行时，数据最新一行是 T-1 收盘价（last_close）。
-    #   需要回填的是 T-2 日写入的快照（那天建议的 T+1 = T-1）。
-    #   所以 prev_date = T-2，price_map 中的 last_close（T-1 价格）即为其 t1_close。
+    # ── PnL 追踪：按 K 线实际日期回填，避免运行日与行情日期错位 ──────
     if not args.dry_run and market_is_open:
         from data.calendar import prev_trading_day
         tracker = PnLTracker()
-        price_map = {r["ticker"]: r["last_close"] for r in daily_report["recommendations"]}
-        t_minus_1 = prev_trading_day(datetime.now().date())   # T-1（数据最新日）
-        t_minus_2 = prev_trading_day(t_minus_1)               # T-2（待回填快照日）
-        if price_map:
-            tracker.fill_t1_returns(t_minus_2.strftime("%Y-%m-%d"), price_map)
-        # 快照日期用 T-1（与 last_close 对应的交易日一致），而非今日 T
-        tracker.record_daily(t_minus_1.strftime("%Y-%m-%d"), results)
+        for bar_date in sorted({r.last_date for r in results}):
+            dated_results = [r for r in results if r.last_date == bar_date]
+            price_map = {r.ticker: r.last_close for r in dated_results}
+            previous_date = prev_trading_day(date.fromisoformat(bar_date))
+            tracker.fill_t1_returns(previous_date.isoformat(), price_map)
+            tracker.record_daily(bar_date, dated_results)
 
     for r in results:
         pos_str = f"{r.shares}股@{r.avg_cost:.0f}" if r.has_position else "空仓"

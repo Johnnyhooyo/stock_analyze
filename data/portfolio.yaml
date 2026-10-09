@@ -6,47 +6,3447 @@
 #   3. peak_price=0 表示使用入场价作为 ATR 止损基准
 #   4. consecutive_loss_days / trailing_peak 由系统自动维护，勿手动修改
 #
-portfolio_value: 200000.0
+cash: 40599.02843991
+initial_capital: 200000.0
+last_valuation_date: '2026-10-09'
+portfolio_value: 188009.02843991
 positions:
+  0001_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0001.HK
+    trailing_peak: null
+  0004_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0004.HK
+    trailing_peak: null
+  0005_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0005.HK
+    trailing_peak: null
+  0012_HK:
+    avg_cost: 26.14612
+    buy_fees: 51.25
+    consecutive_loss_days: 0
+    entry_date: '2026-10-09'
+    peak_price: 26.14612
+    shares: 1000
+    ticker: 0012.HK
+    trailing_peak: 26.14612
+  0013_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0013.HK
+    trailing_peak: null
+  0016_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0016.HK
+    trailing_peak: null
+  0023_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0023.HK
+    trailing_peak: null
+  0031_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0031.HK
+    trailing_peak: null
+  0034_HK:
+    avg_cost: 4.504499999999999
+    buy_fees: 9.17
+    consecutive_loss_days: 2
+    entry_date: '2026-09-23'
+    peak_price: 4.504499999999999
+    shares: 1000
+    ticker: 0034.HK
+    trailing_peak: 4.504499999999999
+  0038_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0038.HK
+    trailing_peak: null
+  0041_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0041.HK
+    trailing_peak: null
+  0050_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0050.HK
+    trailing_peak: null
+  0052_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0052.HK
+    trailing_peak: null
+  0081_HK:
+    avg_cost: 3.058055
+    buy_fees: 6.83
+    consecutive_loss_days: 0
+    entry_date: '2026-09-30'
+    peak_price: 3.058055
+    shares: 1000
+    ticker: 0081.HK
+    trailing_peak: 3.058055
+  0082_HK:
+    avg_cost: 0.07507499999999999
+    buy_fees: 26.66
+    consecutive_loss_days: 1
+    entry_date: '2026-09-16'
+    peak_price: 0.07507499999999999
+    shares: 182000
+    ticker: 0082.HK
+    trailing_peak: 0.07507499999999999
+  0083_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0083.HK
+    trailing_peak: null
+  0087_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0087.HK
+    trailing_peak: null
+  0107_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0107.HK
+    trailing_peak: null
+  0113_HK:
+    avg_cost: 5.900894999999999
+    buy_fees: 86.03
+    consecutive_loss_days: 1
+    entry_date: '2026-10-06'
+    peak_price: 5.900894999999999
+    shares: 7500
+    ticker: 0113.HK
+    trailing_peak: 5.900894999999999
+  0116_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0116.HK
+    trailing_peak: null
+  0119_HK:
+    avg_cost: 1.2662649999999998
+    buy_fees: 7.52
+    consecutive_loss_days: 0
+    entry_date: '2026-09-23'
+    peak_price: 1.2662649999999998
+    shares: 3000
+    ticker: 0119.HK
+    trailing_peak: 1.2662649999999998
+  0123_HK:
+    avg_cost: 3.3133099999999995
+    buy_fees: 38.42
+    consecutive_loss_days: 0
+    entry_date: '2026-09-29'
+    peak_price: 3.3133099999999995
+    shares: 6000
+    ticker: 0123.HK
+    trailing_peak: 3.3133099999999995
+  0133_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0133.HK
+    trailing_peak: null
+  0136_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0136.HK
+    trailing_peak: null
+  0148_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0148.HK
+    trailing_peak: null
+  0164_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0164.HK
+    trailing_peak: null
+  0169_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0169.HK
+    trailing_peak: null
+  0177_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0177.HK
+    trailing_peak: null
+  0178_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0178.HK
+    trailing_peak: null
+  0182_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0182.HK
+    trailing_peak: null
+  0197_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0197.HK
+    trailing_peak: null
+  0199_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0199.HK
+    trailing_peak: null
+  0220_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0220.HK
+    trailing_peak: null
+  0232_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0232.HK
+    trailing_peak: null
+  0257_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0257.HK
+    trailing_peak: null
+  0259_HK:
+    avg_cost: 2.8378349999999997
+    buy_fees: 44.03
+    consecutive_loss_days: 2
+    entry_date: '2026-10-07'
+    peak_price: 2.8378349999999997
+    shares: 8000
+    ticker: 0259.HK
+    trailing_peak: 2.8378349999999997
+  0267_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0267.HK
+    trailing_peak: null
+  0276_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0276.HK
+    trailing_peak: null
+  0279_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0279.HK
+    trailing_peak: null
+  0280_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0280.HK
+    trailing_peak: null
+  0290_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0290.HK
+    trailing_peak: null
+  0291_HK:
+    avg_cost: 18.888869999999994
+    buy_fees: 18.75
+    consecutive_loss_days: 0
+    entry_date: '2026-10-09'
+    peak_price: 18.888869999999997
+    shares: 500
+    ticker: 0291.HK
+    trailing_peak: 18.888869999999997
+  0293_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0293.HK
+    trailing_peak: null
+  0308_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0308.HK
+    trailing_peak: null
+  0316_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0316.HK
+    trailing_peak: null
+  0317_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0317.HK
+    trailing_peak: null
+  0325_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0325.HK
+    trailing_peak: null
+  0328_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0328.HK
+    trailing_peak: null
+  0340_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0340.HK
+    trailing_peak: null
+  0341_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0341.HK
+    trailing_peak: null
+  0345_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0345.HK
+    trailing_peak: null
+  0354_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0354.HK
+    trailing_peak: null
+  0355_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0355.HK
+    trailing_peak: null
+  0358_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0358.HK
+    trailing_peak: null
+  0360_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0360.HK
+    trailing_peak: null
+  0363_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0363.HK
+    trailing_peak: null
+  0376_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0376.HK
+    trailing_peak: null
+  0400_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0400.HK
+    trailing_peak: null
+  0403_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0403.HK
+    trailing_peak: null
+  0408_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0408.HK
+    trailing_peak: null
+  0419_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0419.HK
+    trailing_peak: null
+  0428_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0428.HK
+    trailing_peak: null
+  0432_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0432.HK
+    trailing_peak: null
+  0434_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0434.HK
+    trailing_peak: null
+  0440_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0440.HK
+    trailing_peak: null
+  0471_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0471.HK
+    trailing_peak: null
+  0476_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0476.HK
+    trailing_peak: null
+  0488_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0488.HK
+    trailing_peak: null
+  0517_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0517.HK
+    trailing_peak: null
+  0525_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0525.HK
+    trailing_peak: null
+  0527_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0527.HK
+    trailing_peak: null
+  0547_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0547.HK
+    trailing_peak: null
+  0596_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0596.HK
+    trailing_peak: null
+  0621_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0621.HK
+    trailing_peak: null
+  0622_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0622.HK
+    trailing_peak: null
+  0628_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0628.HK
+    trailing_peak: null
+  0630_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0630.HK
+    trailing_peak: null
+  0661_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0661.HK
+    trailing_peak: null
+  0668_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0668.HK
+    trailing_peak: null
+  0695_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0695.HK
+    trailing_peak: null
+  0699_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0699.HK
+    trailing_peak: null
   0700_HK:
     avg_cost: 0.0
+    buy_fees: 0.0
     consecutive_loss_days: 0
+    entry_date: ''
     peak_price: 0.0
     shares: 0
     ticker: 0700.HK
     trailing_peak: null
+  0746_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0746.HK
+    trailing_peak: null
+  0750_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0750.HK
+    trailing_peak: null
+  0755_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0755.HK
+    trailing_peak: null
+  0762_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0762.HK
+    trailing_peak: null
+  0763_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0763.HK
+    trailing_peak: null
+  0767_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0767.HK
+    trailing_peak: null
+  0821_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0821.HK
+    trailing_peak: null
+  0822_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0822.HK
+    trailing_peak: null
+  0826_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0826.HK
+    trailing_peak: null
+  0829_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0829.HK
+    trailing_peak: null
+  0836_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0836.HK
+    trailing_peak: null
+  0838_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0838.HK
+    trailing_peak: null
+  0842_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0842.HK
+    trailing_peak: null
+  0856_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0856.HK
+    trailing_peak: null
+  0865_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0865.HK
+    trailing_peak: null
+  0894_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0894.HK
+    trailing_peak: null
+  0895_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0895.HK
+    trailing_peak: null
+  0902_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0902.HK
+    trailing_peak: null
+  0921_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0921.HK
+    trailing_peak: null
+  0975_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0975.HK
+    trailing_peak: null
+  0989_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0989.HK
+    trailing_peak: null
+  0992_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0992.HK
+    trailing_peak: null
+  0999_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 0999.HK
+    trailing_peak: null
+  1028_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1028.HK
+    trailing_peak: null
+  1071_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1071.HK
+    trailing_peak: null
+  1081_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1081.HK
+    trailing_peak: null
+  1084_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1084.HK
+    trailing_peak: null
+  1085_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1085.HK
+    trailing_peak: null
+  1086_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1086.HK
+    trailing_peak: null
+  1093_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1093.HK
+    trailing_peak: null
+  1097_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1097.HK
+    trailing_peak: null
+  1112_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1112.HK
+    trailing_peak: null
+  1117_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1117.HK
+    trailing_peak: null
+  1119_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1119.HK
+    trailing_peak: null
+  1128_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1128.HK
+    trailing_peak: null
+  1138_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1138.HK
+    trailing_peak: null
+  1141_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1141.HK
+    trailing_peak: null
+  1148_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1148.HK
+    trailing_peak: null
+  1161_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1161.HK
+    trailing_peak: null
+  1168_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1168.HK
+    trailing_peak: null
+  1177_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1177.HK
+    trailing_peak: null
+  1179_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1179.HK
+    trailing_peak: null
+  1180_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1180.HK
+    trailing_peak: null
+  1191_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1191.HK
+    trailing_peak: null
+  1196_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1196.HK
+    trailing_peak: null
+  1199_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1199.HK
+    trailing_peak: null
+  1202_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1202.HK
+    trailing_peak: null
+  1222_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1222.HK
+    trailing_peak: null
+  1228_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1228.HK
+    trailing_peak: null
+  1300_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1300.HK
+    trailing_peak: null
   1334_HK:
     avg_cost: 0.0
+    buy_fees: 0.0
     consecutive_loss_days: 0
+    entry_date: ''
     peak_price: 0.0
     shares: 0
     ticker: 1334.HK
     trailing_peak: null
+  1339_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1339.HK
+    trailing_peak: null
+  1354_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1354.HK
+    trailing_peak: null
+  1364_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1364.HK
+    trailing_peak: null
+  1372_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1372.HK
+    trailing_peak: null
+  1380_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1380.HK
+    trailing_peak: null
+  1392_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1392.HK
+    trailing_peak: null
+  1400_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1400.HK
+    trailing_peak: null
+  1431_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1431.HK
+    trailing_peak: null
+  1440_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1440.HK
+    trailing_peak: null
+  1449_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1449.HK
+    trailing_peak: null
+  1450_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1450.HK
+    trailing_peak: null
+  1455_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1455.HK
+    trailing_peak: null
+  1461_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1461.HK
+    trailing_peak: null
+  1466_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1466.HK
+    trailing_peak: null
+  1473_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1473.HK
+    trailing_peak: null
+  1525_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1525.HK
+    trailing_peak: null
+  1526_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1526.HK
+    trailing_peak: null
+  1529_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1529.HK
+    trailing_peak: null
+  1530_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1530.HK
+    trailing_peak: null
+  1548_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1548.HK
+    trailing_peak: null
+  1579_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1579.HK
+    trailing_peak: null
+  1591_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1591.HK
+    trailing_peak: null
+  1592_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1592.HK
+    trailing_peak: null
+  1611_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1611.HK
+    trailing_peak: null
+  1613_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1613.HK
+    trailing_peak: null
+  1626_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1626.HK
+    trailing_peak: null
+  1651_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1651.HK
+    trailing_peak: null
+  1658_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1658.HK
+    trailing_peak: null
+  1661_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1661.HK
+    trailing_peak: null
+  1681_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1681.HK
+    trailing_peak: null
+  1685_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1685.HK
+    trailing_peak: null
+  1729_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1729.HK
+    trailing_peak: null
+  1735_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1735.HK
+    trailing_peak: null
+  1753_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1753.HK
+    trailing_peak: null
+  1755_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1755.HK
+    trailing_peak: null
+  1760_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1760.HK
+    trailing_peak: null
+  1776_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1776.HK
+    trailing_peak: null
+  1783_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1783.HK
+    trailing_peak: null
+  1787_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1787.HK
+    trailing_peak: null
+  1788_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1788.HK
+    trailing_peak: null
+  1789_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1789.HK
+    trailing_peak: null
+  1797_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1797.HK
+    trailing_peak: null
+  1801_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1801.HK
+    trailing_peak: null
+  1808_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1808.HK
+    trailing_peak: null
+  1810_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1810.HK
+    trailing_peak: null
+  1815_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1815.HK
+    trailing_peak: null
+  1816_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1816.HK
+    trailing_peak: null
+  1820_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1820.HK
+    trailing_peak: null
+  1828_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1828.HK
+    trailing_peak: null
+  1837_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1837.HK
+    trailing_peak: null
+  1842_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1842.HK
+    trailing_peak: null
+  1846_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1846.HK
+    trailing_peak: null
+  1854_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1854.HK
+    trailing_peak: null
+  1860_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1860.HK
+    trailing_peak: null
+  1866_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1866.HK
+    trailing_peak: null
+  1873_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1873.HK
+    trailing_peak: null
+  1875_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1875.HK
+    trailing_peak: null
+  1878_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1878.HK
+    trailing_peak: null
+  1888_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1888.HK
+    trailing_peak: null
+  1896_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1896.HK
+    trailing_peak: null
+  1905_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1905.HK
+    trailing_peak: null
+  1906_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1906.HK
+    trailing_peak: null
+  1911_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1911.HK
+    trailing_peak: null
+  1912_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1912.HK
+    trailing_peak: null
+  1921_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1921.HK
+    trailing_peak: null
+  1925_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1925.HK
+    trailing_peak: null
+  1935_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1935.HK
+    trailing_peak: null
+  1943_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1943.HK
+    trailing_peak: null
+  1952_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1952.HK
+    trailing_peak: null
+  1953_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1953.HK
+    trailing_peak: null
+  1957_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1957.HK
+    trailing_peak: null
+  1969_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1969.HK
+    trailing_peak: null
+  1970_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1970.HK
+    trailing_peak: null
+  1979_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1979.HK
+    trailing_peak: null
+  1985_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1985.HK
+    trailing_peak: null
+  1986_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1986.HK
+    trailing_peak: null
+  1987_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1987.HK
+    trailing_peak: null
+  1989_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1989.HK
+    trailing_peak: null
+  1997_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 1997.HK
+    trailing_peak: null
+  2005_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2005.HK
+    trailing_peak: null
+  2099_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2099.HK
+    trailing_peak: null
+  2101_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2101.HK
+    trailing_peak: null
+  2107_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2107.HK
+    trailing_peak: null
+  2126_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2126.HK
+    trailing_peak: null
   2142_HK:
     avg_cost: 0.0
+    buy_fees: 0.0
     consecutive_loss_days: 0
+    entry_date: ''
     peak_price: 0.0
     shares: 0
     ticker: 2142.HK
     trailing_peak: null
+  2147_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2147.HK
+    trailing_peak: null
+  2149_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2149.HK
+    trailing_peak: null
+  2159_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2159.HK
+    trailing_peak: null
+  2162_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2162.HK
+    trailing_peak: null
+  2167_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2167.HK
+    trailing_peak: null
+  2172_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2172.HK
+    trailing_peak: null
+  2177_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2177.HK
+    trailing_peak: null
+  2190_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2190.HK
+    trailing_peak: null
+  2196_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2196.HK
+    trailing_peak: null
+  2198_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2198.HK
+    trailing_peak: null
+  2199_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2199.HK
+    trailing_peak: null
+  2202_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2202.HK
+    trailing_peak: null
+  2209_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2209.HK
+    trailing_peak: null
+  2211_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2211.HK
+    trailing_peak: null
+  2218_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2218.HK
+    trailing_peak: null
+  2225_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2225.HK
+    trailing_peak: null
+  2228_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2228.HK
+    trailing_peak: null
+  2232_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2232.HK
+    trailing_peak: null
+  2238_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2238.HK
+    trailing_peak: null
+  2245_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2245.HK
+    trailing_peak: null
+  2268_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2268.HK
+    trailing_peak: null
+  2271_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2271.HK
+    trailing_peak: null
+  2273_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2273.HK
+    trailing_peak: null
+  2279_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2279.HK
+    trailing_peak: null
+  2285_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2285.HK
+    trailing_peak: null
+  2291_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2291.HK
+    trailing_peak: null
+  2314_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2314.HK
+    trailing_peak: null
+  2315_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2315.HK
+    trailing_peak: null
+  2328_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2328.HK
+    trailing_peak: null
+  2339_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2339.HK
+    trailing_peak: null
+  2343_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2343.HK
+    trailing_peak: null
+  2350_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2350.HK
+    trailing_peak: null
+  2357_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2357.HK
+    trailing_peak: null
+  2359_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2359.HK
+    trailing_peak: null
+  2378_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2378.HK
+    trailing_peak: null
+  2381_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2381.HK
+    trailing_peak: null
+  2382_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2382.HK
+    trailing_peak: null
+  2386_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2386.HK
+    trailing_peak: null
+  2388_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2388.HK
+    trailing_peak: null
+  2416_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2416.HK
+    trailing_peak: null
+  2419_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2419.HK
+    trailing_peak: null
+  2429_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2429.HK
+    trailing_peak: null
+  2439_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2439.HK
+    trailing_peak: null
+  2442_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2442.HK
+    trailing_peak: null
+  2451_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2451.HK
+    trailing_peak: null
+  2459_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2459.HK
+    trailing_peak: null
+  2501_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2501.HK
+    trailing_peak: null
+  2502_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2502.HK
+    trailing_peak: null
+  2505_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2505.HK
+    trailing_peak: null
+  2507_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2507.HK
+    trailing_peak: null
+  2510_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2510.HK
+    trailing_peak: null
+  2511_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2511.HK
+    trailing_peak: null
+  2513_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2513.HK
+    trailing_peak: null
+  2515_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2515.HK
+    trailing_peak: null
+  2521_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2521.HK
+    trailing_peak: null
+  2526_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2526.HK
+    trailing_peak: null
+  2531_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2531.HK
+    trailing_peak: null
+  2543_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2543.HK
+    trailing_peak: null
+  2546_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2546.HK
+    trailing_peak: null
+  2556_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2556.HK
+    trailing_peak: null
+  2563_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2563.HK
+    trailing_peak: null
+  2566_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2566.HK
+    trailing_peak: null
+  2569_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2569.HK
+    trailing_peak: null
+  2583_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2583.HK
+    trailing_peak: null
+  2585_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2585.HK
+    trailing_peak: null
+  2586_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2586.HK
+    trailing_peak: null
+  2595_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2595.HK
+    trailing_peak: null
+  2611_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2611.HK
+    trailing_peak: null
+  2637_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2637.HK
+    trailing_peak: null
+  2651_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2651.HK
+    trailing_peak: null
+  2655_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2655.HK
+    trailing_peak: null
+  2658_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2658.HK
+    trailing_peak: null
+  2668_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2668.HK
+    trailing_peak: null
+  2672_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2672.HK
+    trailing_peak: null
+  2696_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2696.HK
+    trailing_peak: null
+  2698_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2698.HK
+    trailing_peak: null
+  2701_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2701.HK
+    trailing_peak: null
+  2706_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2706.HK
+    trailing_peak: null
+  2715_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2715.HK
+    trailing_peak: null
+  2723_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2723.HK
+    trailing_peak: null
+  2729_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2729.HK
+    trailing_peak: null
+  2738_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2738.HK
+    trailing_peak: null
+  2789_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2789.HK
+    trailing_peak: null
+  2881_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2881.HK
+    trailing_peak: null
+  2883_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2883.HK
+    trailing_peak: null
+  2889_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 2889.HK
+    trailing_peak: null
+  3200_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3200.HK
+    trailing_peak: null
+  3268_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3268.HK
+    trailing_peak: null
+  3306_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3306.HK
+    trailing_peak: null
+  3322_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3322.HK
+    trailing_peak: null
+  3323_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3323.HK
+    trailing_peak: null
+  3328_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3328.HK
+    trailing_peak: null
+  3336_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3336.HK
+    trailing_peak: null
+  3339_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3339.HK
+    trailing_peak: null
+  3378_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3378.HK
+    trailing_peak: null
+  3380_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3380.HK
+    trailing_peak: null
+  3388_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3388.HK
+    trailing_peak: null
+  3389_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3389.HK
+    trailing_peak: null
+  3396_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3396.HK
+    trailing_peak: null
+  3600_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3600.HK
+    trailing_peak: null
+  3633_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3633.HK
+    trailing_peak: null
+  3680_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3680.HK
+    trailing_peak: null
+  3690_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3690.HK
+    trailing_peak: null
+  3696_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3696.HK
+    trailing_peak: null
+  3700_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3700.HK
+    trailing_peak: null
+  3738_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3738.HK
+    trailing_peak: null
+  3759_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3759.HK
+    trailing_peak: null
   3773_HK:
     avg_cost: 0.0
+    buy_fees: 0.0
     consecutive_loss_days: 0
+    entry_date: ''
     peak_price: 0.0
     shares: 0
     ticker: 3773.HK
     trailing_peak: null
+  3774_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3774.HK
+    trailing_peak: null
+  3808_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3808.HK
+    trailing_peak: null
+  3881_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3881.HK
+    trailing_peak: null
+  3939_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3939.HK
+    trailing_peak: null
+  3986_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 3986.HK
+    trailing_peak: null
+  6033_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6033.HK
+    trailing_peak: null
+  6036_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6036.HK
+    trailing_peak: null
+  6099_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6099.HK
+    trailing_peak: null
+  6127_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6127.HK
+    trailing_peak: null
+  6160_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6160.HK
+    trailing_peak: null
+  6166_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6166.HK
+    trailing_peak: null
+  6613_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6613.HK
+    trailing_peak: null
+  6616_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6616.HK
+    trailing_peak: null
+  6626_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6626.HK
+    trailing_peak: null
+  6655_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6655.HK
+    trailing_peak: null
+  6658_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6658.HK
+    trailing_peak: null
+  6666_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6666.HK
+    trailing_peak: null
+  6687_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6687.HK
+    trailing_peak: null
+  6699_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6699.HK
+    trailing_peak: null
+  6811_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6811.HK
+    trailing_peak: null
   6821_HK:
     avg_cost: 0.0
+    buy_fees: 0.0
     consecutive_loss_days: 0
+    entry_date: ''
     peak_price: 0.0
     shares: 0
     ticker: 6821.HK
     trailing_peak: null
+  6882_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6882.HK
+    trailing_peak: null
+  6883_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6883.HK
+    trailing_peak: null
+  6887_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6887.HK
+    trailing_peak: null
+  6929_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6929.HK
+    trailing_peak: null
+  6963_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6963.HK
+    trailing_peak: null
+  6978_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6978.HK
+    trailing_peak: null
+  6990_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6990.HK
+    trailing_peak: null
+  6993_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6993.HK
+    trailing_peak: null
+  6996_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6996.HK
+    trailing_peak: null
+  6998_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 6998.HK
+    trailing_peak: null
+  7618_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 7618.HK
+    trailing_peak: null
+  7666_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 7666.HK
+    trailing_peak: null
+  8037_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8037.HK
+    trailing_peak: null
+  8040_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8040.HK
+    trailing_peak: null
+  8049_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8049.HK
+    trailing_peak: null
+  8071_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8071.HK
+    trailing_peak: null
   8221_HK:
     avg_cost: 0.0
+    buy_fees: 0.0
     consecutive_loss_days: 0
+    entry_date: ''
     peak_price: 0.0
     shares: 0
     ticker: 8221.HK
     trailing_peak: null
+  8279_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8279.HK
+    trailing_peak: null
+  8365_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8365.HK
+    trailing_peak: null
+  8471_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8471.HK
+    trailing_peak: null
+  8487_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8487.HK
+    trailing_peak: null
+  8559_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 8559.HK
+    trailing_peak: null
+  9676_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9676.HK
+    trailing_peak: null
+  9699_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9699.HK
+    trailing_peak: null
+  9858_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9858.HK
+    trailing_peak: null
+  9860_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9860.HK
+    trailing_peak: null
+  9886_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9886.HK
+    trailing_peak: null
+  9887_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9887.HK
+    trailing_peak: null
+  9903_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9903.HK
+    trailing_peak: null
+  9909_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9909.HK
+    trailing_peak: null
+  9911_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9911.HK
+    trailing_peak: null
+  9926_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9926.HK
+    trailing_peak: null
+  9936_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9936.HK
+    trailing_peak: null
+  9993_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9993.HK
+    trailing_peak: null
+  9995_HK:
+    avg_cost: 0.0
+    buy_fees: 0.0
+    consecutive_loss_days: 0
+    entry_date: ''
+    peak_price: 0.0
+    shares: 0
+    ticker: 9995.HK
+    trailing_peak: null
+realized_pnl: -11657.50406009

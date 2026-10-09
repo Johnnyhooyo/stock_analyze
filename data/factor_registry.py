@@ -266,9 +266,17 @@ class FactorRegistry:
                 continue
             subdir = d.get("subdir")
             src = factors_dir / subdir / d["filename"] if subdir else factors_dir / d["filename"]
-            if src.exists():
-                dst = archive_dir / d["filename"]
-                shutil.move(str(src), str(dst))
+            if not src.exists():
+                logger.debug("因子文件不存在，暂不标记归档: %s", src)
+                continue
+            # run_id 在每只股票的目录内独立递增，归档时也必须保留目录。
+            dst_dir = archive_dir / subdir if subdir else archive_dir
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            dst = dst_dir / d["filename"]
+            if dst.exists():
+                logger.error("归档目标已存在，拒绝覆盖: %s", dst)
+                continue
+            shutil.move(str(src), str(dst))
             d["status"] = "archived"
             d["archived_at"] = now.isoformat(timespec="seconds")
             count += 1
@@ -320,10 +328,11 @@ def _migrate_existing_factors(
         factors_dir.glob("factor_*.pkl"),
     ]
     for sd in factors_dir.iterdir():
-        if sd.is_dir() and not sd.name.startswith("."):
+        if sd.is_dir() and sd.name != "archive" and not sd.name.startswith("."):
             patterns.append(sd.glob("factor_*.pkl"))
 
-    seen_ids = set(r.id for r in registry.all_records())
+    # 文件编号仅在各自目录内唯一，不能仅凭 run_id 去重。
+    seen_paths = {(r.subdir, r.filename) for r in registry.all_records()}
 
     for pattern in patterns:
         for pkl_path in pattern:
@@ -339,7 +348,11 @@ def _migrate_existing_factors(
                 logger.warning("因子文件名无法解析 run_id，跳过: %s", pkl_path)
                 continue
 
-            if run_id in seen_ids:
+            subdir = (
+                str(pkl_path.parent.relative_to(factors_dir))
+                if pkl_path.parent != factors_dir else None
+            )
+            if (subdir, pkl_path.name) in seen_paths:
                 continue
 
             meta = art.get("meta", {})
@@ -349,9 +362,8 @@ def _migrate_existing_factors(
             if ticker is None and training_type == "multi":
                 ticker = None
             elif ticker is None:
-                subdir = pkl_path.parent.relative_to(factors_dir) if pkl_path.parent != factors_dir else None
-                if subdir and subdir.name.endswith("_HK"):
-                    ticker = subdir.name.replace("_HK", ".HK").replace("_", "")
+                if subdir and subdir.endswith("_HK"):
+                    ticker = subdir.replace("_HK", ".HK").replace("_", "")
 
             ttl = TTL_DAYS.get(training_type, 30)
             saved_at_str = art.get("saved_at", "")
@@ -364,14 +376,10 @@ def _migrate_existing_factors(
             else:
                 valid_until = (datetime.now() + timedelta(days=ttl)).strftime("%Y-%m-%dT%H:%M:%S")
 
-            subdir = None
-            if pkl_path.parent != factors_dir:
-                subdir = pkl_path.parent.relative_to(factors_dir)
-
             new_record = {
                 "id": run_id,
                 "filename": pkl_path.name,
-                "subdir": str(subdir) if subdir else None,
+                "subdir": subdir,
                 "strategy_name": strategy_name,
                 "ticker": ticker,
                 "training_type": training_type,
@@ -390,7 +398,7 @@ def _migrate_existing_factors(
                 new_record["status"] = "expired"
 
             registry._data["factors"].append(new_record)
-            seen_ids.add(run_id)
+            seen_paths.add((subdir, pkl_path.name))
             count += 1
 
     if count:

@@ -23,7 +23,7 @@ python3 daily_run.py --skip-notify --dry-run      # 不发飞书、不保存状�
 python3 main.py --use-optuna                      # 完整超参数搜索
 python3 main.py --portfolio                       # 分层混合：ML全局 + 每只股票规则策略
 
-# 测试（全离线，284 个，无网络请求）
+# 测试（全离线，无网络请求）
 pytest tests/ -v
 pytest tests/test_factor_registry.py -v           # 单个文件
 pytest tests/test_strategies.py::TestRuleStrategiesSignalValues -v  # 单个类
@@ -145,6 +145,6 @@ Load via: `from config_loader import load_config; cfg = load_config(include_keys
 
 ## Testing
 
-All 284 tests run fully offline with synthetic data. Key fixtures in `tests/conftest.py`: `synthetic_ohlcv`, `atr_plunge_ohlcv`, `default_config`, `minimal_config`.
+Tests run fully offline with synthetic data. Key fixtures in `tests/conftest.py`: `synthetic_ohlcv`, `atr_plunge_ohlcv`, `default_config`, `minimal_config`.
 
 When adding new strategies: add to the parametrized list in `tests/test_strategies.py` — it auto-discovers all rule strategies with valid `NAME` + `run` + `predict`.

@@ -6054,7 +6054,2996 @@
       "failed_checks": [
         "quality_check"
       ]
+    },
+    "0032.HK": {
+      "reason": "volume_zero_pct 48.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0053.HK": {
+      "reason": "volume_zero_pct 35.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0057.HK": {
+      "reason": "volume_zero_pct 35.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0061.HK": {
+      "reason": "volume_zero_pct 42.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0063.HK": {
+      "reason": "volume_zero_pct 46.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0064.HK": {
+      "reason": "volume_zero_pct 42.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0073.HK": {
+      "reason": "volume_zero_pct 35.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0095.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0097.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0098.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0128.HK": {
+      "reason": "NaN_pct 51.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0129.HK": {
+      "reason": "volume_zero_pct 30.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0183.HK": {
+      "reason": "volume_zero_pct 47.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0184.HK": {
+      "reason": "volume_zero_pct 34.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0189.HK": {
+      "reason": "volume_zero_pct 47.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0194.HK": {
+      "reason": "volume_zero_pct 30.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0205.HK": {
+      "reason": "volume_zero_pct 30.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0222.HK": {
+      "reason": "volume_zero_pct 40.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0243.HK": {
+      "reason": "volume_zero_pct 48.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0255.HK": {
+      "reason": "volume_zero_pct 48.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0295.HK": {
+      "reason": "volume_zero_pct 38.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0301.HK": {
+      "reason": "volume_zero_pct 33.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0306.HK": {
+      "reason": "volume_zero_pct 39.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0312.HK": {
+      "reason": "volume_zero_pct 30.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0313.HK": {
+      "reason": "volume_zero_pct 40.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0314.HK": {
+      "reason": "volume_zero_pct 41.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0320.HK": {
+      "reason": "volume_zero_pct 35.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0322.HK": {
+      "reason": "volume_zero_pct 35.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0326.HK": {
+      "reason": "NaN_pct 75.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0351.HK": {
+      "reason": "volume_zero_pct 49.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0365.HK": {
+      "reason": "volume_zero_pct 33.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0366.HK": {
+      "reason": "volume_zero_pct 33.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0367.HK": {
+      "reason": "volume_zero_pct 33.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0370.HK": {
+      "reason": "volume_zero_pct 33.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0372.HK": {
+      "reason": "volume_zero_pct 42.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0373.HK": {
+      "reason": "volume_zero_pct 33.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0391.HK": {
+      "reason": "volume_zero_pct 34.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0423.HK": {
+      "reason": "volume_zero_pct 31.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0464.HK": {
+      "reason": "volume_zero_pct 33.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0467.HK": {
+      "reason": "volume_zero_pct 33.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0470.HK": {
+      "reason": "volume_zero_pct 33.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0472.HK": {
+      "reason": "volume_zero_pct 32.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0474.HK": {
+      "reason": "volume_zero_pct 33.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0483.HK": {
+      "reason": "volume_zero_pct 36.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0499.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0500.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0510.HK": {
+      "reason": "volume_zero_pct 40.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0575.HK": {
+      "reason": "volume_zero_pct 34.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0580.HK": {
+      "reason": "volume_zero_pct 34.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0601.HK": {
+      "reason": "volume_zero_pct 80.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0687.HK": {
+      "reason": "volume_zero_pct 34.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0688.HK": {
+      "reason": "volume_zero_pct 34.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0691.HK": {
+      "reason": "volume_zero_pct 34.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0700.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0713.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0716.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0717.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0722.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0723.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0726.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0728.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0730.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0731.HK": {
+      "reason": "NaN_pct 100.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0736.HK": {
+      "reason": "volume_zero_pct 45.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0743.HK": {
+      "reason": "volume_zero_pct 45.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0745.HK": {
+      "reason": "volume_zero_pct 45.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0747.HK": {
+      "reason": "volume_zero_pct 37.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0751.HK": {
+      "reason": "volume_zero_pct 37.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0756.HK": {
+      "reason": "volume_zero_pct 43.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0804.HK": {
+      "reason": "NaN_pct 91.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0808.HK": {
+      "reason": "NaN_pct 75.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0809.HK": {
+      "reason": "NaN_pct 75.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0899.HK": {
+      "reason": "volume_zero_pct 42.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0911.HK": {
+      "reason": "volume_zero_pct 38.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0913.HK": {
+      "reason": "volume_zero_pct 46.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0916.HK": {
+      "reason": "volume_zero_pct 46.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0918.HK": {
+      "reason": "volume_zero_pct 35.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0923.HK": {
+      "reason": "volume_zero_pct 30.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0928.HK": {
+      "reason": "volume_zero_pct 35.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0931.HK": {
+      "reason": "volume_zero_pct 35.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0952.HK": {
+      "reason": "volume_zero_pct 49.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0959.HK": {
+      "reason": "volume_zero_pct 60.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0993.HK": {
+      "reason": "volume_zero_pct 30.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0997.HK": {
+      "reason": "volume_zero_pct 30.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1007.HK": {
+      "reason": "volume_zero_pct 79.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1079.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1083.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1087.HK": {
+      "reason": "volume_zero_pct 30.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1111.HK": {
+      "reason": "NaN_pct 52.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1124.HK": {
+      "reason": "volume_zero_pct 32.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1129.HK": {
+      "reason": "volume_zero_pct 30.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1132.HK": {
+      "reason": "volume_zero_pct 32.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1137.HK": {
+      "reason": "volume_zero_pct 30.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1162.HK": {
+      "reason": "volume_zero_pct 35.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1206.HK": {
+      "reason": "NaN_pct 25.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1220.HK": {
+      "reason": "volume_zero_pct 33.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1224.HK": {
+      "reason": "volume_zero_pct 30.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1229.HK": {
+      "reason": "volume_zero_pct 30.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1262.HK": {
+      "reason": "volume_zero_pct 36.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1276.HK": {
+      "reason": "NaN_pct 82.3% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1286.HK": {
+      "reason": "NaN_pct 45.3% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1321.HK": {
+      "reason": "volume_zero_pct 33.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1333.HK": {
+      "reason": "NaN_pct 46.6% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1336.HK": {
+      "reason": "NaN_pct 81.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1340.HK": {
+      "reason": "volume_zero_pct 39.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1346.HK": {
+      "reason": "volume_zero_pct 31.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1357.HK": {
+      "reason": "volume_zero_pct 31.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1384.HK": {
+      "reason": "NaN_pct 91.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1399.HK": {
+      "reason": "volume_zero_pct 30.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1406.HK": {
+      "reason": "NaN_pct 26.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1408.HK": {
+      "reason": "volume_zero_pct 31.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1421.HK": {
+      "reason": "volume_zero_pct 39.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1425.HK": {
+      "reason": "volume_zero_pct 39.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1498.HK": {
+      "reason": "NaN_pct 53.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1503.HK": {
+      "reason": "NaN_pct 53.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1520.HK": {
+      "reason": "NaN_pct 51.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1521.HK": {
+      "reason": "NaN_pct 51.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1538.HK": {
+      "reason": "volume_zero_pct 32.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1541.HK": {
+      "reason": "NaN_pct 48.3% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1549.HK": {
+      "reason": "NaN_pct 48.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1555.HK": {
+      "reason": "NaN_pct 48.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1640.HK": {
+      "reason": "volume_zero_pct 33.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1697.HK": {
+      "reason": "volume_zero_pct 31.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1698.HK": {
+      "reason": "volume_zero_pct 31.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1705.HK": {
+      "reason": "volume_zero_pct 35.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1718.HK": {
+      "reason": "volume_zero_pct 31.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1739.HK": {
+      "reason": "volume_zero_pct 31.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1740.HK": {
+      "reason": "volume_zero_pct 42.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1773.HK": {
+      "reason": "NaN_pct 96.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1780.HK": {
+      "reason": "volume_zero_pct 30.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1785.HK": {
+      "reason": "volume_zero_pct 32.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1792.HK": {
+      "reason": "volume_zero_pct 35.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1796.HK": {
+      "reason": "volume_zero_pct 35.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1871.HK": {
+      "reason": "volume_zero_pct 36.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1884.HK": {
+      "reason": "volume_zero_pct 35.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1891.HK": {
+      "reason": "volume_zero_pct 35.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1917.HK": {
+      "reason": "volume_zero_pct 35.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1930.HK": {
+      "reason": "volume_zero_pct 32.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1941.HK": {
+      "reason": "volume_zero_pct 32.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1947.HK": {
+      "reason": "volume_zero_pct 33.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1960.HK": {
+      "reason": "volume_zero_pct 33.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1962.HK": {
+      "reason": "volume_zero_pct 33.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1973.HK": {
+      "reason": "volume_zero_pct 35.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1995.HK": {
+      "reason": "NaN_pct 98.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1996.HK": {
+      "reason": "NaN_pct 98.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2003.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2023.HK": {
+      "reason": "volume_zero_pct 30.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2098.HK": {
+      "reason": "NaN_pct 77.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2122.HK": {
+      "reason": "volume_zero_pct 36.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2125.HK": {
+      "reason": "volume_zero_pct 36.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2146.HK": {
+      "reason": "volume_zero_pct 34.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2165.HK": {
+      "reason": "volume_zero_pct 36.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2168.HK": {
+      "reason": "volume_zero_pct 39.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2170.HK": {
+      "reason": "volume_zero_pct 39.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2210.HK": {
+      "reason": "volume_zero_pct 42.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2259.HK": {
+      "reason": "NaN_pct 89.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2281.HK": {
+      "reason": "volume_zero_pct 34.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2283.HK": {
+      "reason": "volume_zero_pct 34.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2327.HK": {
+      "reason": "NaN_pct 27.3% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2372.HK": {
+      "reason": "volume_zero_pct 34.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2373.HK": {
+      "reason": "NaN_pct 35.6% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2385.HK": {
+      "reason": "NaN_pct 25.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2391.HK": {
+      "reason": "volume_zero_pct 34.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2402.HK": {
+      "reason": "NaN_pct 91.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2410.HK": {
+      "reason": "NaN_pct 89.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2411.HK": {
+      "reason": "NaN_pct 89.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2421.HK": {
+      "reason": "NaN_pct 26.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2423.HK": {
+      "reason": "NaN_pct 26.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2458.HK": {
+      "reason": "volume_zero_pct 35.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2469.HK": {
+      "reason": "NaN_pct 100.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2517.HK": {
+      "reason": "NaN_pct 51.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2519.HK": {
+      "reason": "NaN_pct 51.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2529.HK": {
+      "reason": "volume_zero_pct 40.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2549.HK": {
+      "reason": "NaN_pct 80.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2581.HK": {
+      "reason": "NaN_pct 78.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2582.HK": {
+      "reason": "NaN_pct 79.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2602.HK": {
+      "reason": "NaN_pct 81.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2616.HK": {
+      "reason": "NaN_pct 75.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2623.HK": {
+      "reason": "volume_zero_pct 33.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2625.HK": {
+      "reason": "NaN_pct 79.6% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2627.HK": {
+      "reason": "NaN_pct 79.6% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2678.HK": {
+      "reason": "NaN_pct 93.3% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2685.HK": {
+      "reason": "NaN_pct 93.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2714.HK": {
+      "reason": "NaN_pct 96.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2722.HK": {
+      "reason": "NaN_pct 98.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2865.HK": {
+      "reason": "NaN_pct 81.4% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2898.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2899.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2910.HK": {
+      "reason": "NaN_pct 98.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3316.HK": {
+      "reason": "NaN_pct 83.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3318.HK": {
+      "reason": "NaN_pct 83.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3347.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3369.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3383.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3669.HK": {
+      "reason": "NaN_pct 33.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3768.HK": {
+      "reason": "NaN_pct 81.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3773.HK": {
+      "reason": "NaN_pct 81.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3788.HK": {
+      "reason": "NaN_pct 81.9% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3877.HK": {
+      "reason": "NaN_pct 87.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3878.HK": {
+      "reason": "volume_zero_pct 30.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3883.HK": {
+      "reason": "volume_zero_pct 30.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3889.HK": {
+      "reason": "volume_zero_pct 37.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3919.HK": {
+      "reason": "volume_zero_pct 39.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6030.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6162.HK": {
+      "reason": "volume_zero_pct 34.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6288.HK": {
+      "reason": "volume_zero_pct 41.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6601.HK": {
+      "reason": "volume_zero_pct 41.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6618.HK": {
+      "reason": "NaN_pct 30.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6651.HK": {
+      "reason": "NaN_pct 93.3% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6667.HK": {
+      "reason": "volume_zero_pct 33.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6690.HK": {
+      "reason": "NaN_pct 45.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6693.HK": {
+      "reason": "NaN_pct 45.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6696.HK": {
+      "reason": "NaN_pct 45.2% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6698.HK": {
+      "reason": "NaN_pct 34.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6868.HK": {
+      "reason": "volume_zero_pct 32.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6922.HK": {
+      "reason": "NaN_pct 34.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6933.HK": {
+      "reason": "volume_zero_pct 38.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6939.HK": {
+      "reason": "NaN_pct 34.4% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6969.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8007.HK": {
+      "reason": "NaN_pct 93.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8017.HK": {
+      "reason": "NaN_pct 93.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8018.HK": {
+      "reason": "NaN_pct 93.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8072.HK": {
+      "reason": "volume_zero_pct 35.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8118.HK": {
+      "reason": "volume_zero_pct 36.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8132.HK": {
+      "reason": "volume_zero_pct 33.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8133.HK": {
+      "reason": "volume_zero_pct 38.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8136.HK": {
+      "reason": "volume_zero_pct 38.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8137.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8140.HK": {
+      "reason": "volume_zero_pct 35.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8156.HK": {
+      "reason": "volume_zero_pct 31.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8160.HK": {
+      "reason": "volume_zero_pct 40.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8168.HK": {
+      "reason": "volume_zero_pct 32.8% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8179.HK": {
+      "reason": "volume_zero_pct 31.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8187.HK": {
+      "reason": "volume_zero_pct 32.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8195.HK": {
+      "reason": "volume_zero_pct 32.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8217.HK": {
+      "reason": "volume_zero_pct 46.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8223.HK": {
+      "reason": "volume_zero_pct 46.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8238.HK": {
+      "reason": "volume_zero_pct 47.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8245.HK": {
+      "reason": "volume_zero_pct 47.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8326.HK": {
+      "reason": "volume_zero_pct 33.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8373.HK": {
+      "reason": "volume_zero_pct 32.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8395.HK": {
+      "reason": "volume_zero_pct 37.7% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8401.HK": {
+      "reason": "volume_zero_pct 32.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8406.HK": {
+      "reason": "volume_zero_pct 32.3% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8413.HK": {
+      "reason": "volume_zero_pct 38.5% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8418.HK": {
+      "reason": "volume_zero_pct 32.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8428.HK": {
+      "reason": "volume_zero_pct 32.1% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8448.HK": {
+      "reason": "volume_zero_pct 42.9% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8473.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8511.HK": {
+      "reason": "volume_zero_pct 30.4% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8512.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8516.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8606.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8629.HK": {
+      "reason": "NaN_pct 100.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8637.HK": {
+      "reason": "NaN_pct 100.0% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9686.HK": {
+      "reason": "NaN_pct 32.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9688.HK": {
+      "reason": "NaN_pct 49.5% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9868.HK": {
+      "reason": "NaN_pct 26.1% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9882.HK": {
+      "reason": "volume_zero_pct 37.0% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9908.HK": {
+      "reason": "NaN_pct 28.7% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9927.HK": {
+      "reason": "NaN_pct 85.4% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9929.HK": {
+      "reason": "volume_zero_pct 34.6% > 30%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9933.HK": {
+      "reason": "NaN_pct 99.8% > 20%",
+      "added_at": "2026-04-10",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0070.HK": {
+      "reason": "volume_zero_pct 45.3% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0076.HK": {
+      "reason": "volume_zero_pct 45.2% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0138.HK": {
+      "reason": "volume_zero_pct 38.8% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0139.HK": {
+      "reason": "volume_zero_pct 38.8% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0254.HK": {
+      "reason": "volume_zero_pct 31.2% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0256.HK": {
+      "reason": "volume_zero_pct 30.9% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0298.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0302.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0303.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0309.HK": {
+      "reason": "volume_zero_pct 31.7% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0348.HK": {
+      "reason": "volume_zero_pct 37.5% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0422.HK": {
+      "reason": "volume_zero_pct 35.2% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0425.HK": {
+      "reason": "volume_zero_pct 35.2% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0521.HK": {
+      "reason": "volume_zero_pct 30.5% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0620.HK": {
+      "reason": "volume_zero_pct 37.3% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0627.HK": {
+      "reason": "volume_zero_pct 59.9% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0635.HK": {
+      "reason": "volume_zero_pct 33.7% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0667.HK": {
+      "reason": "NaN_pct 54.0% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0669.HK": {
+      "reason": "NaN_pct 54.0% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0670.HK": {
+      "reason": "NaN_pct 54.0% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0764.HK": {
+      "reason": "volume_zero_pct 46.4% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0789.HK": {
+      "reason": "volume_zero_pct 30.4% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0805.HK": {
+      "reason": "NaN_pct 66.3% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0934.HK": {
+      "reason": "NaN_pct 43.8% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0939.HK": {
+      "reason": "NaN_pct 43.8% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0941.HK": {
+      "reason": "NaN_pct 43.8% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1105.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1109.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1166.HK": {
+      "reason": "volume_zero_pct 52.5% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1233.HK": {
+      "reason": "volume_zero_pct 38.0% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1234.HK": {
+      "reason": "volume_zero_pct 38.0% > 30%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1247.HK": {
+      "reason": "NaN_pct 33.9% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1277.HK": {
+      "reason": "NaN_pct 54.1% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1278.HK": {
+      "reason": "NaN_pct 54.1% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1280.HK": {
+      "reason": "NaN_pct 54.1% > 20%",
+      "added_at": "2026-04-13",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0092.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0101.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0103.HK": {
+      "reason": "volume_zero_pct 99.7% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0122.HK": {
+      "reason": "volume_zero_pct 32.3% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0236.HK": {
+      "reason": "volume_zero_pct 42.7% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0240.HK": {
+      "reason": "volume_zero_pct 42.7% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0241.HK": {
+      "reason": "volume_zero_pct 42.7% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0497.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0505.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0506.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0639.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0650.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0673.HK": {
+      "reason": "volume_zero_pct 54.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0707.HK": {
+      "reason": "volume_zero_pct 99.5% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0922.HK": {
+      "reason": "volume_zero_pct 82.9% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0945.HK": {
+      "reason": "volume_zero_pct 45.2% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0947.HK": {
+      "reason": "volume_zero_pct 45.2% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1003.HK": {
+      "reason": "volume_zero_pct 74.6% > 30%",
+      "added_at": "2026-04-14",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0080.HK": {
+      "reason": "volume_zero_pct 30.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0090.HK": {
+      "reason": "volume_zero_pct 33.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0111.HK": {
+      "reason": "volume_zero_pct 32.6% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0156.HK": {
+      "reason": "volume_zero_pct 30.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0185.HK": {
+      "reason": "volume_zero_pct 31.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0206.HK": {
+      "reason": "volume_zero_pct 32.0% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0245.HK": {
+      "reason": "volume_zero_pct 32.0% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0274.HK": {
+      "reason": "volume_zero_pct 34.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0290.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0334.HK": {
+      "reason": "volume_zero_pct 32.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0362.HK": {
+      "reason": "volume_zero_pct 30.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0496.HK": {
+      "reason": "volume_zero_pct 32.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0501.HK": {
+      "reason": "NaN_pct 99.6% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0585.HK": {
+      "reason": "volume_zero_pct 34.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0630.HK": {
+      "reason": "volume_zero_pct 49.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0636.HK": {
+      "reason": "volume_zero_pct 99.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0653.HK": {
+      "reason": "volume_zero_pct 99.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0655.HK": {
+      "reason": "volume_zero_pct 99.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0666.HK": {
+      "reason": "volume_zero_pct 54.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0677.HK": {
+      "reason": "volume_zero_pct 54.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0698.HK": {
+      "reason": "volume_zero_pct 99.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1371.HK": {
+      "reason": "volume_zero_pct 31.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1373.HK": {
+      "reason": "volume_zero_pct 31.4% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1463.HK": {
+      "reason": "volume_zero_pct 36.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1489.HK": {
+      "reason": "NaN_pct 29.7% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1490.HK": {
+      "reason": "volume_zero_pct 37.4% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1497.HK": {
+      "reason": "NaN_pct 53.4% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1692.HK": {
+      "reason": "volume_zero_pct 39.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1751.HK": {
+      "reason": "volume_zero_pct 32.6% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1778.HK": {
+      "reason": "volume_zero_pct 31.9% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1817.HK": {
+      "reason": "volume_zero_pct 35.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1818.HK": {
+      "reason": "volume_zero_pct 35.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1823.HK": {
+      "reason": "volume_zero_pct 36.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1825.HK": {
+      "reason": "volume_zero_pct 36.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1830.HK": {
+      "reason": "volume_zero_pct 35.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1833.HK": {
+      "reason": "volume_zero_pct 83.9% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2150.HK": {
+      "reason": "volume_zero_pct 34.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2189.HK": {
+      "reason": "volume_zero_pct 33.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2222.HK": {
+      "reason": "volume_zero_pct 46.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2269.HK": {
+      "reason": "volume_zero_pct 52.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2309.HK": {
+      "reason": "volume_zero_pct 36.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2355.HK": {
+      "reason": "volume_zero_pct 34.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2356.HK": {
+      "reason": "volume_zero_pct 34.0% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2361.HK": {
+      "reason": "volume_zero_pct 40.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2363.HK": {
+      "reason": "volume_zero_pct 55.6% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2422.HK": {
+      "reason": "volume_zero_pct 33.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2425.HK": {
+      "reason": "volume_zero_pct 33.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2450.HK": {
+      "reason": "volume_zero_pct 42.6% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2500.HK": {
+      "reason": "volume_zero_pct 56.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2518.HK": {
+      "reason": "volume_zero_pct 55.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2565.HK": {
+      "reason": "NaN_pct 40.3% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2589.HK": {
+      "reason": "NaN_pct 26.6% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2592.HK": {
+      "reason": "NaN_pct 39.8% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2628.HK": {
+      "reason": "volume_zero_pct 92.0% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2633.HK": {
+      "reason": "volume_zero_pct 86.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2688.HK": {
+      "reason": "volume_zero_pct 95.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2689.HK": {
+      "reason": "volume_zero_pct 95.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2727.HK": {
+      "reason": "volume_zero_pct 95.9% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2885.HK": {
+      "reason": "volume_zero_pct 70.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2886.HK": {
+      "reason": "volume_zero_pct 70.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2888.HK": {
+      "reason": "volume_zero_pct 69.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3300.HK": {
+      "reason": "volume_zero_pct 95.6% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3309.HK": {
+      "reason": "volume_zero_pct 97.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3638.HK": {
+      "reason": "volume_zero_pct 32.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3650.HK": {
+      "reason": "volume_zero_pct 43.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3666.HK": {
+      "reason": "volume_zero_pct 33.9% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3668.HK": {
+      "reason": "volume_zero_pct 33.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3677.HK": {
+      "reason": "volume_zero_pct 33.4% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3839.HK": {
+      "reason": "volume_zero_pct 30.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3858.HK": {
+      "reason": "volume_zero_pct 30.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3888.HK": {
+      "reason": "volume_zero_pct 93.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3898.HK": {
+      "reason": "volume_zero_pct 34.9% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "3899.HK": {
+      "reason": "volume_zero_pct 34.9% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6063.HK": {
+      "reason": "volume_zero_pct 31.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6066.HK": {
+      "reason": "volume_zero_pct 31.7% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6086.HK": {
+      "reason": "NaN_pct 64.6% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6185.HK": {
+      "reason": "volume_zero_pct 64.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6806.HK": {
+      "reason": "volume_zero_pct 45.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6968.HK": {
+      "reason": "volume_zero_pct 34.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6988.HK": {
+      "reason": "volume_zero_pct 90.3% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8620.HK": {
+      "reason": "volume_zero_pct 35.8% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8622.HK": {
+      "reason": "volume_zero_pct 36.0% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8645.HK": {
+      "reason": "volume_zero_pct 99.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8646.HK": {
+      "reason": "volume_zero_pct 99.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9608.HK": {
+      "reason": "volume_zero_pct 99.2% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9609.HK": {
+      "reason": "NaN_pct 92.9% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9633.HK": {
+      "reason": "volume_zero_pct 99.1% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9636.HK": {
+      "reason": "NaN_pct 38.4% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9660.HK": {
+      "reason": "NaN_pct 37.4% > 20%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9888.HK": {
+      "reason": "volume_zero_pct 44.4% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9893.HK": {
+      "reason": "volume_zero_pct 49.5% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9896.HK": {
+      "reason": "volume_zero_pct 49.6% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9909.HK": {
+      "reason": "volume_zero_pct 94.0% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9916.HK": {
+      "reason": "volume_zero_pct 33.4% > 30%",
+      "added_at": "2026-04-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8297.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-04-25",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1609.HK": {
+      "reason": "volume_zero_pct 68.8% > 30%",
+      "added_at": "2026-05-16",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0468.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-06-02",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0901.HK": {
+      "reason": "volume_zero_pct 78.4% > 30%",
+      "added_at": "2026-06-06",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2959.HK": {
+      "reason": "volume_zero_pct 36.9% > 30%",
+      "added_at": "2026-06-06",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0286.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-06-11",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6878.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-06-18",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "9606.HK": {
+      "reason": "volume_zero_pct 82.3% > 30%",
+      "added_at": "2026-07-04",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2968.HK": {
+      "reason": "volume_zero_pct 63.9% > 30%",
+      "added_at": "2026-07-08",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "6880.HK": {
+      "reason": "volume_zero_pct 86.6% > 30%",
+      "added_at": "2026-07-21",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "0059.HK": {
+      "reason": "volume_zero_pct 30.1% > 30%",
+      "added_at": "2026-07-23",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1293.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-07-25",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1433.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-07-28",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "1341.HK": {
+      "reason": "volume_zero_pct 30.0% > 30%",
+      "added_at": "2026-08-25",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2908.HK": {
+      "reason": "volume_zero_pct 50.7% > 30%",
+      "added_at": "2026-09-20",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "2914.HK": {
+      "reason": "volume_zero_pct 68.5% > 30%",
+      "added_at": "2026-09-20",
+      "failed_checks": [
+        "quality_check"
+      ]
+    },
+    "8349.HK": {
+      "reason": "volume_zero_pct 30.1% > 30%",
+      "added_at": "2026-09-24",
+      "failed_checks": [
+        "quality_check"
+      ]
     }
   },
-  "updated_at": "2026-04-04"
+  "updated_at": "2026-09-24"
 }

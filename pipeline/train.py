@@ -328,14 +328,11 @@ def step2_train_optuna(
             full_data=hist_data
         )
     elif best_of_all:
-        best_result = {
-            'strategy_name': best_of_all['strategy_name'],
-            'config': backtest_config.copy(),
-            'meta': {'name': best_of_all['strategy_name'], 'params': best_of_all.get('best_params', {})},
-            'cum_return': 0,
-            'sharpe_ratio': best_of_all['best_value'],
-            'validated': 'val_only',
-        }
+        # 没有可持久化的完整结果时不能只保存参数和分数。
+        # 缺少模型的 ML 因子会让每日推断误调用 run() 重新训练。
+        logger.warning("最佳试验缺少完整模型或验证结果，跳过保存因子: %s",
+                       best_of_all['strategy_name'])
+        best_result = None
     else:
         best_result = None
 

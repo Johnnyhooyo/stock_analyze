@@ -81,13 +81,21 @@ def _first_next_open(data: pd.DataFrame, signal_date: str) -> tuple[str, float] 
     return str(pd.Timestamp(future.index[0]).date()), opening
 
 
+def _current_data(data_mgr, ticker: str, period: str) -> pd.DataFrame:
+    """生产环境先刷新缓存；仅提供 load() 的离线数据源仍可使用。"""
+    if hasattr(data_mgr, "download"):
+        data, _ = data_mgr.download(ticker, period=period)
+        return data
+    return data_mgr.load(ticker, period=period)
+
+
 def _valuation_prices(data_mgr, portfolio_state, period: str, fill_date: str) -> dict[str, float]:
     """按结算日开盘价估值其他持仓，避免用成本价高估可买额度。"""
     prices: dict[str, float] = {}
     target = date.fromisoformat(fill_date)
     for ticker in portfolio_state.held_tickers():
         try:
-            data = data_mgr.load(ticker, period=period)
+            data = _current_data(data_mgr, ticker, period)
             dates = pd.to_datetime(data.index).date
             on_date = data.loc[dates == target]
             if not on_date.empty and "Open" in on_date.columns:
@@ -118,7 +126,7 @@ def settle_paper_signals(
     remaining: list[dict] = []
     for item in pending:
         try:
-            data = data_mgr.load(item["ticker"], period=period)
+            data = _current_data(data_mgr, item["ticker"], period)
             next_open = _first_next_open(data, item["signal_date"])
         except (FileNotFoundError, KeyError, ValueError) as exc:
             logger.warning("纸面信号等待有效行情: %s %s", item["ticker"], exc)
@@ -147,6 +155,11 @@ def settle_paper_signals(
         ]
         prices = _valuation_prices(data_mgr, portfolio_state, period, fill_date)
         prices.update({r.ticker: r.last_close for r in results})
+        missing_held = set(portfolio_state.held_tickers()) - set(prices)
+        if missing_held:
+            logger.error("纸面结算缺少持仓估值，继续等待: %s", sorted(missing_held))
+            remaining.extend(item for item, _ in ready[fill_date])
+            continue
         trades.extend(trader.execute(results, portfolio_state, fill_date, valuation_prices=prices))
         portfolio_state.save()
     _write_pending(path, remaining)

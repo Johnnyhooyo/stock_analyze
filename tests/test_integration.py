@@ -247,6 +247,27 @@ class TestScreenerIntegration:
         assert len(daily_report["sector_ranking"]) == 3
         assert daily_report["sector_ranking"][0]["sector"] == "科技/互联网"
 
+    def test_build_daily_report_includes_cumulative_pnl(self):
+        """累计盈亏以当前总资产相对初始本金计算。"""
+        import daily_run
+
+        daily_report = daily_run._build_daily_report(
+            results=[],
+            portfolio_value=200_000.0,
+            run_date="2026-09-23",
+            market_is_open=True,
+            config={},
+            cash_value=197_411.50770991,
+            initial_capital=200_000.0,
+        )
+
+        assert daily_report["cumulative_pnl"] == pytest.approx(-2_588.49229009)
+        assert daily_report["total_return_pct"] == pytest.approx(-1.294246145)
+
+        md = daily_run._build_markdown_report(daily_report)
+        assert "累计盈亏（总收益）" in md
+        assert "-2,588.49 港元（-1.29%）" in md
+
     def test_build_markdown_report_includes_sector_ranking(self, synthetic_ohlcv):
         """Markdown 报告包含板块排名表格"""
         import daily_run
@@ -352,8 +373,8 @@ class TestFactorRegistryAggregateIntegration:
 
         assert result.total_strategies >= 1, "per-ticker 注册表因子不应被过滤为空"
 
-    def test_registry_filter_fallback_when_subdir_mismatch(self, tmp_path, synthetic_ohlcv):
-        """registry 中 subdir 与磁盘不匹配时，fallback 返回全部磁盘因子（不返回空信号）。"""
+    def test_registry_subdir_mismatch_does_not_revive_disk_factor(self, tmp_path, synthetic_ohlcv):
+        """注册表与磁盘不匹配时停止投票，避免绕过有效期过滤。"""
         from data.factor_registry import FactorRegistry
         from engine.signal_aggregator import SignalAggregator
 
@@ -376,13 +397,13 @@ class TestFactorRegistryAggregateIntegration:
         )
 
         agg = SignalAggregator(factors_dir=factors_dir)
-        # fallback 应触发：过滤后为空但磁盘有文件 → 回退使用全部磁盘因子
         result = agg.aggregate("0700.HK", synthetic_ohlcv, {"ticker": "0700.HK"})
 
-        assert result.total_strategies >= 1, "fallback 应保证有因子参与投票，不返回空信号"
+        assert result.total_strategies == 0
+        assert result.confidence_pct == 0.0
 
     def test_empty_registry_falls_back_to_disk_factors(self, tmp_path, synthetic_ohlcv):
-        """空注册表（无 active 记录）时，回退加载磁盘上所有因子（向后兼容）。"""
+        """没有注册表文件时，兼容旧目录并加载磁盘因子。"""
         from engine.signal_aggregator import SignalAggregator
 
         factors_dir = tmp_path / "factors"

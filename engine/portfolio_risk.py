@@ -252,22 +252,24 @@ class PortfolioRiskChecker:
         if total_mv <= 0:
             return
 
-        weighted_returns: Optional[pd.Series] = None
+        weighted_components: list[pd.Series] = []
         for r in held:
             df = price_data.get(r.ticker)
             if df is None or df.empty or "Close" not in df.columns:
-                continue
+                return
             rets = df["Close"].pct_change().dropna().tail(252)
             if len(rets) < 20:
-                continue
+                return
             weight = r.market_value / total_mv
-            if weighted_returns is None:
-                weighted_returns = rets * weight
-            else:
-                weighted_returns = weighted_returns.add(rets * weight, fill_value=0.0)
+            weighted_components.append(rets * weight)
 
-        if weighted_returns is None or len(weighted_returns) < 20:
+        if not weighted_components:
             return
+        # 只使用所有持仓都有行情的交易日；缺值不能按 0 收益处理。
+        aligned = pd.concat(weighted_components, axis=1, join="inner").dropna()
+        if len(aligned) < 20:
+            return
+        weighted_returns = aligned.sum(axis=1)
 
         res.var_95    = float(np.percentile(weighted_returns.values, 5))
         res.var_breach = res.var_95 < self._var_threshold

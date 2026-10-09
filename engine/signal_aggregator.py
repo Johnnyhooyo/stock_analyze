@@ -128,6 +128,14 @@ class SignalAggregator:
             key=lambda p: int(p.stem.split("_")[1]),
             reverse=True,
         )
+        registry = self._get_registry()
+        if registry is not None:
+            subdir = None if target == self.factors_dir else target.name.upper()
+            active_paths = {
+                (r.filename, r.subdir.upper() if r.subdir else None)
+                for r in registry.active_records()
+            }
+            candidates = [p for p in candidates if (p.name, subdir) in active_paths]
         artifacts = []
         for path in candidates[: self.max_factors]:
             try:
@@ -201,12 +209,15 @@ class SignalAggregator:
     def _get_registry(self):
         """懒加载注册表"""
         if self._registry is None and self._use_registry:
+            registry_path = self.factors_dir / "factor_registry.json"
+            if not registry_path.exists():
+                return None
             try:
                 from data.factor_registry import FactorRegistry
-                self._registry = FactorRegistry()
+                self._registry = FactorRegistry(registry_path=registry_path)
             except Exception as e:
-                logger.debug("因子注册表加载失败，降级为全量磁盘扫描", extra={"error": str(e)})
-                self._registry = None
+                logger.error("因子注册表加载失败: %s", e)
+                raise
         return self._registry
 
     def _filter_by_registry(self, artifacts: list[dict], subdir: str | None) -> list[dict]:
@@ -214,8 +225,8 @@ class SignalAggregator:
 
         Fallback 规则：
         - 注册表不可用 → 返回全部（原有行为）
-        - 注册表为空（无任何 active 记录）→ 返回全部（原有行为）
-        - 注册表非空但过滤后为空 → 记录 warning，返回全部（防止注册表与磁盘不同步时误过滤）
+        - 注册表存在但无 active 因子 → 不使用过期因子
+        - 注册表非空但过滤后为空 → 记录 warning，不使用过期因子
         """
         registry = self._get_registry()
         if registry is None:
@@ -223,7 +234,7 @@ class SignalAggregator:
         try:
             active = registry.active_records()
             if not active:
-                return artifacts
+                return []
             # subdir 大小写不敏感匹配，兼容历史注册记录
             active_keys = {
                 (r.filename, (r.subdir or "").upper() if r.subdir else None)
@@ -237,16 +248,16 @@ class SignalAggregator:
             if not filtered and artifacts:
                 logger.warning(
                     "注册表过滤后因子为空（注册表 %d 条 active，磁盘 %d 个文件，subdir=%s），"
-                    "回退使用全部磁盘因子",
+                    "不使用过期因子",
                     len(active), len(artifacts), subdir,
                 )
-                return artifacts
+                return []
             if len(filtered) < len(artifacts):
                 logger.debug("注册表过滤: %d -> %d 个因子", len(artifacts), len(filtered))
             return filtered
         except Exception as e:
-            logger.warning("注册表过滤异常，回退使用全部因子: %s", e)
-            return artifacts
+            logger.warning("注册表过滤异常，不使用因子: %s", e)
+            return []
 
     def aggregate(
         self, ticker: str, data: pd.DataFrame, config: dict

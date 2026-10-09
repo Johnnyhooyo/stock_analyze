@@ -8,6 +8,8 @@ def test_daily_advisory_uses_feishu_compatible_markdown():
         "run_date": "2026-09-08", "portfolio_value": 199_969,
         "total_market_value": 159_971.05, "cash_value": 39_997.62,
         "cash_pct": 20, "total_pnl": -31.34, "total_pnl_pct": -0.02,
+        "initial_capital": 200_000, "cumulative_pnl": -31,
+        "total_return_pct": -0.0155,
         "market_is_open": True, "buy_signals": ["0087.HK"], "sell_signals": ["0428.HK"],
         "executed_trades": [{
             "ticker": "0428.HK", "action": "卖出", "shares": 100,
@@ -34,6 +36,7 @@ def test_daily_advisory_uses_feishu_compatible_markdown():
     content = post.call_args.kwargs["json"]["card"]["elements"][0]["content"]
     assert "**📊 每日量化操作建议  2026-09-08**" in content
     assert "**📌 持仓与已结算卖出**" in content
+    assert "累计盈亏（总收益）：🔴 -31.00（-0.02%）" in content
     assert "**0005.HK × 299股**  🟢" in content
     assert "买入价 167.01  ·  当前价 167.60  ·  卖出价 —" in content
     assert "建仓 2026-09-01  ·  持仓第8天" in content

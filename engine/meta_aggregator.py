@@ -34,6 +34,7 @@ class MetaAggregator:
     """Stacking meta-learner: Logistic Regression over base strategy signals + market state."""
 
     META_DIR_DEFAULT = Path(__file__).parent.parent / "data" / "meta"
+    MODEL_FORMAT_VERSION = 2
 
     def __init__(self, meta_dir: Optional[Path] = None):
         self._meta_dir = meta_dir or self.META_DIR_DEFAULT
@@ -154,10 +155,12 @@ class MetaAggregator:
                 is_ml = model is not None and len(feat_cols) > 0
                 art_cfg = dict(art.get("config", {}))
 
-                if is_ml and hasattr(mod, "predict"):
-                    sig = mod.predict(model, data.copy(), art_cfg, meta)
-                else:
-                    sig, _, _ = mod.run(data.copy(), art_cfg)
+                if is_ml:
+                    # 保存的基础模型可能在这段历史上训练过；其历史预测不能
+                    # 作为元模型交叉验证特征，否则验证集会间接看到训练标签。
+                    logger.warning("跳过缺少样本外历史预测的 ML 因子: %s", name)
+                    continue
+                sig, _, _ = mod.run(data.copy(), art_cfg)
 
                 if sig is not None and not sig.empty:
                     names.append(name)
@@ -219,7 +222,8 @@ class MetaAggregator:
 
         # Walk-Forward CV
         from sklearn.model_selection import TimeSeriesSplit
-        tscv = TimeSeriesSplit(n_splits=n_splits)
+        # 训练样本的标签引用后续 label_days 根 K 线，折间留出间隔。
+        tscv = TimeSeriesSplit(n_splits=n_splits, gap=label_days)
         fold_accs: list[float] = []
 
         for tr_idx, te_idx in tscv.split(X_valid):
@@ -270,6 +274,7 @@ class MetaAggregator:
         ticker_safe = ticker_to_safe(ticker)
         path = self._meta_dir / f"meta_model_{ticker_safe}.pkl"
         payload = {
+            "format_version": self.MODEL_FORMAT_VERSION,
             "model": self._model,
             "scaler": self._scaler,
             "strategy_names": self._strategy_names,
@@ -290,6 +295,9 @@ class MetaAggregator:
             return None
         try:
             payload = joblib.load(path)
+            if payload.get("format_version") != cls.MODEL_FORMAT_VERSION:
+                logger.warning("meta-model 版本过旧，需重新训练: %s", path)
+                return None
             ma = cls(meta_dir=meta_dir)
             ma._model = payload["model"]
             ma._scaler = payload["scaler"]

@@ -278,6 +278,9 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
     pnl_pct = daily_report.get("total_pnl_pct", 0)
     cash = daily_report.get("cash_value", 0)
     cash_pct = daily_report.get("cash_pct", 100)
+    initial_capital = daily_report.get("initial_capital", pv)
+    cumulative_pnl = daily_report.get("cumulative_pnl", pv - initial_capital)
+    total_return_pct = daily_report.get("total_return_pct", 0)
     buy_sigs = daily_report.get("buy_signals", [])
     sell_sigs = daily_report.get("sell_signals", [])
     recs = daily_report.get("recommendations", [])
@@ -292,6 +295,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
 
     market_str = "✅ 交易日" if market_is_open else "⛔ 非交易日"
     pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+    cumulative_pnl_emoji = "🟢" if cumulative_pnl >= 0 else "🔴"
 
     # ── 构建 Markdown 内容 ──────────────────────────────────────
     lines = [
@@ -304,6 +308,7 @@ def send_daily_advisory(webhook_url: str, daily_report: dict) -> bool:
         f"总资产：**{pv:,.0f}**",
         f"持仓市值：{mv:,.2f}",
         f"可用现金：{cash:,.2f}（{cash_pct:.1f}%）",
+        f"累计盈亏（总收益）：{cumulative_pnl_emoji} {cumulative_pnl:+,.2f}（{total_return_pct:+.2f}%）",
         f"持仓盈亏：{pnl_emoji} {pnl:+,.2f}（{pnl_pct:+.2f}%）",
         "",
     ]

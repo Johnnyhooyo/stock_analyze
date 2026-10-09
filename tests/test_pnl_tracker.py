@@ -4,7 +4,7 @@ tests/test_pnl_tracker.py — PnLTracker unit tests
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -12,6 +12,11 @@ import pytest
 from data.pnl_tracker import PnLTracker, _is_correct
 from engine.position_analyzer import RecommendationResult
 from engine.signal_aggregator import AggregatedSignal
+
+
+@pytest.fixture
+def recent_date():
+    return (datetime.now().date() - timedelta(days=1)).isoformat()
 
 
 class MockRecommenderResult:
@@ -104,7 +109,7 @@ class TestPnLTrackerRecordDaily:
         n2 = tracker.record_daily("2026-04-03", recs)
         assert n1 == 1
         assert n2 == 0
-        lines = (tmp_path / "pnl.jsonl").read_text().strip().split("\n")
+        lines = (tmp_path / "pnl.jsonl").read_text(encoding="utf-8").strip().split("\n")
         assert len(lines) == 1
 
     def test_record_daily_multiple_tickers(self, tmp_path):
@@ -115,7 +120,7 @@ class TestPnLTrackerRecordDaily:
         ]
         n = tracker.record_daily("2026-04-03", recs)
         assert n == 2
-        lines = (tmp_path / "pnl.jsonl").read_text().strip().split("\n")
+        lines = (tmp_path / "pnl.jsonl").read_text(encoding="utf-8").strip().split("\n")
         assert len(lines) == 2
 
     def test_record_daily_with_agg_signal(self, tmp_path):
@@ -138,7 +143,7 @@ class TestPnLTrackerRecordDaily:
         )
         recs = [MockRecommenderResult(ticker="0700.HK", agg_signal=agg)]
         tracker.record_daily("2026-04-03", recs)
-        row = json.loads((tmp_path / "pnl.jsonl").read_text().splitlines()[0])
+        row = json.loads((tmp_path / "pnl.jsonl").read_text(encoding="utf-8").splitlines()[0])
         assert row["ticker"] == "0700.HK"
         assert row["action"] == "持有"
         assert row["bullish_count"] == 8
@@ -225,7 +230,7 @@ class TestPnLTrackerFillT1Returns:
 
 
 class TestPnLTrackerAttribution:
-    def test_attribution_by_strategy(self, tmp_path):
+    def test_attribution_by_strategy(self, tmp_path, recent_date):
         tracker = PnLTracker(pnl_path=tmp_path / "pnl.jsonl")
         recs = [
             MockRecommenderResult(
@@ -242,34 +247,34 @@ class TestPnLTrackerAttribution:
                 ),
             ),
         ]
-        tracker.record_daily("2026-04-03", recs)
-        tracker.fill_t1_returns("2026-04-03", {"0700.HK": 408.0})
+        tracker.record_daily(recent_date, recs)
+        tracker.fill_t1_returns(recent_date, {"0700.HK": 408.0})
         result = tracker.attribution_by_strategy(period_days=30)
         assert not result.empty
         assert "strategy" in result.columns
         assert "accuracy_pct" in result.columns
 
-    def test_attribution_by_ticker(self, tmp_path):
+    def test_attribution_by_ticker(self, tmp_path, recent_date):
         tracker = PnLTracker(pnl_path=tmp_path / "pnl.jsonl")
         recs = [
             MockRecommenderResult(ticker="0700.HK", last_close=400.0, action="买入"),
             MockRecommenderResult(ticker="0005.HK", last_close=600.0, action="卖出"),
         ]
-        tracker.record_daily("2026-04-03", recs)
-        tracker.fill_t1_returns("2026-04-03", {"0700.HK": 408.0, "0005.HK": 588.0})
+        tracker.record_daily(recent_date, recs)
+        tracker.fill_t1_returns(recent_date, {"0700.HK": 408.0, "0005.HK": 588.0})
         result = tracker.attribution_by_ticker(period_days=30)
         assert not result.empty
         assert "ticker" in result.columns
         assert "avg_t1_return_pct" in result.columns
 
-    def test_attribution_by_action(self, tmp_path):
+    def test_attribution_by_action(self, tmp_path, recent_date):
         tracker = PnLTracker(pnl_path=tmp_path / "pnl.jsonl")
         recs = [
             MockRecommenderResult(ticker="0700.HK", last_close=400.0, action="买入"),
             MockRecommenderResult(ticker="0005.HK", last_close=600.0, action="卖出"),
         ]
-        tracker.record_daily("2026-04-03", recs)
-        tracker.fill_t1_returns("2026-04-03", {"0700.HK": 408.0, "0005.HK": 588.0})
+        tracker.record_daily(recent_date, recs)
+        tracker.fill_t1_returns(recent_date, {"0700.HK": 408.0, "0005.HK": 588.0})
         result = tracker.attribution_by_action(period_days=30)
         assert not result.empty
         assert "action" in result.columns
@@ -289,14 +294,14 @@ class TestPnLTrackerSummaryReport:
         result = tracker.summary_report(period_days=30)
         assert result == {"total_recommendations": 0}
 
-    def test_summary_report_with_data(self, tmp_path):
+    def test_summary_report_with_data(self, tmp_path, recent_date):
         tracker = PnLTracker(pnl_path=tmp_path / "pnl.jsonl")
         recs = [
             MockRecommenderResult(ticker="0700.HK", last_close=400.0, action="买入"),
             MockRecommenderResult(ticker="0005.HK", last_close=600.0, action="买入"),
         ]
-        tracker.record_daily("2026-04-03", recs)
-        tracker.fill_t1_returns("2026-04-03", {"0700.HK": 408.0, "0005.HK": 588.0})
+        tracker.record_daily(recent_date, recs)
+        tracker.fill_t1_returns(recent_date, {"0700.HK": 408.0, "0005.HK": 588.0})
         result = tracker.summary_report(period_days=30)
         assert result["total_recommendations"] == 2
         assert "overall_accuracy_pct" in result

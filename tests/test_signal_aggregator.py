@@ -7,6 +7,7 @@ import pytest
 from pathlib import Path
 
 from engine.signal_aggregator import SignalAggregator, AggregatedSignal
+from data.factor_registry import FactorRegistry
 
 
 class TestSignalAggregatorEmptyFactorsDir:
@@ -17,6 +18,42 @@ class TestSignalAggregatorEmptyFactorsDir:
         assert result.consensus_signal == 0
         assert result.confidence_pct == 0.0
         assert result.total_strategies == 0
+
+    def test_expired_disk_factor_is_not_used(self, synthetic_ohlcv, tmp_path):
+        import joblib
+
+        factors_dir = tmp_path / "factors"
+        factors_dir.mkdir()
+        joblib.dump({"meta": {"name": "ma_crossover"}, "model": None,
+                     "sharpe_ratio": 1.0, "config": {}},
+                    factors_dir / "factor_0001.pkl")
+        registry = FactorRegistry(factors_dir / "factor_registry.json")
+        registry.register(1, "factor_0001.pkl", None, "ma_crossover", None,
+                          "single", 1.0, 0.1, -0.1, 5)
+        registry._data["factors"][0]["status"] = "expired"
+        registry._save()
+
+        agg = SignalAggregator(factors_dir=factors_dir)
+        result = agg.aggregate("0700.HK", synthetic_ohlcv, {})
+        assert result.total_strategies == 0
+        assert result.confidence_pct == 0.0
+
+    def test_active_factor_selected_before_max_factors_limit(self, tmp_path):
+        import joblib
+
+        factors_dir = tmp_path / "factors"
+        factors_dir.mkdir()
+        registry = FactorRegistry(factors_dir / "factor_registry.json")
+        for run_id in range(1, 4):
+            joblib.dump({"meta": {"name": "ma_crossover"}, "model": None},
+                        factors_dir / f"factor_{run_id:04d}.pkl")
+        registry.register(1, "factor_0001.pkl", None, "ma_crossover", None,
+                          "single", 1.0, 0.1, -0.1, 5)
+
+        agg = SignalAggregator(factors_dir=factors_dir, max_factors=1)
+        assert [a["_path"] for a in agg._load_factors()] == [
+            str(factors_dir / "factor_0001.pkl")
+        ]
 
 
 class TestSignalAggregatorConfidenceBounds:
